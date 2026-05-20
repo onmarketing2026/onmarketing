@@ -1,0 +1,889 @@
+{% extends 'cyborgapp/base.html' %}
+
+{% block title %}{% if request.user.usertype == 'customer' %}My Requirements{% else %}Company Requirements{% endif %}{% endblock %}
+{% block page_title %}{% if request.user.usertype == 'customer' %}My Requirements{% else %}Company Requirements{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .requirement-card {
+        background: var(--card-bg);
+        border-radius: 15px;
+        padding: 25px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        margin-bottom: 25px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .requirement-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+    }
+
+    .requirement-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+    }
+
+    .requirement-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-main);
+    }
+
+    .status-badge {
+        padding: 6px 15px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .status-pending {
+        background: rgba(255, 193, 7, 0.1);
+        color: #ffc107;
+        border: 1px solid rgba(255, 193, 7, 0.2);
+    }
+
+    .status-approved {
+        background: rgba(25, 135, 84, 0.1);
+        color: #198754;
+        border: 1px solid rgba(25, 135, 84, 0.2);
+    }
+
+    .requirement-body {
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin-bottom: 20px;
+        font-size: 0.95rem;
+    }
+
+    .requirement-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 15px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .customer-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.85rem;
+        color: var(--text-main);
+        font-weight: 600;
+    }
+
+    .action-group {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-action {
+        padding: 8px 15px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid transparent;
+    }
+
+    .btn-edit {
+        background: var(--role-bg-light);
+        color: var(--role-color);
+    }
+
+    .btn-edit:hover {
+        background: var(--role-color);
+        color: #fff;
+    }
+
+    .btn-delete {
+        background: rgba(220, 53, 69, 0.1);
+        color: #dc3545;
+    }
+
+    .btn-delete:hover {
+        background: #dc3545;
+        color: #fff;
+    }
+
+    .btn-approve {
+        background: rgba(25, 135, 84, 0.1);
+        color: #198754;
+    }
+
+    .btn-approve:hover {
+        background: #198754;
+        color: #fff;
+    }
+
+    .btn-lead {
+        background: rgba(13, 110, 253, 0.1);
+        color: #0d6efd;
+    }
+
+    .btn-lead:hover {
+        background: #0d6efd;
+        color: #fff;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: var(--card-bg);
+        border-radius: 15px;
+        border: 1px dashed var(--border-color);
+    }
+
+    .empty-state i {
+        font-size: 4rem;
+        color: var(--border-color);
+        margin-bottom: 20px;
+    }
+    
+    .btn-create {
+        background: var(--role-color);
+        color: #fff;
+        padding: 12px 25px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.3s;
+        margin-bottom: 30px;
+    }
+
+    .btn-create:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px var(--role-bg-light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
+        <div class="table-header">
+            <h3>Requirement Dashboard</h3>
+            {% if request.user.usertype == 'customer' %}
+                <button class="btn-create" id="openCreateModal" style="margin-bottom: 0;">
+                    <i class="fa-solid fa-plus"></i> Add Requirement
+                </button>
+            {% endif %}
+        </div>
+        <div style="padding: 25px;">
+            <table id="requirementsTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Associate Company</th>
+                    <th>Category & Items</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Dynamically loaded via DataTable ServerSide AJAX -->
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- Requirement Modal -->
+    <div id="requirementModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+        <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+            <span class="close-modal" id="closeModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+            <h2 id="modalTitle" style="margin-bottom: 25px; font-size: 1.5rem;">Add New Requirement</h2>
+            
+            <form id="requirementForm" method="POST" action="{% url 'requirement_create' %}">
+                {% csrf_token %}
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Title</label>
+                    <input type="text" id="reqTitle" name="title" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Category <span style="color: #dc3545;">*</span></label>
+                    <select name="category" id="reqCategory" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                        <option value="">Select Category</option>
+                        {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="status-group" style="display: none; margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Status</label>
+                    <select name="status" id="reqStatus" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                    </select>
+                </div>
+                <div id="subcategories-section" style="display: none; margin-bottom: 20px; padding: 15px; background: var(--role-bg-extra-light); border-radius: 10px; border: 1px dashed var(--role-color);">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 700; font-size: 0.9rem;">Select Items & Specify Counts/Amounts <span style="color: #dc3545;">*</span></label>
+                    <div id="subcat-list">
+                        <!-- Dynamic subcategories here -->
+                    </div>
+                </div>
+                <div class="form-group" style="display: none; margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Description</label>
+                    <textarea id="reqDescription" name="description" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 100px;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" class="btn-submit" id="modalSubmitBtn" style="flex: 1; background: var(--role-color); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">Submit Requirement</button>
+                    <button type="button" class="btn-submit" id="updateApproveBtn" style="flex: 1; background: #198754; color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; display: none;">Update & Approve</button>
+                </div>
+                <input type="hidden" name="approve_after_update" id="approveAfterUpdate" value="false">
+            </form>
+        </div>
+    </div>
+
+    <!-- Lead Modal -->
+    <div id="leadModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+        <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+            <span class="close-modal" id="closeLeadModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+            <h2 style="margin-bottom: 25px; font-size: 1.5rem;">Add Lead</h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted); font-size: 0.9rem;">Adding lead against: <span id="leadReqTitle" style="font-weight: 700; color: var(--text-main);"></span></p>
+            
+            <form id="leadForm" method="POST" action="">
+                {% csrf_token %}
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Lead Name</label>
+                    <input type="text" name="name" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Phone Number</label>
+                    <input type="text" name="phone" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Email (Optional)</label>
+                    <input type="email" name="email" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                </div>
+                <div id="lead-items-section" style="margin-bottom: 20px; padding: 15px; background: var(--role-bg-extra-light); border-radius: 10px; border: 1px dashed var(--role-color);">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 700; font-size: 0.9rem;">Select Required Items & Counts</label>
+                    <div id="lead-items-list">
+                        <!-- Dynamic items here -->
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Address</label>
+                    <textarea name="address" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 80px;"></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Remarks</label>
+                    <textarea name="remarks" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 60px;"></textarea>
+                </div>
+                <button type="submit" class="btn-submit" style="width: 100%; background: #0d6efd; color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">Save Lead</button>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize DataTable
+        const userUsertype = "{{ request.user.usertype }}";
+        const userId = "{{ request.user.id }}";
+
+        // Initialize DataTable with ServerSide processing
+        $('#requirementsTable').DataTable({
+            processing: true,
+            serverSide: true,
+            ajax: {
+                url: window.location.pathname + window.location.search,
+                type: 'GET'
+            },
+            order: [[3, 'desc']], // Sort by date by default
+            columns: [
+                { 
+                    data: 'title',
+                    render: function(data, type, row) {
+                        let html = `<div style="font-weight: 700; color: var(--text-main);">${data}</div>`;
+                        if (row.description) {
+                            html += `<div style="font-size: 0.8rem; color: var(--text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.description}</div>`;
+                        }
+                        return html;
+                    }
+                },
+                { 
+                    data: 'customer_name',
+                    render: function(data, type, row) {
+                        return `
+                            <div style="font-weight: 600;">${data}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${row.customer_email}</div>
+                        `;
+                    }
+                },
+                { 
+                    data: 'items',
+                    orderable: false,
+                    render: function(data, type, row) {
+                        if (!row.category_id) {
+                            return `<span style="color: var(--text-muted); font-size: 0.8rem;">No items specified</span>`;
+                        }
+                        let html = `
+                            <div style="font-size: 0.8rem; color: var(--role-color); font-weight: 800; text-transform: uppercase; margin-bottom: 8px;">
+                                <i class="fa-solid fa-folder-open" style="margin-right: 5px;"></i>${row.category_name}
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                        `;
+                        data.forEach(item => {
+                            let countSection = '';
+                            if (row.category_type === 'count') {
+                                if (item.count) {
+                                    countSection = `
+                                        <div style="display: flex; gap: 8px; margin-top: 5px; font-size: 0.65rem; color: var(--text-muted);">
+                                            <span title="Total Count"><i class="fa-solid fa-boxes-stacked"></i> T: ${item.count}</span>
+                                            <span style="color: #198754;" title="Count Sold"><i class="fa-solid fa-cart-shopping"></i> S: ${item.sold_count}</span>
+                                            <span style="color: #dc3545;" title="Count Left"><i class="fa-solid fa-circle-check"></i> L: ${item.left_count}</span>
+                                        </div>
+                                    `;
+                                } else {
+                                    countSection = ' (∞)';
+                                }
+                            }
+
+                            let priceSection = '';
+                            if (userUsertype === 'superadmin') {
+                                priceSection = `
+                                    <span style="font-weight: 700; color: #198754;">₹${item.total_amount.toFixed(2)}</span>
+                                    <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600;">
+                                        C: ₹${item.customer_amount.toFixed(2)} | M: ₹${item.admin_markup.toFixed(2)}
+                                    </span>
+                                `;
+                            } else {
+                                const finalPrice = (userUsertype === 'customer') ? item.customer_amount : item.total_amount;
+                                priceSection = `<span style="font-weight: 700; color: #198754;">₹${finalPrice.toFixed(2)}</span>`;
+                            }
+
+                            let descSection = '';
+                            if (item.description) {
+                                descSection = `
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); background: var(--role-bg-extra-light); padding: 5px 8px; border-radius: 4px; border-left: 3px solid var(--role-color); word-break: break-word; white-space: normal;">
+                                        <i class="fa-solid fa-info-circle" style="margin-right: 3px;"></i>${item.description}
+                                    </div>
+                                `;
+                            }
+
+                            html += `
+                                <div style="display: flex; flex-direction: column; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.75rem; gap: 6px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <span style="font-weight: 600; color: var(--text-main);">
+                                            ${item.subcategory_name}
+                                            ${countSection}
+                                        </span>
+                                        <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                                            ${priceSection}
+                                        </div>
+                                    </div>
+                                    ${descSection}
+                                </div>
+                            `;
+                        });
+                        html += `</div>`;
+                        return html;
+                    }
+                },
+                { 
+                    data: 'created_at_formatted',
+                    render: function(data, type, row) {
+                        return data;
+                    }
+                },
+                { 
+                    data: 'status',
+                    render: function(data, type, row) {
+                        return `<span class="status-badge status-${data}">${data}</span>`;
+                    }
+                },
+                { 
+                    data: null,
+                    orderable: false,
+                    render: function(data, type, row) {
+                        let html = `<div class="action-group">`;
+                        if (userUsertype === 'superadmin') {
+                            const markups = row.items.map(i => parseInt(i.admin_markup)).join(',');
+                            html += `
+                                <button class="btn-action btn-approve toggle-status-btn" 
+                                        data-id="${row.id}" 
+                                        data-status="${row.status}"
+                                        data-markups="${markups}"
+                                        title="Toggle Status">
+                                    <i class="fa-solid ${row.status === 'approved' ? 'fa-xmark' : 'fa-check'}"></i>
+                                </button>
+                            `;
+                        }
+
+                        if (row.status === 'pending') {
+                            if (userId == row.customer_id || userUsertype === 'superadmin') {
+                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}`).join(',');
+                                html += `
+                                    <button type="button" class="btn-action btn-edit edit-req-btn" 
+                                            data-id="${row.id}" 
+                                            data-title="${row.title}" 
+                                            data-description="${row.description}"
+                                            data-category="${row.category_id}"
+                                            data-status="${row.status}"
+                                            data-items="${itemsRaw}"
+                                            title="Edit">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                `;
+                                if (userId == row.customer_id) {
+                                    html += `
+                                        <form action="/requirements/${row.id}/delete/" method="POST" style="display: inline;" class="delete-form">
+                                            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                                            <button type="button" class="btn-action btn-delete delete-btn" title="Delete">
+                                                <i class="fa-solid fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    `;
+                                }
+                            }
+                        }
+
+                        if (userUsertype === 'marketing') {
+                            if (row.status === 'approved') {
+                                const leadItemsRaw = row.items.map(i => `${i.subcategory_id}:${i.subcategory_name}:${i.count}:${i.total_amount}:${i.left_count}`).join('|');
+                                html += `
+                                    <button type="button" class="btn-action btn-lead add-lead-btn" 
+                                            data-id="${row.id}" 
+                                            data-title="${row.title}"
+                                            data-cat-type="${row.category_type || 'other'}"
+                                            data-items="${leadItemsRaw}"
+                                            title="Add Lead">
+                                        <i class="fa-solid fa-user-plus"></i> Lead
+                                    </button>
+                                `;
+                            }
+                        }
+
+                        html += `</div>`;
+                        return html;
+                    }
+                }
+            ],
+            pageLength: 10,
+            language: {
+                search: "_INPUT_",
+                searchPlaceholder: "Search requirements..."
+            }
+        });
+
+        const modal = document.getElementById('requirementModal');
+        const openCreateBtn = document.getElementById('openCreateModal');
+        const closeBtn = document.getElementById('closeModal');
+        const form = document.getElementById('requirementForm');
+        const modalTitle = document.getElementById('modalTitle');
+        const submitBtn = document.getElementById('modalSubmitBtn');
+        const reqTitle = document.getElementById('reqTitle');
+        const reqDescription = document.getElementById('reqDescription');
+        const reqCategory = document.getElementById('reqCategory');
+        const subcatSection = document.getElementById('subcategories-section');
+        const subcatList = document.getElementById('subcat-list');
+
+        const statusGroup = document.getElementById('status-group');
+        const reqStatus = document.getElementById('reqStatus');
+        const isSuperAdmin = {{ request.user.usertype|yesno:"true,false" }} === true && '{{ request.user.usertype }}' === 'superadmin';
+
+        function fetchSubcategories(catId, selectedItems = null) {
+            if (!catId) {
+                subcatSection.style.display = 'none';
+                return;
+            }
+
+            fetch(`/api/get_subcategories/${catId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        subcatList.innerHTML = '';
+                        data.subcategories.forEach(sub => {
+                            const isSelected = selectedItems && selectedItems[sub.id] !== undefined;
+                            const countValue = isSelected ? selectedItems[sub.id].count : '';
+                            const custValue = isSelected ? selectedItems[sub.id].custAmt : '';
+                            const markValue = isSelected ? selectedItems[sub.id].markAmt : '';
+
+                            const div = document.createElement('div');
+                            div.style.marginBottom = '15px';
+                            div.style.display = 'flex';
+                            div.style.alignItems = 'center';
+                            div.style.gap = '10px';
+                            div.style.padding = '10px';
+                            div.style.background = '#fff';
+                            div.style.borderRadius = '8px';
+                            div.style.border = '1px solid var(--border-color)';
+                            
+                            let countInput = '';
+                            if (data.cat_type === 'count') {
+                                countInput = `<input type="number" name="count_${sub.id}" value="${countValue}" placeholder="Qty" style="width: 60px; padding: 5px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem;">`;
+                            }
+
+                            const descValue = isSelected ? (selectedItems[sub.id].description || '') : '';
+
+                            div.innerHTML = `
+                                <input type="checkbox" name="subcategories" value="${sub.id}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; margin-top: 10px;">
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 5px;">${sub.name}</div>
+                                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                        ${countInput}
+                                        <input type="number" step="0.01" name="customer_amount_${sub.id}" value="${custValue}" placeholder="Cust ₹" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem;" ${isSuperAdmin ? 'readonly' : ''}>
+                                        ${isSuperAdmin ? `<input type="number" step="0.01" name="admin_markup_${sub.id}" value="${markValue}" placeholder="Admin ₹" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #dc3545; font-size: 0.8rem;">` : ''}
+                                    </div>
+                                    <textarea name="description_${sub.id}" placeholder="Item Description / Requirements" style="width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem; min-height: 50px; resize: vertical;" ${isSuperAdmin ? 'readonly' : ''}>${descValue}</textarea>
+                                </div>
+                            `;
+                            
+                            if (isSuperAdmin) {
+                                div.querySelector('input[type="checkbox"]').disabled = true;
+                                if (div.querySelector('input[type="number"][name^="count_"]')) {
+                                    div.querySelector('input[type="number"][name^="count_"]').disabled = true;
+                                }
+                            }
+                            
+                            subcatList.appendChild(div);
+                        });
+                        subcatSection.style.display = 'block';
+                    }
+                });
+        }
+
+        reqCategory.onchange = function() {
+            fetchSubcategories(this.value);
+        };
+
+        // Open Create Modal
+        if (openCreateBtn) {
+            openCreateBtn.onclick = function() {
+                form.reset();
+                form.action = "{% url 'requirement_create' %}";
+                modalTitle.textContent = "Add New Requirement";
+                submitBtn.textContent = "Submit Requirement";
+                subcatSection.style.display = 'none';
+                statusGroup.style.display = 'none';
+                modal.style.display = "block";
+            }
+        }
+
+        // Open Edit Modal using Event Delegation
+        $(document).on('click', '.edit-req-btn', function() {
+            const id = this.getAttribute('data-id');
+            const title = this.getAttribute('data-title');
+            const description = this.getAttribute('data-description');
+            const categoryId = this.getAttribute('data-category');
+            const status = this.getAttribute('data-status');
+            const custAmt = this.getAttribute('data-customer-amount');
+            const adminMarkup = this.getAttribute('data-admin-markup');
+            const itemsRaw = this.getAttribute('data-items');
+
+            form.reset();
+            form.action = `/requirements/${id}/edit/`;
+            modalTitle.textContent = "Edit Requirement";
+            submitBtn.textContent = "Update Requirement";
+            
+            reqTitle.value = title;
+            reqDescription.value = description;
+            reqCategory.value = categoryId;
+            
+            if (isSuperAdmin) {
+                reqTitle.readOnly = true;
+                reqDescription.readOnly = true;
+                reqCategory.disabled = true;
+                statusGroup.style.display = 'block';
+                reqStatus.value = status;
+                
+                // Show "Update & Approve" only for pending
+                if (status === 'pending') {
+                    document.getElementById('updateApproveBtn').style.display = 'block';
+                } else {
+                    document.getElementById('updateApproveBtn').style.display = 'none';
+                }
+            } else {
+                reqTitle.readOnly = false;
+                reqDescription.readOnly = false;
+                reqCategory.disabled = false;
+                statusGroup.style.display = 'none';
+                document.getElementById('updateApproveBtn').style.display = 'none';
+            }
+            
+            const selectedItems = {};
+            if (itemsRaw) {
+                itemsRaw.split(',').forEach(item => {
+                    const parts = item.split(':');
+                    if (parts.length >= 4) {
+                        selectedItems[parts[0]] = {
+                            count: parts[1],
+                            custAmt: parts[2],
+                            markAmt: parts[3],
+                            description: parts[4] ? decodeURIComponent(parts[4]) : ''
+                        };
+                    }
+                });
+            }
+
+            if (categoryId) {
+                fetchSubcategories(categoryId, selectedItems);
+            } else {
+                subcatSection.style.display = 'none';
+            }
+            
+            modal.style.display = "block";
+        });
+
+        // Update & Approve Button Handler
+        const updateApproveBtn = document.getElementById('updateApproveBtn');
+        if (updateApproveBtn) {
+            updateApproveBtn.onclick = function() {
+                document.getElementById('approveAfterUpdate').value = 'true';
+                if (validateRequirementForm()) {
+                    form.submit();
+                }
+            };
+        }
+
+        function validateRequirementForm() {
+            const subcatList = document.getElementById('subcat-list');
+            const checkedSubcats = subcatList.querySelectorAll('input[type="checkbox"]:checked');
+            if (checkedSubcats.length === 0) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Selection Required',
+                    text: 'Please select at least one subcategory item.'
+                });
+                return false;
+            }
+
+            let missingAmount = false;
+            checkedSubcats.forEach(checkbox => {
+                const subId = checkbox.value;
+                const amtInput = document.getElementById('requirementForm').querySelector(`input[name="customer_amount_${subId}"]`);
+                if (amtInput && (!amtInput.value || amtInput.value.trim() === "")) {
+                    missingAmount = true;
+                }
+            });
+
+            if (missingAmount) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Amount Required',
+                    text: 'Please provide a customer amount for all selected items.'
+                });
+                return false;
+            }
+            return true;
+        }
+
+        // Close Modal
+        closeBtn.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        form.addEventListener('submit', function(e) {
+            if (!validateRequirementForm()) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return false;
+            }
+        });
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        // Lead Modal Logic
+        const leadModal = document.getElementById('leadModal');
+        const closeLeadBtn = document.getElementById('closeLeadModal');
+        const leadForm = document.getElementById('leadForm');
+        const leadReqTitleDisplay = document.getElementById('leadReqTitle');
+        const leadItemsList = document.getElementById('lead-items-list');
+
+        let currentLeadCatType = '';
+        // Open Lead Modal using Event Delegation
+        $(document).on('click', '.add-lead-btn', function() {
+            const reqId = this.getAttribute('data-id');
+            const reqTitle = this.getAttribute('data-title');
+            const catType = this.getAttribute('data-cat-type');
+            currentLeadCatType = catType;
+            const itemsRaw = this.getAttribute('data-items');
+            
+            leadForm.action = `/requirements/${reqId}/lead/create/`;
+            leadReqTitleDisplay.textContent = reqTitle;
+            
+            leadItemsList.innerHTML = '';
+            if (itemsRaw) {
+                itemsRaw.split('|').forEach(itemStr => {
+                    const [subId, subName, maxCount, itemPrice, leftCount] = itemStr.split(':');
+                    
+                    const div = document.createElement('div');
+                    div.style.marginBottom = '10px';
+                    div.style.display = 'flex';
+                    div.style.alignItems = 'center';
+                    div.style.gap = '10px';
+                    
+                    let countInput = '';
+                    if (catType === 'count') {
+                        countInput = `
+                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
+                                <input type="number" name="count_${subId}" placeholder="Qty" data-left="${leftCount}" style="width: 75px; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.85rem; font-weight: 600;">
+                                <span style="background: rgba(25, 135, 84, 0.08); color: #198754; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(25, 135, 84, 0.15);">
+                                    <i class="fa-solid fa-boxes-stacked" style="margin-right: 4px;"></i>LEFT: ${parseInt(maxCount) === 0 ? '∞' : leftCount}
+                                </span>
+                            </div>
+                        `;
+                    }
+
+                    div.innerHTML = `
+                        <input type="checkbox" name="selected_items" value="${subId}" style="width: 18px; height: 18px; margin-top: 3px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                <span style="font-size: 0.85rem; font-weight: 600;">${subName}</span>
+                                <span style="font-size: 0.8rem; font-weight: 700; color: #198754;">₹${parseFloat(itemPrice).toFixed(2)}</span>
+                            </div>
+                            ${countInput}
+                        </div>
+                    `;
+                    leadItemsList.appendChild(div);
+                });
+            }
+            leadModal.style.display = "block";
+        });
+
+        leadForm.addEventListener('submit', function(e) {
+            const selectedItems = leadForm.querySelectorAll('input[name="selected_items"]:checked');
+            if (selectedItems.length === 0) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Selection Required',
+                    text: 'Please select at least one subcategory item for this lead.'
+                });
+                return;
+            }
+
+            if (currentLeadCatType === 'count') {
+                let valid = true;
+                selectedItems.forEach(cb => {
+                    const subId = cb.value;
+                    const qtyInput = leadForm.querySelector(`input[name="count_${subId}"]`);
+                    const qty = parseInt(qtyInput.value) || 0;
+                    const left = parseInt(qtyInput.getAttribute('data-left')) || 0;
+                    
+                    if (qty <= 0) {
+                        valid = false;
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Quantity Required',
+                            text: 'Please enter a valid quantity for all selected items.'
+                        });
+                    } else if (qty > left && left > 0) {
+                        valid = false;
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Insufficient Stock',
+                            text: `Quantity for item exceeds available stock (Left: ${left}).`
+                        });
+                    }
+                });
+                if (!valid) e.preventDefault();
+            }
+        });
+
+        if (closeLeadBtn) {
+            closeLeadBtn.onclick = function() {
+                leadModal.style.display = "none";
+            }
+        }
+
+        window.addEventListener('click', function(event) {
+            if (event.target == leadModal) {
+                leadModal.style.display = "none";
+            }
+        });
+
+        // Toggle Status using Event Delegation
+        $(document).on('click', '.toggle-status-btn', function() {
+            const reqId = this.getAttribute('data-id');
+            const currentStatus = this.getAttribute('data-status');
+            const markups = this.getAttribute('data-markups') || "";
+            
+            // If moving from pending to approved, check for zero markups
+            if (currentStatus === 'pending') {
+                const markupList = markups.split(',').filter(m => m !== "");
+                const hasZeroMarkup = markupList.some(m => parseFloat(m) === 0);
+                
+                if (hasZeroMarkup) {
+                    Swal.fire({
+                        title: 'Are you sure?',
+                        text: "Some items have zero markup value. Are you sure you want to approve without adding markup?",
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#198754',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Yes, Approve'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            performToggle(reqId);
+                        }
+                    });
+                    return;
+                }
+            }
+            
+            performToggle(reqId);
+        });
+
+        function performToggle(reqId) {
+            fetch(`/requirements/${reqId}/toggle/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Error updating status.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Delete Confirmation using Event Delegation
+        $(document).on('click', '.delete-btn', function() {
+            const form = this.closest('.delete-form');
+            Swal.fire({
+                title: 'Are you sure?',
+                text: "You want to delete this requirement?",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

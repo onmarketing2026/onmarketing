@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>On Cyborg - {% block title %}Dashboard{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- DataTables -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.js"></script>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    {% load static %}
+    <style>
+        button:hover, .btn-action:hover, .menu-item:hover {
+            cursor: pointer;
+        }
+
+        :root {
+            --primary-gold: #cba135;
+            --primary-gold-hover: #b8912d;
+            --main-bg: #f4f6f9;
+            --sidebar-bg: #ffffff;
+            --header-bg: #ffffff;
+            --text-main: #1a1a1a;
+            --text-muted: #666666;
+            --border-color: rgba(0, 0, 0, 0.08);
+            --card-bg: #ffffff;
+            
+            /* Default Role Colors (Superadmin) */
+            --role-color: var(--primary-gold);
+            --role-color-hover: var(--primary-gold-hover);
+            --role-bg-light: rgba(203, 161, 53, 0.1);
+            --role-bg-extra-light: rgba(203, 161, 53, 0.05);
+        }
+
+        /* Role-specific color schemes */
+        body.user-manager {
+            --role-color: #4e73df;
+            --role-color-hover: #2e59d9;
+            --role-bg-light: rgba(78, 115, 223, 0.1);
+            --role-bg-extra-light: rgba(78, 115, 223, 0.05);
+        }
+        body.user-district {
+            --role-color: #1cc88a;
+            --role-color-hover: #17a673;
+            --role-bg-light: rgba(28, 200, 138, 0.1);
+            --role-bg-extra-light: rgba(28, 200, 138, 0.05);
+        }
+        body.user-mandalam {
+            --role-color: #36b9cc;
+            --role-color-hover: #2c9faf;
+            --role-bg-light: rgba(54, 185, 204, 0.1);
+            --role-bg-extra-light: rgba(54, 185, 204, 0.05);
+        }
+        body.user-marketing {
+            --role-color: #e83e8c;
+            --role-color-hover: #d63384;
+            --role-bg-light: rgba(232, 62, 140, 0.1);
+            --role-bg-extra-light: rgba(232, 62, 140, 0.05);
+        }
+        body.user-customer {
+            --role-color: #e74a3b;
+            --role-color-hover: #be2617;
+            --role-bg-light: rgba(231, 74, 59, 0.1);
+            --role-bg-extra-light: rgba(231, 74, 59, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+            position: fixed;
+            height: 100vh;
+            z-index: 1000;
+        }
+
+        .sidebar-brand {
+            padding: 25px 30px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-brand img {
+            max-height: 40px;
+            margin-right: 15px;
+        }
+
+        .sidebar-brand h2 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-brand h2 span {
+            color: var(--role-color);
+        }
+
+        .sidebar-menu {
+            padding: 20px 0;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .menu-label {
+            padding: 10px 30px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 30px;
+            color: var(--text-main);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .menu-item i {
+            width: 24px;
+            font-size: 1.1rem;
+            margin-right: 15px;
+            color: var(--text-muted);
+            transition: color 0.2s ease;
+        }
+
+        .menu-item:hover, .menu-item.active {
+            background-color: var(--role-bg-extra-light);
+            border-left-color: var(--role-color);
+            color: var(--role-color);
+        }
+
+        .menu-item:hover i, .menu-item.active i {
+            color: var(--role-color);
+        }
+
+        .sidebar-footer {
+            padding: 20px 30px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            color: #dc3545;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .logout-btn i {
+            margin-right: 10px;
+        }
+
+        .logout-btn:hover {
+            color: #bd2130;
+        }
+
+        /* Dropdown Sidebar Styles */
+        .menu-dropdown-wrapper .dropdown-arrow {
+            transition: transform 0.2s ease;
+        }
+        .menu-dropdown-wrapper.open .dropdown-arrow {
+            transform: rotate(180deg);
+        }
+        .menu-dropdown-items {
+            background: rgba(0, 0, 0, 0.03);
+            border-left: 2px solid var(--border-color);
+            margin-left: 40px;
+        }
+        .submenu-item {
+            padding: 10px 20px !important;
+            font-size: 0.85rem !important;
+            border-left: none !important;
+        }
+        .submenu-item i {
+            font-size: 0.4rem !important;
+            width: 12px !important;
+            margin-right: 8px !important;
+        }
+
+        /* Main Wrapper */
+        .main-wrapper {
+            flex: 1;
+            margin-left: 280px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            transition: all 0.3s ease;
+        }
+
+        /* Mobile Header Toggle */
+        .mobile-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-main);
+            cursor: pointer;
+            margin-right: 15px;
+        }
+
+        /* Header */
+        .header {
+            height: 80px;
+            background-color: var(--header-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            position: sticky;
+            top: 0;
+            z-index: 999;
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--primary-gold);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .user-role {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: capitalize;
+        }
+
+        /* Content Area */
+        .content {
+            padding: 40px;
+            flex: 1;
+        }
+
+        /* Reusable Card */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        /* Responsive Improvements */
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            }
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            .main-wrapper {
+                margin-left: 0;
+            }
+            .mobile-toggle {
+                display: block;
+            }
+            .header {
+                padding: 0 20px;
+            }
+            .content {
+                padding: 20px;
+            }
+            .user-profile .user-info {
+                display: none;
+            }
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 999;
+                backdrop-filter: blur(3px);
+            }
+            .sidebar-overlay.active {
+                display: block;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .header-title h1 {
+                font-size: 1.1rem;
+            }
+            .btn-create, .btn-add {
+                padding: 8px 15px;
+                font-size: 0.85rem;
+            }
+        }
+
+        /* Global DataTables Premium Styling */
+        .dataTables_wrapper .dataTables_filter input {
+            border: 1px solid var(--border-color) !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            margin-left: 10px !important;
+            background: #fff !important;
+            margin-bottom: 15px !important;
+        }
+
+        .dataTables_wrapper .dataTables_length select {
+            border: 1px solid var(--border-color) !important;
+            border-radius: 6px !important;
+            padding: 4px 8px !important;
+        }
+
+        table.dataTable {
+            border-collapse: collapse !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            margin-top: 20px !important;
+            margin-bottom: 20px !important;
+        }
+
+        table.dataTable thead th {
+            background: var(--role-bg-extra-light) !important;
+            color: var(--text-main) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            font-size: 0.75rem !important;
+            letter-spacing: 0.5px !important;
+            padding: 15px 20px !important;
+        }
+
+        table.dataTable td {
+            padding: 15px 20px !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            vertical-align: middle !important;
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+            background: var(--role-color) !important;
+            color: #fff !important;
+            border: none !important;
+            border-radius: 6px !important;
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: var(--role-bg-light) !important;
+            color: var(--role-color) !important;
+            border: none !important;
+        }
+
+        .dataTables_wrapper .dataTables_info {
+            padding-top: 15px !important;
+            font-size: 0.85rem !important;
+            color: var(--text-muted) !important;
+        }
+
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .table-header {
+            padding: 25px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
+            gap: 15px;
+        }
+
+        .table-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="user-{{ request.user.usertype|default:'superadmin' }}">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <a href="{% url 'superadmin_dashboard' %}" style="text-decoration: none;">
+                <h2><span>ON</span> CYBORG</h2>
+            </a>
+        </div>
+        
+        <div class="sidebar-menu">
+            {% block sidebar_menu %}
+            <!-- Default sidebar block. Can be overridden based on user role -->
+            <div class="menu-label">Menu</div>
+            <a href="{% url 'superadmin_dashboard' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-chart-pie"></i>
+                Dashboard
+            </a>
+            <a href="{% url 'requirement_list' %}" class="menu-item {% if request.resolver_match.url_name == 'requirement_list' %}active{% endif %}">
+                <i class="fa-solid fa-clipboard-list"></i>
+                {% if request.user.usertype == 'customer' %}Requirements{% else %}Company Requirements{% endif %}
+            </a>
+            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'customer' %}
+            <a href="{% url 'category_list' %}" class="menu-item {% if request.resolver_match.url_name == 'category_list' %}active{% endif %}">
+                <i class="fa-solid fa-tags"></i>
+                Categories
+            </a>
+            {% endif %}
+            {% if request.user.usertype != 'customer' and request.user.usertype != 'marketing' %}
+            <div class="menu-dropdown-wrapper {% if request.resolver_match.url_name == 'superadmin_users' %}open{% endif %}">
+                <a href="javascript:void(0);" class="menu-item menu-dropdown-toggle">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Users</span>
+                    <i class="fa-solid fa-chevron-down dropdown-arrow" style="margin-left: auto; margin-right: 0; font-size: 0.8rem; transition: transform 0.2s;"></i>
+                </a>
+                <div class="menu-dropdown-items" style="display: {% if request.resolver_match.url_name == 'superadmin_users' %}block{% else %}none{% endif %};">
+                    {% if request.user.usertype == 'superadmin' %}
+                    <a href="{% url 'superadmin_users' %}?usertype=customer" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'customer' %}active{% endif %}">
+                        <i class="fa-solid fa-circle"></i>
+                        Associate Company
+                    </a>
+                    {% endif %}
+                    {% if request.user.usertype == 'superadmin' %}
+                    <a href="{% url 'superadmin_users' %}?usertype=district" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'district' %}active{% endif %}">
+                        <i class="fa-solid fa-circle"></i>
+                        District Franchise
+                    </a>
+                    {% endif %}
+                    
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                    <a href="{% url 'superadmin_users' %}?usertype=mandalam" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'mandalam' %}active{% endif %}">
+                        <i class="fa-solid fa-circle"></i>
+                        Fecilitation Center
+                    </a>
+                    {% endif %}
+
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' or request.user.usertype == 'mandalam' %}
+                    <a href="{% url 'superadmin_users' %}?usertype=marketing" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'marketing' %}active{% endif %}">
+                        <i class="fa-solid fa-circle"></i>
+                        Digital Franchise
+                    </a>
+                    {% endif %}
+
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' %}
+                    <a href="{% url 'superadmin_users' %}?usertype=manager" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'manager' %}active{% endif %}">
+                        <i class="fa-solid fa-circle"></i>
+                        Manager
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% if request.user.usertype != 'customer' %}
+            <a href="{% url 'lead_list' %}" class="menu-item {% if request.resolver_match.url_name == 'lead_list' %}active{% endif %}">
+                <i class="fa-solid fa-bullseye"></i>
+                Leads
+            </a>
+            {% endif %}
+
+            {% if request.user.usertype == 'superadmin' %}
+            <a href="{% url 'commission_settings' %}" class="menu-item {% if request.resolver_match.url_name == 'commission_settings' %}active{% endif %}">
+                <i class="fa-solid fa-percent"></i>
+                Commissions
+            </a>
+            {% endif %}
+
+            <a href="{% url 'wallet_dashboard' %}" class="menu-item {% if request.resolver_match.url_name == 'wallet_dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-wallet"></i>
+                My Wallet
+            </a>
+
+            {% if request.user.usertype == 'superadmin' %}
+            <a href="{% url 'superadmin_user_wallets' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_user_wallets' %}active{% endif %}" style="position: relative;">
+                <i class="fa-solid fa-vault"></i>
+                User Wallets
+                {% if global_pending_withdrawals_count > 0 %}
+                <span style="position: absolute; right: 20px; background: #dc3545; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; border: 2px solid white;">
+                    {{ global_pending_withdrawals_count }}
+                </span>
+                {% endif %}
+            </a>
+            {% endif %}
+            {% endblock %}
+        </div>
+
+        <div class="sidebar-footer">
+            <a href="{% url 'logout' %}" class="logout-btn" id="logoutBtn">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                Logout
+            </a>
+        </div>
+    </div>
+
+    <!-- Mobile Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Main Wrapper -->
+    <div class="main-wrapper">
+        <!-- Header -->
+        <header class="header">
+            <div style="display: flex; align-items: center;">
+                <button class="mobile-toggle" id="mobileToggle">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="header-title">
+                    <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+                </div>
+            </div>
+            
+            <div class="header-actions">
+                {% if request.user.is_authenticated %}
+                <a href="{% url 'wallet_dashboard' %}" style="text-decoration: none; margin-right: 20px; background: var(--role-bg-light); padding: 8px 15px; border-radius: 10px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(0,0,0,0.05); transition: all 0.2s ease;" class="top-wallet-link">
+                    <i class="fa-solid fa-wallet" style="color: var(--role-color);"></i>
+                    <span style="font-weight: 800; color: var(--role-color); font-size: 0.9rem;">
+                        ₹{% if request.user.usertype == 'manager' and request.user.assigned_district %}{{ request.user.assigned_district.wallet.balance|default:"0.00" }}{% else %}{{ request.user.wallet.balance|default:"0.00" }}{% endif %}
+                    </span>
+                </a>
+                {% endif %}
+                <a href="{% url 'profile' %}" class="user-profile" style="text-decoration: none; color: inherit; cursor: pointer;">
+                    <div class="user-info">
+                        <span class="user-name">{{ request.user.name|default:"Super Admin" }}</span>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <span class="role-dot" style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--role-color);"></span>
+                            <span class="user-role" style="color: var(--role-color); font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;">{{ request.user.get_usertype_display|default:"Superadmin" }}</span>
+                        </div>
+                    </div>
+                    <div class="user-avatar" style="background-color: var(--role-color);">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="content">
+            {% block content %}
+            {% endblock %}
+        </main>
+    </div>
+
+    {% block extra_js %}{% endblock %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Mobile Menu Toggle
+            const mobileToggle = document.getElementById('mobileToggle');
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+
+            if(mobileToggle) {
+                mobileToggle.onclick = function() {
+                    sidebar.classList.toggle('active');
+                    overlay.classList.toggle('active');
+                }
+            }
+
+            if(overlay) {
+                overlay.onclick = function() {
+                    sidebar.classList.remove('active');
+                    overlay.classList.remove('active');
+                }
+            }
+
+            // SweetAlert for Django Messages
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 4000,
+                timerProgressBar: true,
+                background: '#fff',
+                color: '#1a1a1a',
+                iconColor: 'var(--role-color)',
+                didOpen: (toast) => {
+                    toast.addEventListener('mouseenter', Swal.stopTimer)
+                    toast.addEventListener('mouseleave', Swal.resumeTimer)
+                }
+            });
+
+            window.showToast = (message, icon = 'success') => {
+                Toast.fire({
+                    icon: icon,
+                    title: message
+                });
+            };
+
+            window.showSuccess = (title, text) => {
+                Swal.fire({
+                    title: title,
+                    text: text,
+                    icon: 'success',
+                    confirmButtonColor: 'var(--role-color)',
+                    confirmButtonText: 'Great!',
+                    timer: 3000
+                });
+            };
+
+            {% if messages %}
+                {% for message in messages %}
+                    Toast.fire({
+                        icon: '{% if message.tags == "error" %}error{% elif message.tags == "success" %}success{% elif message.tags == "warning" %}warning{% else %}info{% endif %}',
+                        title: '{{ message }}'
+                    });
+                {% endfor %}
+            {% endif %}
+
+            // Logout Confirmation
+            const logoutBtn = document.getElementById('logoutBtn');
+            if(logoutBtn) {
+                logoutBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    Swal.fire({
+                        title: 'Are you sure?',
+                        text: "You are about to logout.",
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: 'var(--primary-gold)',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Yes, logout!'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.href = this.href;
+                        }
+                    });
+                });
+            }
+        });
+
+        // Dropdown Sidebar Navigation Toggle
+        const toggle = document.querySelector('.menu-dropdown-toggle');
+        const wrapper = document.querySelector('.menu-dropdown-wrapper');
+        const dropdownItems = document.querySelector('.menu-dropdown-items');
+        if (toggle && wrapper && dropdownItems) {
+            toggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                wrapper.classList.toggle('open');
+                if (wrapper.classList.contains('open')) {
+                    dropdownItems.style.display = 'block';
+                } else {
+                    dropdownItems.style.display = 'none';
+                }
+            });
+        }
+
+    // Global prevention of multiple form submissions
+    document.addEventListener('submit', function(e) {
+        if (e.defaultPrevented) return;
+        const form = e.target;
+        if (form.tagName === 'FORM') {
+            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+            if (submitBtn && !submitBtn.classList.contains('no-disable')) {
+                // Short delay to allow browser to register the submit before disabling
+                setTimeout(() => {
+                    submitBtn.disabled = true;
+                    if (submitBtn.tagName === 'BUTTON') {
+                        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+                    } else {
+                        submitBtn.value = 'Processing...';
+                    }
+                }, 0);
+            }
+        }
+    });
+</script>
+</body>
+</html>

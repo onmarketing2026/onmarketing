@@ -1,0 +1,166 @@
+{% extends 'cyborgapp/base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard Overview{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 25px;
+        margin-bottom: 30px;
+    }
+
+    .stat-card {
+        background: var(--card-bg);
+        border-radius: 12px;
+        padding: 25px;
+        border: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(203, 161, 53, 0.1);
+        border-color: rgba(203, 161, 53, 0.3);
+    }
+
+    .stat-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-right: 20px;
+    }
+
+    /* Icon Colors with Premium Gradients */
+    .icon-sales {
+        background: linear-gradient(135deg, rgba(13, 110, 253, 0.15) 0%, rgba(13, 110, 253, 0.05) 100%);
+        color: #0d6efd;
+        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.1);
+    }
+    .icon-commission {
+        background: linear-gradient(135deg, rgba(25, 135, 84, 0.15) 0%, rgba(25, 135, 84, 0.05) 100%);
+        color: #198754;
+        box-shadow: 0 4px 10px rgba(25, 135, 84, 0.1);
+    }
+    .icon-customers {
+        background: linear-gradient(135deg, rgba(102, 16, 242, 0.15) 0%, rgba(102, 16, 242, 0.05) 100%);
+        color: #6610f2;
+        box-shadow: 0 4px 10px rgba(102, 16, 242, 0.1);
+    }
+    .icon-franchise {
+        background: linear-gradient(135deg, rgba(253, 126, 20, 0.15) 0%, rgba(253, 126, 20, 0.05) 100%);
+        color: #fd7e14;
+        box-shadow: 0 4px 10px rgba(253, 126, 20, 0.1);
+    }
+
+    .stat-info h3 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 5px;
+        color: var(--text-main);
+    }
+
+    .stat-info p {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 600;
+    }
+
+    .welcome-card {
+        background: linear-gradient(135deg, rgba(203, 161, 53, 0.1) 0%, rgba(203, 161, 53, 0.02) 100%);
+        border: 1px solid rgba(203, 161, 53, 0.2);
+        margin-bottom: 30px;
+    }
+
+    .welcome-card h2 {
+        font-size: 1.5rem;
+        margin-bottom: 10px;
+        color: var(--text-main);
+    }
+
+    .welcome-card p {
+        color: var(--text-muted);
+        line-height: 1.6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="card welcome-card">
+        <h2>Welcome back, {{ request.user.name|default:request.user.username }}!</h2>
+        <p>You are logged in as <strong>{{ request.user.get_usertype_display }}</strong>. Here is your operational overview for today.</p>
+    </div>
+
+    <div class="stats-grid">
+        {% if 'total_sales' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon icon-sales">
+                <i class="fa-solid fa-indian-rupee-sign"></i>
+            </div>
+            <div class="stat-info">
+                <h3>₹{{ stats.total_sales|floatformat:2 }}</h3>
+                <p>Total Sales</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if 'commission_payout' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon icon-commission">
+                <i class="fa-solid fa-money-bill-transfer"></i>
+            </div>
+            <div class="stat-info">
+                <h3>₹{{ stats.commission_payout|floatformat:2 }}</h3>
+                <p>Commission Payout</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if 'total_customers' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon icon-customers">
+                <i class="fa-solid fa-users"></i>
+            </div>
+            <div class="stat-info">
+                <h3>{{ stats.total_customers }}</h3>
+                <p>Total Associate Company</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if 'total_requirements' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon icon-customers">
+                <i class="fa-solid fa-clipboard-list"></i>
+            </div>
+            <div class="stat-info">
+                <h3>{{ stats.total_requirements }}</h3>
+                <p>Total Company Requirements</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if 'total_franchise' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon icon-franchise">
+                <i class="fa-solid fa-store"></i>
+            </div>
+            <div class="stat-info">
+                <h3>{{ stats.total_franchise }}</h3>
+                <p>Total Digital Franchise</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+{% endblock %}

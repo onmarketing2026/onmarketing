@@ -1,0 +1,758 @@
+{% extends 'cyborgapp/base.html' %}
+
+{% block title %}Leads Management{% endblock %}
+{% block page_title %}Leads Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-badge {
+        padding: 5px 14px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        display: inline-block;
+        letter-spacing: 0.5px;
+    }
+    .status-pending { background: rgba(255, 193, 7, 0.12); color: #d39e00; border: 1px solid rgba(255, 193, 7, 0.2); }
+    .status-confirmed { background: rgba(25, 135, 84, 0.12); color: #198754; border: 1px solid rgba(25, 135, 84, 0.2); }
+
+    .btn-create-premium {
+        background: linear-gradient(135deg, var(--role-color), #4facfe);
+        color: white;
+        padding: 10px 22px;
+        border-radius: 10px;
+        font-weight: 700;
+        border: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+    }
+    .btn-create-premium:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        filter: brightness(1.1);
+    }
+
+    .action-btn-circle {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        font-size: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .btn-edit-premium { background: rgba(13, 110, 253, 0.1); color: #0d6efd; }
+    .btn-edit-premium:hover { background: #0d6efd; color: white; transform: scale(1.1); }
+    
+    .btn-history-premium { background: rgba(111, 66, 193, 0.1); color: #6f42c1; }
+    .btn-history-premium:hover { background: #6f42c1; color: white; transform: scale(1.1); }
+
+    .update-item {
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
+        <div class="table-header">
+            <h3>Leads List</h3>
+            {% if request.user.usertype == 'marketing' %}
+                <button class="btn-create-premium" id="openAddLeadModal">
+                    <i class="fa-solid fa-plus-circle"></i> Add New Lead
+                </button>
+            {% endif %}
+        </div>
+        <div style="padding: 25px;">
+            <table id="leadsTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Lead Name</th>
+                    <th>Contact Info</th>
+                    <th>Requirement</th>
+                    {% if request.user.usertype != 'marketing' %}
+                        <th>Digital Franchise</th>
+                    {% endif %}
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                        <th>Fecilitation Center</th>
+                    {% endif %}
+                    {% if request.user.usertype == 'superadmin' %}
+                        <th>District Franchise</th>
+                    {% endif %}
+                    <th>Date Added</th>
+                    <th>{% if request.user.usertype == 'superadmin' %}Financial Breakdown{% else %}Total Amount{% endif %}</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lead in leads %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 700; color: var(--text-main);">{{ lead.name }}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis;">{{ lead.address|default:"No address" }}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600;"><i class="fa-solid fa-phone" style="font-size: 0.75rem; margin-right: 5px; color: var(--role-color);"></i>{{ lead.phone }}</div>
+                        {% if lead.email %}
+                            <div style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-envelope" style="font-size: 0.7rem; margin-right: 5px;"></i>{{ lead.email }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">{{ lead.requirement.title }}</div>
+                        <div style="font-size: 0.75rem; color: var(--role-color);">By {{ lead.requirement.customer.name }}</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">
+                            {% for item in lead.items.all %}
+                                <span style="background: var(--role-bg-extra-light); padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; color: var(--role-color); border: 1px solid var(--role-bg-light);">
+                                    {{ item.subcategory.name }}{% if lead.requirement.category.cat_type == 'count' %}: {{ item.count }}{% endif %}
+                                </span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    {% if request.user.usertype != 'marketing' %}
+                        <td>
+                            <div style="font-weight: 600;">{{ lead.marketing_user.name }}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lead.marketing_user.email }}</div>
+                        </td>
+                    {% endif %}
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                        <td>
+                            <span style="background: var(--role-bg-extra-light); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--role-color);">
+                                {{ lead.marketing_user.assigned_mandalam.name|default:"-" }}
+                            </span>
+                        </td>
+                    {% endif %}
+                    {% if request.user.usertype == 'superadmin' %}
+                        <td>
+                            <span style="background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-main);">
+                                {{ lead.marketing_user.assigned_district.name|default:"-" }}
+                            </span>
+                        </td>
+                    {% endif %}
+                    <td data-sort="{{ lead.created_at|date:'YmdHis' }}">
+                        {{ lead.created_at|date:"M d, Y" }}
+                    </td>
+                    {% if request.user.usertype == 'superadmin' %}
+                    <td style="font-weight: 800; font-size: 0.95rem;">
+                        <div style="color: #198754;" title="Total Sale">₹{{ lead.get_total_amount }}</div>
+                        <div style="color: #0d6efd; font-size: 0.75rem; border-top: 1px solid #eee; margin-top: 4px; padding-top: 4px;" title="To Customer">C: ₹{{ lead.get_customer_amount }}</div>
+                        <div style="color: #6610f2; font-size: 0.75rem;" title="Admin Markup">M: ₹{{ lead.get_markup_amount }}</div>
+                    </td>
+                    {% else %}
+                    <td style="font-weight: 800; color: #198754; font-size: 1rem;">
+                        ₹{{ lead.get_total_amount }}
+                    </td>
+                    {% endif %}
+                    <td>
+                        <span class="status-badge status-{{ lead.status }}">{{ lead.status }}</span>
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 10px; justify-content: center;">
+                            {% with effective_level=request.user.usertype %}
+                                <button class="action-btn-circle btn-edit-premium edit-lead-btn" 
+                                        data-id="{{ lead.id }}" 
+                                        data-name="{{ lead.name }}" 
+                                        data-phone="{{ lead.phone }}" 
+                                        data-email="{{ lead.email|default:'' }}" 
+                                        data-address="{{ lead.address|default:'' }}" 
+                                        data-remarks="{{ lead.remarks|default:'' }}"
+                                        data-req-id="{{ lead.requirement_id }}"
+                                        data-status="{{ lead.status }}"
+                                        data-cat-type="{{ lead.requirement.category.cat_type|default:'other' }}"
+                                        data-items="{% for item in lead.items.all %}{{ item.subcategory_id }}:{{ item.count }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                        data-all-req-items="{% for item in lead.requirement.items.all %}{{ item.subcategory_id }}:{{ item.subcategory.name }}:{{ item.count }}:{{ item.total_amount }}:{{ item.get_left_count }}{% if not forloop.last %}|{% endif %}{% endfor %}"
+                                        title="View/Edit Lead Details">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                            {% endwith %}
+                            <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-status="{{ lead.status }}" data-level="{{ lead.current_level }}" title="Status & Timeline">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Add/Edit Lead Modal -->
+    <div id="leadModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+        <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+            <span class="close-modal" id="closeLeadModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+            <h2 id="leadModalTitle" style="margin-bottom: 25px; font-size: 1.5rem;">Add Lead</h2>
+            
+            <form id="leadForm" method="POST" action="{% url 'lead_create' 0 %}">
+                {% csrf_token %}
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700;">Lead Name</label>
+                        <input type="text" name="name" id="leadName" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                    </div>
+                    <div class="form-group">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700;">Phone Number</label>
+                        <input type="text" name="phone" id="leadPhone" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;" id="reqSelectGroup">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Select Requirement</label>
+                    <select name="requirement" id="leadRequirement" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                        <option value="">Select Requirement</option>
+                        {% for req in approved_requirements %}
+                            <option value="{{ req.id }}" data-cat-type="{{ req.category.cat_type|default:'other' }}" data-items="{% for item in req.items.all %}{{ item.subcategory_id }}:{{ item.subcategory.name }}:{{ item.count }}:{{ item.total_amount }}:{{ item.get_left_count }}{% if not forloop.last %}|{% endif %}{% endfor %}">
+                                {{ req.title }} (By {{ req.customer.name }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="lead-items-section" style="margin-bottom: 20px; padding: 15px; background: var(--role-bg-extra-light); border-radius: 10px; border: 1px dashed var(--role-color); display: none;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 700; font-size: 0.9rem;">Select Required Items & Counts</label>
+                    <div id="lead-items-list"></div>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Email (Optional)</label>
+                    <input type="email" name="email" id="leadEmail" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Address</label>
+                    <textarea name="address" id="leadAddress" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 80px;"></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Remarks</label>
+                    <textarea name="remarks" id="leadRemarks" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 60px;"></textarea>
+                </div>
+                <button type="submit" class="btn-submit" id="leadSubmitBtn" style="width: 100%; background: #0d6efd; color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">Save Lead</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- History/Update Modal -->
+    <div id="historyModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+        <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+            <span class="close-modal" id="closeHistoryModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+            <h2 style="margin-bottom: 10px; font-size: 1.5rem;">Lead History</h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted);">Lead updates for <span id="historyLeadName" style="font-weight: 700; color: var(--text-main);"></span></p>
+
+            <div id="addUpdateSection" style="margin-bottom: 30px; padding-bottom: 25px; border-bottom: 1px solid var(--border-color);">
+                <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main);">Add Progress Update</h4>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <textarea id="newUpdateText" class="form-control" placeholder="Describe current situation or call details..." style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 80px; font-size: 0.9rem;"></textarea>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Update Date</label>
+                        <input type="date" id="updateDate" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Update Time</label>
+                        <input type="time" id="updateTime" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-end;">
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Update Status</label>
+                        <select id="updateLeadStatus" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                        </select>
+                    </div>
+                    <div id="passLevelGroup" style="flex: 1; display: none;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Escalation</label>
+                        <div style="padding: 0 12px; border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; gap: 10px; background: #fff; height: 42px;">
+                            <input type="checkbox" id="passToNext" style="width: 18px; height: 18px; cursor: pointer;">
+                            <span style="font-size: 0.8rem; font-weight: 700; color: #dc3545; white-space: nowrap;">Pass to <span id="nextLevelName"></span></span>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" id="saveUpdateBtn" style="width: 100%; background: var(--role-color); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 0.95rem;">Save & Update Lead</button>
+            </div>
+
+            <div id="noPermissionMsg" style="display: none; margin-bottom: 30px; padding: 20px; background: #f8f9fa; color: var(--text-muted); border-radius: 10px; text-align: center; border: 1px solid var(--border-color);">
+                <i class="fa-solid fa-lock" style="font-size: 1.2rem; margin-bottom: 10px; display: block;"></i>
+                This lead is currently managed at <strong><span id="lockedLevelName" style="color: var(--role-color);"></span></strong> level.
+            </div>
+
+            <div id="confirmedMsg" style="display: none; margin-bottom: 30px; padding: 20px; background: rgba(25, 135, 84, 0.08); color: #198754; border-radius: 10px; text-align: center; border: 1px solid rgba(25, 135, 84, 0.2);">
+                <i class="fa-solid fa-circle-check" style="font-size: 1.5rem; margin-bottom: 10px; display: block;"></i>
+                <strong>Lead Confirmed!</strong><br>The conversion is complete.
+            </div>
+
+            <div id="reqRejectedMsg" style="display: none; margin-bottom: 30px; padding: 20px; background: rgba(220, 53, 69, 0.08); color: #dc3545; border-radius: 10px; text-align: center; border: 1px solid rgba(220, 53, 69, 0.2);">
+                <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.5rem; margin-bottom: 10px; display: block;"></i>
+                <strong>Requirement Not Approved!</strong><br>Currently cannot update, contact admin.
+            </div>
+
+            <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main);">Activity Timeline</h4>
+            <div id="historyListContainer" style="margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; background: #fff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                <table id="historyTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="text-align: left; padding: 12px 15px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color);">Activity Log</th>
+                            <th style="text-align: left; padding: 12px 15px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color); width: 160px;">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyList" style="font-size: 0.85rem;">
+                        <!-- Updates loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        $('#leadsTable').DataTable({
+            responsive: true,
+            order: [], // Respect server-side sorting (Pending first)
+            pageLength: 10,
+            columnDefs: [
+                { orderable: false, targets: -1 }
+            ]
+        });
+
+        const leadModal = document.getElementById('leadModal');
+        const leadForm = document.getElementById('leadForm');
+        const leadModalTitle = document.getElementById('leadModalTitle');
+        const leadItemsSection = document.getElementById('lead-items-section');
+        const leadItemsList = document.getElementById('lead-items-list');
+        const leadRequirement = document.getElementById('leadRequirement');
+
+        function renderItems(catType, itemsRaw, selectedItems = {}) {
+            leadItemsList.innerHTML = '';
+            if (itemsRaw) {
+                itemsRaw.split('|').forEach(itemStr => {
+                    const [subId, subName, maxCount, itemPrice, leftCount] = itemStr.split(':');
+                    const isSelected = selectedItems[subId] !== undefined;
+                    const countValue = isSelected ? selectedItems[subId] : '';
+                    
+                    const div = document.createElement('div');
+                    div.style.marginBottom = '15px';
+                    div.style.display = 'flex';
+                    div.style.alignItems = 'flex-start';
+                    div.style.gap = '10px';
+                    div.style.padding = '10px';
+                    div.style.background = '#fff';
+                    div.style.borderRadius = '8px';
+                    div.style.border = '1px solid var(--border-color)';
+                    
+                    let countInput = '';
+                    if (catType === 'count') {
+                        countInput = `
+                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
+                                <input type="number" name="count_${subId}" value="${countValue}" placeholder="Qty" class="item-input" data-left="${leftCount}" style="width: 75px; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.85rem; font-weight: 600;">
+                                <span style="background: rgba(25, 135, 84, 0.08); color: #198754; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(25, 135, 84, 0.15);">
+                                    <i class="fa-solid fa-boxes-stacked" style="margin-right: 4px;"></i>LEFT: ${parseInt(maxCount) === 0 ? '∞' : leftCount}
+                                </span>
+                            </div>
+                        `;
+                    }
+
+                    div.innerHTML = `
+                        <input type="checkbox" name="selected_items" value="${subId}" ${isSelected ? 'checked' : ''} class="item-input" style="width: 18px; height: 18px; margin-top: 3px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.85rem; font-weight: 600;">${subName}</span>
+                                <span style="font-size: 0.8rem; font-weight: 700; color: #198754;">₹${itemPrice}</span>
+                            </div>
+                            ${countInput}
+                        </div>
+                    `;
+                    leadItemsList.appendChild(div);
+                });
+                leadItemsSection.style.display = 'block';
+            } else {
+                leadItemsSection.style.display = 'none';
+            }
+        }
+
+        const openAddLeadBtn = document.getElementById('openAddLeadModal');
+        if (openAddLeadBtn) {
+            openAddLeadBtn.onclick = function() {
+                leadForm.reset();
+                leadModalTitle.textContent = "Add New Lead";
+                document.getElementById('leadSubmitBtn').textContent = "Save Lead";
+                document.getElementById('leadSubmitBtn').style.display = 'block';
+                leadForm.querySelectorAll('input, textarea, select').forEach(i => i.disabled = false);
+                document.getElementById('reqSelectGroup').style.display = 'block';
+                leadRequirement.required = true;
+                leadForm.action = "/requirements/0/lead/create/";
+                leadItemsSection.style.display = 'none';
+                leadModal.style.display = "block";
+            }
+        }
+
+        leadRequirement.onchange = function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.value) {
+                leadForm.action = `/requirements/${selectedOption.value}/lead/create/`;
+                renderItems(selectedOption.getAttribute('data-cat-type'), selectedOption.getAttribute('data-items'));
+            } else {
+                leadItemsSection.style.display = 'none';
+            }
+        };
+        leadForm.addEventListener('submit', function(e) {
+            const selectedItems = leadForm.querySelectorAll('input[name="selected_items"]:checked');
+            if (selectedItems.length === 0) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Selection Required',
+                    text: 'Please select at least one subcategory item for this lead.'
+                });
+                return;
+            }
+
+            const selectedOption = leadRequirement.options[leadRequirement.selectedIndex];
+            const catType = selectedOption ? selectedOption.getAttribute('data-cat-type') : '';
+            
+            if (catType === 'count') {
+                let valid = true;
+                selectedItems.forEach(cb => {
+                    const subId = cb.value;
+                    const qtyInput = leadForm.querySelector(`input[name="count_${subId}"]`);
+                    const qty = parseInt(qtyInput.value) || 0;
+                    const left = parseInt(qtyInput.getAttribute('data-left')) || 0;
+                    
+                    if (qty <= 0) {
+                        valid = false;
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Quantity Required',
+                            text: 'Please enter a valid quantity for all selected items.'
+                        });
+                    } else if (qty > left && left > 0) {
+                        valid = false;
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Insufficient Stock',
+                            text: `Quantity for item exceeds available stock (Left: ${left}).`
+                        });
+                    }
+                });
+                if (!valid) e.preventDefault();
+            }
+        });
+
+        const editBtns = document.querySelectorAll('.edit-lead-btn');
+        editBtns.forEach(btn => {
+            btn.onclick = function() {
+                const id = this.getAttribute('data-id');
+                const status = this.getAttribute('data-status');
+                leadForm.action = `/leads/${id}/edit/`;
+                
+                const submitBtn = document.getElementById('leadSubmitBtn');
+                const inputs = leadForm.querySelectorAll('input, textarea, select');
+                
+                if (status === 'confirmed') {
+                    leadModalTitle.textContent = "View Lead Details";
+                    submitBtn.style.display = 'none';
+                    inputs.forEach(input => input.disabled = true);
+                } else {
+                    leadModalTitle.textContent = "Edit Lead";
+                    submitBtn.style.display = 'block';
+                    submitBtn.textContent = "Update Lead";
+                    inputs.forEach(input => input.disabled = false);
+                }
+
+                document.getElementById('reqSelectGroup').style.display = 'none';
+                leadRequirement.required = false;
+
+                document.getElementById('leadName').value = this.getAttribute('data-name');
+                document.getElementById('leadPhone').value = this.getAttribute('data-phone');
+                document.getElementById('leadEmail').value = this.getAttribute('data-email');
+                document.getElementById('leadAddress').value = this.getAttribute('data-address');
+                document.getElementById('leadRemarks').value = this.getAttribute('data-remarks');
+
+                const selectedItemsRaw = this.getAttribute('data-items');
+                const selectedItems = {};
+                if (selectedItemsRaw) {
+                    selectedItemsRaw.split(',').forEach(it => {
+                        const parts = it.split(':');
+                        selectedItems[parts[0]] = parts[1];
+                    });
+                }
+                renderItems(this.getAttribute('data-cat-type'), this.getAttribute('data-all-req-items'), selectedItems);
+                
+                if (status === 'confirmed') {
+                    setTimeout(() => {
+                        leadItemsList.querySelectorAll('.item-input').forEach(i => i.disabled = true);
+                    }, 10);
+                }
+                
+                leadModal.style.display = "block";
+            }
+        });
+
+        const historyModal = document.getElementById('historyModal');
+        const historyList = document.getElementById('historyList');
+        const historyLeadName = document.getElementById('historyLeadName');
+        const addUpdateSection = document.getElementById('addUpdateSection');
+        const confirmedMsg = document.getElementById('confirmedMsg');
+        const noPermissionMsg = document.getElementById('noPermissionMsg');
+        const saveUpdateBtn = document.getElementById('saveUpdateBtn');
+        const passToNext = document.getElementById('passToNext');
+        const passLevelGroup = document.getElementById('passLevelGroup');
+        const nextLevelNameDisplay = document.getElementById('nextLevelName');
+        const lockedLevelName = document.getElementById('lockedLevelName');
+        let currentLeadId = null;
+        let historyDataTable = null;
+
+        $(document).on('click', '.history-lead-btn', function() {
+            currentLeadId = this.getAttribute('data-id');
+            historyLeadName.textContent = this.getAttribute('data-name');
+            const status = this.getAttribute('data-status');
+            const currentLevel = this.getAttribute('data-level');
+            
+            if (historyDataTable) {
+                historyDataTable.destroy();
+                historyList.innerHTML = '';
+            }
+
+            // Fetch Updates and Permissions
+            fetch(`/leads/${currentLeadId}/updates/get/`)
+                .then(r => r.json())
+                .then(data => {
+                    historyList.innerHTML = '';
+                    if (data.updates.length > 0) {
+                        data.updates.forEach(u => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td style="padding: 12px 15px; line-height: 1.5; color: var(--text-main);">${u.update_text}</td>
+                                <td style="padding: 12px 15px; color: var(--text-muted); font-size: 0.8rem;">${u.created_at}</td>
+                            `;
+                            historyList.appendChild(row);
+                        });
+                    }
+
+                    historyDataTable = $('#historyTable').DataTable({
+                        pageLength: 5,
+                        lengthMenu: [[5, 10, 25, -1], [5, 10, 25, "All"]],
+                        searching: true,
+                        info: true,
+                        order: [[1, 'desc']],
+                        language: { 
+                            emptyTable: "No activity logs found for this lead.",
+                            search: "",
+                            searchPlaceholder: "Search logs..."
+                        }
+                    });
+
+                    const confirmedMsg = document.getElementById('confirmedMsg');
+                    const reqRejectedMsg = document.getElementById('reqRejectedMsg');
+                    const noPermissionMsg = document.getElementById('noPermissionMsg');
+                    
+                    // Default hide all
+                    addUpdateSection.style.display = 'none';
+                    noPermissionMsg.style.display = 'none';
+                    confirmedMsg.style.display = 'none';
+                    reqRejectedMsg.style.display = 'none';
+
+                    if (data.lead_status === 'confirmed') {
+                        confirmedMsg.style.display = 'block';
+                    } else if (!data.requirement_approved) {
+                        reqRejectedMsg.style.display = 'block';
+                    } else if (!data.can_update) {
+                        lockedLevelName.textContent = data.current_level.toUpperCase();
+                        noPermissionMsg.style.display = 'block';
+                    } else {
+                        addUpdateSection.style.display = 'block';
+                        
+                        // Set current date and time on load
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const month = String(now.getMonth() + 1).padStart(2, '0');
+                        const day = String(now.getDate()).padStart(2, '0');
+                        const hours = String(now.getHours()).padStart(2, '0');
+                        const minutes = String(now.getMinutes()).padStart(2, '0');
+                        document.getElementById('updateDate').value = `${year}-${month}-${day}`;
+                        document.getElementById('updateTime').value = `${hours}:${minutes}`;
+                        
+                        document.getElementById('updateLeadStatus').value = data.lead_status;
+                        document.getElementById('newUpdateText').value = '';
+                        passToNext.checked = false;
+
+                        // Set Next Level Name
+                        const levels = ['marketing', 'mandalam', 'district', 'superadmin'];
+                        const nextIdx = levels.indexOf(data.current_level) + 1;
+                        if (nextIdx < levels.length) {
+                            passLevelGroup.style.display = 'block';
+                            nextLevelNameDisplay.textContent = levels[nextIdx].toUpperCase();
+                        } else {
+                            passLevelGroup.style.display = 'none';
+                        }
+                    }
+                    historyModal.style.display = 'block';
+                });
+        });
+
+        saveUpdateBtn.onclick = function() {
+            const text = document.getElementById('newUpdateText').value;
+            const status = document.getElementById('updateLeadStatus').value;
+            const pass = passToNext.checked;
+            const customDate = document.getElementById('updateDate').value;
+            const customTime = document.getElementById('updateTime').value;
+
+            if (!text && status === 'pending' && !pass) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Action Required',
+                    text: 'Please enter an update, change status, or pass to next level.',
+                    confirmButtonColor: 'var(--role-color)'
+                });
+                return;
+            }
+
+            // Prevent multiple clicks
+            saveUpdateBtn.disabled = true;
+            saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+
+            fetch(`/leads/${currentLeadId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ 
+                    update_text: text, 
+                    status: status,
+                    pass_lead: pass,
+                    custom_date: customDate,
+                    custom_time: customTime
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showSuccess('Updated!', 'The lead progress has been recorded successfully.');
+                    setTimeout(() => location.reload(), 1500);
+                } else if (data.status === 'payment_required') {
+                    // Initialize Razorpay checkout
+                    saveUpdateBtn.disabled = false;
+                    saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                    
+                    var options = {
+                        "key": data.key,
+                        "amount": data.amount, 
+                        "currency": "INR",
+                        "name": "OnCyborg",
+                        "description": "Lead Confirmation Payment",
+                        "order_id": data.order_id,
+                        "handler": function (response) {
+                            // On successful payment, verify with backend
+                            saveUpdateBtn.disabled = true;
+                            saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment...';
+                            
+                            fetch(`/leads/${currentLeadId}/update/`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': '{{ csrf_token }}'
+                                },
+                                body: JSON.stringify({ 
+                                    update_text: text, 
+                                    status: status,
+                                    pass_lead: pass,
+                                    custom_date: customDate,
+                                    custom_time: customTime,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_order_id: response.razorpay_order_id,
+                                    razorpay_signature: response.razorpay_signature
+                                })
+                            })
+                            .then(r => r.json())
+                            .then(verifyData => {
+                                if (verifyData.status === 'success') {
+                                    showSuccess('Payment Successful!', 'Lead is now confirmed.');
+                                    setTimeout(() => location.reload(), 1500);
+                                } else {
+                                    Swal.fire('Error', verifyData.message, 'error');
+                                    saveUpdateBtn.disabled = false;
+                                    saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                                }
+                            });
+                        },
+                        "prefill": {
+                            "name": data.lead_name,
+                            "email": data.lead_email,
+                            "contact": data.lead_phone
+                        },
+                        "theme": {
+                            "color": "#198754"
+                        },
+                        "modal": {
+                            "ondismiss": function() {
+                                // User closed the modal or payment failed
+                                fetch(`/leads/${currentLeadId}/update/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': '{{ csrf_token }}'
+                                    },
+                                    body: JSON.stringify({ 
+                                        payment_failed: true
+                                    })
+                                }).then(() => {
+                                    Swal.fire('Payment Cancelled', 'Payment failed or cancelled. Status not confirmed.', 'warning')
+                                    .then(() => location.reload());
+                                });
+                            }
+                        }
+                    };
+                    var rzp1 = new Razorpay(options);
+                    rzp1.on('payment.failed', function (response){
+                        // Payment officially failed
+                        console.error("RAZORPAY PAYMENT FAILED:", response.error);
+                        
+                        fetch(`/leads/${currentLeadId}/update/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}'
+                            },
+                            body: JSON.stringify({ 
+                                payment_failed: true
+                            })
+                        }).then(() => {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Payment Failed', 
+                                text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error. Check console.'),
+                            });
+                            // Temporarily removed location.reload() so you can read the error!
+                        });
+                    });
+                    rzp1.open();
+                } else {
+                    saveUpdateBtn.disabled = false;
+                    saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Update Failed',
+                        text: data.message,
+                        confirmButtonColor: '#dc3545'
+                    });
+                }
+            });
+        };
+
+        document.getElementById('closeLeadModal').onclick = () => leadModal.style.display = 'none';
+        document.getElementById('closeHistoryModal').onclick = () => historyModal.style.display = 'none';
+        window.onclick = (e) => {
+            if (e.target == leadModal) leadModal.style.display = 'none';
+            if (e.target == historyModal) historyModal.style.display = 'none';
+        };
+    });
+</script>
+{% endblock %}
