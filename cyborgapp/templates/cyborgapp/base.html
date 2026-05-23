@@ -11,7 +11,9 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- DataTables -->
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/responsive/2.4.1/css/responsive.dataTables.min.css">
     <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/responsive/2.4.1/js/dataTables.responsive.min.js"></script>
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     {% load static %}
@@ -354,6 +356,53 @@
                 padding: 8px 15px;
                 font-size: 0.85rem;
             }
+            .table-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 15px;
+            }
+            .table-header h3 {
+                font-size: 1.1rem;
+            }
+            .header-actions {
+                gap: 10px;
+            }
+            .top-wallet-link {
+                padding: 6px 10px !important;
+                margin-right: 10px !important;
+            }
+            .top-wallet-link span {
+                font-size: 0.8rem !important;
+            }
+        }
+
+        /* Fix DataTables layout on mobile */
+        @media (max-width: 768px) {
+            .dataTables_wrapper .dataTables_filter, 
+            .dataTables_wrapper .dataTables_length {
+                text-align: left !important;
+                float: none !important;
+                margin-bottom: 10px;
+            }
+            .dataTables_wrapper .dataTables_filter input {
+                margin-left: 0 !important;
+                width: 100%;
+                margin-top: 5px;
+                display: block;
+            }
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                float: none !important;
+                text-align: center !important;
+                margin-top: 10px;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                padding: 5px 10px !important;
+            }
+            table.dataTable {
+                margin-top: 10px !important;
+            }
         }
 
         /* Global DataTables Premium Styling */
@@ -403,6 +452,7 @@
             color: #fff !important;
             border: none !important;
             border-radius: 6px !important;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
 
         .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
