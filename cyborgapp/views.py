@@ -585,7 +585,10 @@ def superadmin_user_toggle_status(request, user_id):
                             'amount': amount,
                             'currency': 'INR',
                             'receipt': f'reg_{user.id}',
-                            'notes': {'user_id': user.id}
+                            'notes': {
+                                'user_id': user.id,
+                                'project': 'onmarketing'
+                            }
                         }
                         razorpay_order = client.order.create(data=order_data)
                         return JsonResponse({
@@ -1747,7 +1750,8 @@ def lead_add_update(request, lead_id):
                             'currency': 'INR',
                             'payment_capture': '1',
                             'notes': {
-                                'lead_id': str(lead.id)
+                                'lead_id': str(lead.id),
+                                'project': 'onmarketing'
                             }
                         }
                         razorpay_order = client.order.create(data=order_data)
