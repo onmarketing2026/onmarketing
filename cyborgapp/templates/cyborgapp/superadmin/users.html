@@ -580,7 +580,8 @@
                         "modal": {
                             "ondismiss": function() {
                                 checkbox.checked = !checkbox.checked;
-                                Swal.fire('Payment Cancelled', 'Activation was cancelled.', 'warning');
+                                Swal.fire('Payment Cancelled', 'Activation was cancelled.', 'warning')
+                                .then(() => location.reload());
                             }
                         }
                     };
@@ -592,7 +593,7 @@
                             icon: 'error',
                             title: 'Payment Failed',
                             text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error.'),
-                        });
+                        }).then(() => location.reload());
                     });
                     rzp1.open();
                 } else {

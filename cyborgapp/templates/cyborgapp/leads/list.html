@@ -520,6 +520,16 @@
                 historyList.innerHTML = '';
             }
 
+            function formatLevelName(level) {
+                const map = {
+                    'marketing': 'DIGITAL FRANCHISE',
+                    'mandalam': 'FECILITATION CENTER',
+                    'district': 'DISTRICT FRANCHISE',
+                    'superadmin': 'SUPERADMIN'
+                };
+                return map[level] || (level ? level.toUpperCase() : '');
+            }
+
             // Fetch Updates and Permissions
             fetch(`/leads/${currentLeadId}/updates/get/`)
                 .then(r => r.json())
@@ -564,7 +574,7 @@
                     } else if (!data.requirement_approved) {
                         reqRejectedMsg.style.display = 'block';
                     } else if (!data.can_update) {
-                        lockedLevelName.textContent = data.current_level.toUpperCase();
+                        lockedLevelName.textContent = formatLevelName(data.current_level);
                         noPermissionMsg.style.display = 'block';
                     } else {
                         addUpdateSection.style.display = 'block';
@@ -588,7 +598,7 @@
                         const nextIdx = levels.indexOf(data.current_level) + 1;
                         if (nextIdx < levels.length) {
                             passLevelGroup.style.display = 'block';
-                            nextLevelNameDisplay.textContent = levels[nextIdx].toUpperCase();
+                            nextLevelNameDisplay.textContent = formatLevelName(levels[nextIdx]);
                         } else {
                             passLevelGroup.style.display = 'none';
                         }
