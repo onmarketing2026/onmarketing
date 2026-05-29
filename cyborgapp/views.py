@@ -721,13 +721,15 @@ def requirement_list(request):
                     'total_amount': float(item.total_amount),
                     'sold_count': item.get_sold_count,
                     'left_count': item.get_left_count,
-                    'description': item.description or ''
+                    'description': item.description or '',
+                    'image_url': item.image.url if item.image else ''
                 })
             
             data.append({
                 'id': req.id,
                 'title': req.title,
                 'description': req.description or '',
+                'image_url': req.image.url if req.image else '',
                 'customer_name': req.customer.name,
                 'customer_email': req.customer.email,
                 'customer_id': req.customer.id,
@@ -772,7 +774,8 @@ def requirement_create(request):
             title=request.POST.get('title'),
             description=request.POST.get('description'),
             category_id=category_id,
-            customer_amount=request.POST.get('customer_amount', 0)
+            customer_amount=request.POST.get('customer_amount', 0),
+            image=request.FILES.get('image')
         )
         
         subcat_ids = request.POST.getlist('subcategories')
@@ -790,7 +793,8 @@ def requirement_create(request):
                 subcategory_id=sub_id,
                 count=clean_count,
                 customer_amount=clean_amt,
-                description=desc.strip()
+                description=desc.strip(),
+                image=request.FILES.get(f'image_{sub_id}')
             )
         
         messages.success(request, 'Requirement created successfully!')
@@ -838,8 +842,11 @@ def requirement_edit(request, req_id):
             requirement.description = request.POST.get('description')
             requirement.category_id = request.POST.get('category')
             requirement.customer_amount = request.POST.get('customer_amount', 0)
+            if 'image' in request.FILES:
+                requirement.image = request.FILES.get('image')
             requirement.save()
             
+            old_items = {item.subcategory_id: item.image for item in requirement.items.all()}
             requirement.items.all().delete()
             subcat_ids = request.POST.getlist('subcategories')
             for sub_id in subcat_ids:
@@ -850,13 +857,18 @@ def requirement_edit(request, req_id):
                 clean_count = int(count) if count and count.strip() else 0
                 clean_amt = float(cust_amt) if cust_amt and cust_amt.strip() else 0.00
                 
+                image = request.FILES.get(f'image_{sub_id}')
+                if not image and int(sub_id) in old_items:
+                    image = old_items[int(sub_id)]
+                
                 RequirementItem.objects.create(
                     requirement=requirement,
                     subcategory_id=sub_id,
                     count=clean_count,
                     customer_amount=clean_amt,
                     description=desc.strip(),
-                    admin_markup=0 # Markup stays 0 until admin sets it
+                    admin_markup=0, # Markup stays 0 until admin sets it
+                    image=image
                 )
         
         messages.success(request, 'Requirement updated successfully!')

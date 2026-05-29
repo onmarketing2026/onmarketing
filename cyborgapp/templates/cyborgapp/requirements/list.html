@@ -209,7 +209,7 @@
             <span class="close-modal" id="closeModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
             <h2 id="modalTitle" style="margin-bottom: 25px; font-size: 1.5rem;">Add New Requirement</h2>
             
-            <form id="requirementForm" method="POST" action="{% url 'requirement_create' %}">
+            <form id="requirementForm" method="POST" action="{% url 'requirement_create' %}" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="form-group" style="margin-bottom: 20px;">
                     <label style="display: block; margin-bottom: 8px; font-weight: 700;">Title</label>
@@ -223,6 +223,13 @@
                             <option value="{{ cat.id }}">{{ cat.name }}</option>
                         {% endfor %}
                     </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Category Image <span style="color: #dc3545;">*</span></label>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <img id="currentReqImage" src="" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; display: none;" onclick="showImage(this.src)" title="Current Image">
+                        <input type="file" id="reqImage" name="image" class="form-control" accept="image/*" style="flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px;" required>
+                    </div>
                 </div>
                 <div id="status-group" style="display: none; margin-bottom: 20px;">
                     <label style="display: block; margin-bottom: 8px; font-weight: 700;">Status</label>
@@ -312,10 +319,15 @@
                 { 
                     data: 'title',
                     render: function(data, type, row) {
-                        let html = `<div style="font-weight: 700; color: var(--text-main);">${data}</div>`;
-                        if (row.description) {
-                            html += `<div style="font-size: 0.8rem; color: var(--text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.description}</div>`;
+                        let html = `<div style="display: flex; gap: 10px; align-items: flex-start;">`;
+                        if (row.image_url) {
+                            html += `<img src="${row.image_url}" onclick="showImage('${row.image_url}')" style="width: 40px; height: 40px; border-radius: 5px; object-fit: cover; cursor: pointer; border: 1px solid var(--border-color); flex-shrink: 0;" title="Click to view large">`;
                         }
+                        html += `<div><div style="font-weight: 700; color: var(--text-main);">${data}</div>`;
+                        if (row.description) {
+                            html += `<div style="font-size: 0.8rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.description}</div>`;
+                        }
+                        html += `</div></div>`;
                         return html;
                     }
                 },
@@ -379,13 +391,23 @@
                                 `;
                             }
 
+                            let imageSection = '';
+                            if (item.image_url) {
+                                imageSection = `<img src="${item.image_url}" onclick="showImage('${item.image_url}')" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover; cursor: pointer; border: 1px solid var(--border-color);" title="Click to view large">`;
+                            }
+
                             html += `
                                 <div style="display: flex; flex-direction: column; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.75rem; gap: 6px;">
                                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                                        <span style="font-weight: 600; color: var(--text-main);">
-                                            ${item.subcategory_name}
-                                            ${countSection}
-                                        </span>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            ${imageSection}
+                                            <div style="display: flex; flex-direction: column;">
+                                                <span style="font-weight: 600; color: var(--text-main);">
+                                                    ${item.subcategory_name}
+                                                </span>
+                                                ${countSection}
+                                            </div>
+                                        </div>
                                         <div style="display: flex; flex-direction: column; align-items: flex-end;">
                                             ${priceSection}
                                         </div>
@@ -430,7 +452,7 @@
 
                         if (row.status === 'pending') {
                             if (userId == row.customer_id || userUsertype === 'superadmin') {
-                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}`).join(',');
+                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}:${encodeURIComponent(i.image_url || '')}`).join(',');
                                 html += `
                                     <button type="button" class="btn-action btn-edit edit-req-btn" 
                                             data-id="${row.id}" 
@@ -438,6 +460,7 @@
                                             data-description="${row.description}"
                                             data-category="${row.category_id}"
                                             data-status="${row.status}"
+                                            data-image="${row.image_url || ''}"
                                             data-items="${itemsRaw}"
                                             title="Edit">
                                         <i class="fa-solid fa-pen"></i>
@@ -483,6 +506,18 @@
                 searchPlaceholder: "Search requirements..."
             }
         });
+
+        window.showImage = function(url) {
+            Swal.fire({
+                imageUrl: url,
+                imageAlt: 'Image',
+                showConfirmButton: false,
+                showCloseButton: true,
+                width: 'auto',
+                background: 'transparent',
+                backdrop: `rgba(0,0,0,0.8)`
+            });
+        };
 
         const modal = document.getElementById('requirementModal');
         const openCreateBtn = document.getElementById('openCreateModal');
@@ -533,6 +568,8 @@
                             }
 
                             const descValue = isSelected ? (selectedItems[sub.id].description || '') : '';
+                            const subImageUrl = isSelected ? (selectedItems[sub.id].image_url || '') : '';
+                            let imgDisplayState = subImageUrl ? 'block' : 'none';
 
                             div.innerHTML = `
                                 <input type="checkbox" name="subcategories" value="${sub.id}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; margin-top: 10px;">
@@ -544,9 +581,50 @@
                                         ${isSuperAdmin ? `<input type="number" step="0.01" name="admin_markup_${sub.id}" value="${markValue}" placeholder="Admin ₹" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #dc3545; font-size: 0.8rem;">` : ''}
                                     </div>
                                     <textarea name="description_${sub.id}" placeholder="Item Description / Requirements" style="width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem; min-height: 50px; resize: vertical;" ${isSuperAdmin ? 'readonly' : ''}>${descValue}</textarea>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <img class="subcat-img-preview" src="${subImageUrl}" data-original-src="${subImageUrl}" style="width: 40px; height: 40px; border-radius: 5px; object-fit: cover; cursor: pointer; border: 1px solid var(--border-color); display: ${imgDisplayState}; margin-top: 5px;" title="Current/Selected Image">
+                                        ${!isSuperAdmin ? `<input type="file" name="image_${sub.id}" class="form-control subcat-file-input" accept="image/*" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem; margin-top: 5px;">` : ''}
+                                    </div>
                                 </div>
                             `;
                             
+                            const checkbox = div.querySelector('input[type="checkbox"]');
+                            const fileInput = div.querySelector('.subcat-file-input');
+                            const imgPreview = div.querySelector('.subcat-img-preview');
+                            
+                            if (imgPreview) {
+                                imgPreview.addEventListener('click', function() {
+                                    if(this.src) showImage(this.src);
+                                });
+                            }
+
+                            if (fileInput && checkbox) {
+                                fileInput.required = checkbox.checked && !isSelected;
+                                checkbox.addEventListener('change', function() {
+                                    fileInput.required = this.checked && !isSelected;
+                                });
+                                
+                                fileInput.addEventListener('change', function(event) {
+                                    const file = event.target.files[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = function(e) {
+                                            imgPreview.src = e.target.result;
+                                            imgPreview.style.display = 'block';
+                                        }
+                                        reader.readAsDataURL(file);
+                                    } else {
+                                        const orig = imgPreview.getAttribute('data-original-src');
+                                        if (!orig) {
+                                            imgPreview.style.display = 'none';
+                                            imgPreview.src = '';
+                                        } else {
+                                            imgPreview.src = orig;
+                                        }
+                                    }
+                                });
+                            }
+
                             if (isSuperAdmin) {
                                 div.querySelector('input[type="checkbox"]').disabled = true;
                                 if (div.querySelector('input[type="number"][name^="count_"]')) {
@@ -565,6 +643,28 @@
             fetchSubcategories(this.value);
         };
 
+        // Main Image Preview Listener
+        document.getElementById('reqImage').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            const imgPreview = document.getElementById('currentReqImage');
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imgPreview.src = e.target.result;
+                    imgPreview.style.display = 'block';
+                }
+                reader.readAsDataURL(file);
+            } else {
+                const orig = imgPreview.getAttribute('data-original-src');
+                if (!orig) {
+                    imgPreview.style.display = 'none';
+                    imgPreview.src = '';
+                } else {
+                    imgPreview.src = orig;
+                }
+            }
+        });
+
         // Open Create Modal
         if (openCreateBtn) {
             openCreateBtn.onclick = function() {
@@ -572,6 +672,11 @@
                 form.action = "{% url 'requirement_create' %}";
                 modalTitle.textContent = "Add New Requirement";
                 submitBtn.textContent = "Submit Requirement";
+                const currentReqImage = document.getElementById('currentReqImage');
+                currentReqImage.style.display = 'none';
+                currentReqImage.src = '';
+                currentReqImage.removeAttribute('data-original-src');
+                document.getElementById('reqImage').required = true;
                 subcatSection.style.display = 'none';
                 statusGroup.style.display = 'none';
                 modal.style.display = "block";
@@ -585,6 +690,7 @@
             const description = this.getAttribute('data-description');
             const categoryId = this.getAttribute('data-category');
             const status = this.getAttribute('data-status');
+            const imageUrl = this.getAttribute('data-image');
             const custAmt = this.getAttribute('data-customer-amount');
             const adminMarkup = this.getAttribute('data-admin-markup');
             const itemsRaw = this.getAttribute('data-items');
@@ -593,6 +699,18 @@
             form.action = `/requirements/${id}/edit/`;
             modalTitle.textContent = "Edit Requirement";
             submitBtn.textContent = "Update Requirement";
+            
+            const currentReqImage = document.getElementById('currentReqImage');
+            if (imageUrl) {
+                currentReqImage.style.display = 'block';
+                currentReqImage.src = imageUrl;
+                currentReqImage.setAttribute('data-original-src', imageUrl);
+            } else {
+                currentReqImage.style.display = 'none';
+                currentReqImage.src = '';
+                currentReqImage.removeAttribute('data-original-src');
+            }
+            document.getElementById('reqImage').required = false;
             
             reqTitle.value = title;
             reqDescription.value = description;
@@ -621,14 +739,15 @@
             
             const selectedItems = {};
             if (itemsRaw) {
-                itemsRaw.split(',').forEach(item => {
-                    const parts = item.split(':');
+                itemsRaw.split(',').forEach(itemStr => {
+                    const parts = itemStr.split(':');
                     if (parts.length >= 4) {
                         selectedItems[parts[0]] = {
                             count: parts[1],
                             custAmt: parts[2],
                             markAmt: parts[3],
-                            description: parts[4] ? decodeURIComponent(parts[4]) : ''
+                            description: parts[4] ? decodeURIComponent(parts[4]) : '',
+                            image_url: parts[5] ? decodeURIComponent(parts[5]) : ''
                         };
                     }
                 });

@@ -64,6 +64,7 @@ class CustomerRequirement(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='requirements')
     title = models.CharField(max_length=255)
     description = models.TextField()
+    image = models.ImageField(upload_to='requirements/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     customer_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     admin_markup = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
@@ -98,6 +99,7 @@ class RequirementItem(models.Model):
     customer_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     admin_markup = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     description = models.TextField(null=True, blank=True)
+    image = models.ImageField(upload_to='requirement_items/', null=True, blank=True)
 
     @property
     def total_amount(self):
