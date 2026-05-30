@@ -199,40 +199,166 @@
 
 {% block content %}
     {% if request.user.usertype in 'district,marketing,manager,mandalam' %}
-        <div class="responsive-grid">
-            {% for req in requirements %}
-                <div class="card h-100 shadow-sm" style="border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); display: flex; flex-direction: column;">
-                        <a href="{% url 'requirement_detail' req.id %}" style="display: block; height: 200px; background: #f8f9fa; position: relative; text-decoration: none;">
-                            {% if req.image %}
-                                <img src="{{ req.image.url }}" style="width: 100%; height: 100%; object-fit: cover;" alt="Category Image">
-                            {% else %}
-                                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #ccc;">
-                                    <i class="fa-solid fa-image fa-3x"></i>
-                                </div>
-                            {% endif %}
-                            <div style="position: absolute; top: 10px; right: 10px;">
-                                <span class="status-badge status-{{ req.status }}">{{ req.status }}</span>
+        <!-- Search Bar -->
+        <div style="margin-bottom: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 220px; position: relative;">
+                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                <input type="text" id="cardSearchInput" placeholder="Search requirements by title, category..." 
+                    style="width: 100%; padding: 12px 12px 12px 40px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 0.95rem; background: var(--card-bg); color: var(--text-main); outline: none; transition: border-color 0.2s;">
+            </div>
+            <div id="cardResultCount" style="font-size: 0.9rem; color: var(--text-muted); font-weight: 600; white-space: nowrap;"></div>
+        </div>
+
+        <!-- Card Grid -->
+        <div class="responsive-grid" id="cardGrid">
+            <!-- Skeleton loaders -->
+            {% for i in "123456789012" %}
+            <div class="card-skeleton" style="border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: var(--card-bg);">
+                <div style="height: 200px; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite;"></div>
+                <div style="padding: 15px;">
+                    <div style="height: 18px; background: #f0f0f0; border-radius: 4px; margin-bottom: 10px; width: 70%; animation: shimmer 1.5s infinite;"></div>
+                    <div style="height: 14px; background: #f0f0f0; border-radius: 4px; width: 50%; animation: shimmer 1.5s infinite;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        <div id="cardPagination" style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; flex-wrap: wrap;"></div>
+
+        <style>
+            @keyframes shimmer {
+                0% { background-position: -200% 0; }
+                100% { background-position: 200% 0; }
+            }
+            .card-skeleton {
+                animation: fadeIn 0.3s ease;
+            }
+            .page-btn {
+                padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border-color);
+                background: var(--card-bg); color: var(--text-main); cursor: pointer;
+                font-weight: 600; font-size: 0.9rem; transition: all 0.2s;
+            }
+            .page-btn:hover { background: var(--role-color); color: #fff; border-color: var(--role-color); }
+            .page-btn.active { background: var(--role-color); color: #fff; border-color: var(--role-color); }
+            .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        </style>
+
+        <script>
+        (function() {
+            const CARDS_URL = window.location.pathname;
+            let currentPage = 1;
+            let currentSearch = '';
+            let searchTimer = null;
+            const PER_PAGE = 12;
+
+            function renderCards(data, total, page, totalPages) {
+                const grid = document.getElementById('cardGrid');
+                const countEl = document.getElementById('cardResultCount');
+                countEl.textContent = `${total} result${total !== 1 ? 's' : ''} found`;
+
+                if (data.length === 0) {
+                    grid.innerHTML = `
+                        <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
+                            <i class="fa-solid fa-folder-open fa-3x" style="margin-bottom: 15px; opacity: 0.4;"></i>
+                            <h4>No Requirements Found</h4>
+                            <p style="margin-top: 8px; font-size: 0.9rem;">Try a different search term.</p>
+                        </div>`;
+                    renderPagination(0, 1, 1);
+                    return;
+                }
+
+                grid.innerHTML = data.map(req => `
+                    <div class="card h-100 shadow-sm" style="border-radius:12px;overflow:hidden;border:1px solid var(--border-color);display:flex;flex-direction:column;">
+                        <a href="/requirements/${req.id}/detail/" style="display:block;height:200px;background:#f8f9fa;position:relative;text-decoration:none;">
+                            ${req.image_url
+                                ? `<img src="${req.image_url}" style="width:100%;height:100%;object-fit:cover;" alt="Image">`
+                                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;"><i class="fa-solid fa-image fa-3x"></i></div>`
+                            }
+                            <div style="position:absolute;top:10px;right:10px;">
+                                <span class="status-badge status-${req.status}">${req.status}</span>
                             </div>
                         </a>
-                        <div class="card-body" style="padding: 15px; display: flex; flex-direction: column; flex-grow: 1;">
-                            <h5 style="font-weight: 700; color: var(--text-main); margin-bottom: 5px;">{{ req.title }}</h5>
-                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; flex-grow: 1;">
-                                <i class="fa-solid fa-folder-open" style="margin-right: 5px; color: var(--role-color);"></i>
-                                {{ req.category.name|default:"No Category" }}
+                        <div class="card-body" style="padding:15px;display:flex;flex-direction:column;flex-grow:1;">
+                            <h5 style="font-weight:700;color:var(--text-main);margin-bottom:5px;">${req.title}</h5>
+                            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:15px;flex-grow:1;">
+                                <i class="fa-solid fa-folder-open" style="margin-right:5px;color:var(--role-color);"></i>
+                                ${req.category_name}
                             </p>
-                            
-                            <div style="display: flex; gap: 10px; margin-top: auto;">
-                                <a href="{% url 'requirement_detail' req.id %}" class="btn-submit" style="flex: 1; text-align: center; text-decoration: none; padding: 8px; border-radius: 6px; font-weight: 600; background: var(--role-bg-light); color: var(--role-color); border: 1px solid var(--role-color); display: flex; align-items: center; justify-content: center;">View Details</a>
+                            <div style="display:flex;gap:10px;margin-top:auto;">
+                                <a href="/requirements/${req.id}/detail/" style="flex:1;text-align:center;text-decoration:none;padding:8px;border-radius:6px;font-weight:600;background:var(--role-bg-light);color:var(--role-color);border:1px solid var(--role-color);display:flex;align-items:center;justify-content:center;">
+                                    <i class="fa-solid fa-eye" style="margin-right:6px;"></i>View Details
+                                </a>
                             </div>
                         </div>
                     </div>
-            {% empty %}
-                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
-                    <i class="fa-solid fa-folder-open fa-3x" style="margin-bottom: 15px; opacity: 0.5;"></i>
-                    <h4>No Requirements Found</h4>
-                </div>
-            {% endfor %}
-        </div>
+                `).join('');
+
+                renderPagination(total, page, totalPages);
+            }
+
+            function renderPagination(total, page, totalPages) {
+                const el = document.getElementById('cardPagination');
+                if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+                let html = `<button class="page-btn" onclick="goToPage(${page-1})" ${page<=1?'disabled':''}>
+                    <i class="fa-solid fa-chevron-left"></i></button>`;
+
+                for (let i = 1; i <= totalPages; i++) {
+                    if (totalPages > 7) {
+                        if (i !== 1 && i !== totalPages && Math.abs(i - page) > 2) {
+                            if (i === 2 || i === totalPages - 1) html += `<span style="padding:0 4px;color:var(--text-muted);">…</span>`;
+                            continue;
+                        }
+                    }
+                    html += `<button class="page-btn ${i===page?'active':''}" onclick="goToPage(${i})">${i}</button>`;
+                }
+
+                html += `<button class="page-btn" onclick="goToPage(${page+1})" ${page>=totalPages?'disabled':''}>
+                    <i class="fa-solid fa-chevron-right"></i></button>`;
+                el.innerHTML = html;
+            }
+
+            function loadCards(page, search) {
+                const grid = document.getElementById('cardGrid');
+                grid.style.opacity = '0.5';
+                grid.style.pointerEvents = 'none';
+
+                const params = new URLSearchParams({ card_view: '1', page, per_page: PER_PAGE, search });
+                fetch(`${CARDS_URL}?${params}`)
+                    .then(r => r.json())
+                    .then(json => {
+                        grid.style.opacity = '1';
+                        grid.style.pointerEvents = '';
+                        renderCards(json.data, json.total, json.page, json.total_pages);
+                    })
+                    .catch(() => {
+                        grid.style.opacity = '1';
+                        grid.style.pointerEvents = '';
+                    });
+            }
+
+            window.goToPage = function(page) {
+                if (page < 1) return;
+                currentPage = page;
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                loadCards(currentPage, currentSearch);
+            };
+
+            document.getElementById('cardSearchInput').addEventListener('input', function() {
+                clearTimeout(searchTimer);
+                const val = this.value.trim();
+                searchTimer = setTimeout(() => {
+                    currentSearch = val;
+                    currentPage = 1;
+                    loadCards(currentPage, currentSearch);
+                }, 350);
+            });
+
+            // Initial load
+            loadCards(1, '');
+        })();
+        </script>
     {% else %}
         <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
             <div class="table-header">

@@ -48,53 +48,49 @@
     </div>
 </div>
 
-<h4 style="font-weight: 700; color: var(--text-main); margin-bottom: 20px;">Subcategories ({{ items|length }})</h4>
+<h4 style="font-weight: 700; color: var(--text-main); margin-bottom: 15px;" id="itemsHeading">Subcategories</h4>
 
-<div class="responsive-grid">
-    {% for item in items %}
-        <div class="card h-100 shadow-sm" style="border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="height: 220px; background: #f8f9fa; position: relative;">
-                    {% if item.image %}
-                        <img src="{{ item.image.url }}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" alt="Subcategory Image" onclick="showImage(this.src)">
-                    {% else %}
-                        <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #ccc;">
-                            <i class="fa-solid fa-image fa-3x"></i>
-                        </div>
-                    {% endif %}
-                </div>
-                
-                <div class="card-body" style="padding: 20px; display: flex; flex-direction: column;">
-                    <h5 style="font-weight: 700; color: var(--text-main); margin-bottom: 10px;">{{ item.subcategory.name }}</h5>
-                    
-                    {% if item.description %}
-                        <div style="font-size: 0.85rem; color: var(--text-muted); background: var(--role-bg-extra-light); padding: 10px; border-radius: 6px; border-left: 3px solid var(--role-color); margin-bottom: 15px; flex-grow: 1;">
-                            {{ item.description }}
-                        </div>
-                    {% else %}
-                        <div style="flex-grow: 1;"></div>
-                    {% endif %}
-                    
-                    <div style="display: flex; gap: 10px; margin-top: 15px;">
-                        {% if request.user.usertype == 'marketing' and requirement.status == 'approved' %}
-                            <button type="button" class="btn btn-success add-lead-btn" 
-                                    data-id="{{ requirement.id }}" 
-                                    data-title="{{ requirement.title }}"
-                                    data-cat-type="{{ requirement.category.cat_type|default:'other' }}"
-                                    data-items="{{ item.subcategory_id }}:{{ item.subcategory.name }}:{{ item.count }}:{{ item.total_amount }}:{{ item.get_left_count }}"
-                                    style="flex: 1; font-weight: 600; border-radius: 6px; padding: 8px;">
-                                <i class="fa-solid fa-user-plus" style="margin-right: 5px;"></i> Add Lead
-                            </button>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-    {% empty %}
-        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
-            <i class="fa-solid fa-folder-open fa-3x" style="margin-bottom: 15px; opacity: 0.5;"></i>
-            <h4>No items found for this requirement.</h4>
+<!-- Search Bar -->
+<div style="margin-bottom: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 220px; position: relative;">
+        <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+        <input type="text" id="itemSearchInput" placeholder="Search subcategories..."
+            style="width: 100%; padding: 12px 12px 12px 40px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 0.95rem; background: var(--card-bg); color: var(--text-main); outline: none; transition: border-color 0.2s;">
+    </div>
+    <div id="itemResultCount" style="font-size: 0.9rem; color: var(--text-muted); font-weight: 600; white-space: nowrap;"></div>
+</div>
+
+<!-- Items Card Grid -->
+<div class="responsive-grid" id="itemsGrid">
+    <!-- Skeleton loaders while loading -->
+    {% for i in "123456" %}
+    <div style="border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: var(--card-bg);">
+        <div style="height: 220px; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite;"></div>
+        <div style="padding: 20px;">
+            <div style="height: 18px; background: #f0f0f0; border-radius: 4px; margin-bottom: 10px; width: 60%; animation: shimmer 1.5s infinite;"></div>
+            <div style="height: 14px; background: #f0f0f0; border-radius: 4px; width: 80%; animation: shimmer 1.5s infinite;"></div>
         </div>
+    </div>
     {% endfor %}
 </div>
+
+<!-- Pagination -->
+<div id="itemPagination" style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; flex-wrap: wrap;"></div>
+
+<style>
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    .page-btn {
+        padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border-color);
+        background: var(--card-bg); color: var(--text-main); cursor: pointer;
+        font-weight: 600; font-size: 0.9rem; transition: all 0.2s;
+    }
+    .page-btn:hover { background: var(--role-color); color: #fff; border-color: var(--role-color); }
+    .page-btn.active { background: var(--role-color); color: #fff; border-color: var(--role-color); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
 
 <!-- Include SweetAlert for image zooming -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -153,88 +149,174 @@
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const leadModal = document.getElementById('leadModal');
-        const closeLeadModal = document.getElementById('closeLeadModal');
-        const leadForm = document.getElementById('leadForm');
-        const leadReqTitle = document.getElementById('leadReqTitle');
-        const leadItemsList = document.getElementById('lead-items-list');
+(function() {
+    const DETAIL_URL = window.location.pathname;
+    const usertype   = '{{ request.user.usertype }}';
+    const reqStatus  = '{{ requirement.status }}';
+    const catType    = '{{ requirement.category.cat_type|default:"other" }}';
+    const reqId      = '{{ requirement.id }}';
+    const reqTitle   = '{{ requirement.title|escapejs }}';
+    let currentPage  = 1;
+    let currentSearch = '';
+    let searchTimer  = null;
+    const PER_PAGE   = 12;
 
-        document.querySelectorAll('.add-lead-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const reqId = this.getAttribute('data-id');
-                const reqTitle = this.getAttribute('data-title');
-                const catType = this.getAttribute('data-cat-type');
-                const itemsRaw = this.getAttribute('data-items'); // e.g., "id:name:count:total:left"
+    /* ---- Render ---- */
+    function renderItems(data, total, page, totalPages) {
+        const grid    = document.getElementById('itemsGrid');
+        const countEl = document.getElementById('itemResultCount');
+        const heading = document.getElementById('itemsHeading');
+        heading.textContent = `Subcategories (${total})`;
+        countEl.textContent = `${total} result${total !== 1 ? 's' : ''} found`;
 
-                leadForm.reset();
-                leadForm.action = `/requirements/${reqId}/lead/create/`;
-                leadReqTitle.textContent = reqTitle;
-                
-                leadItemsList.innerHTML = '';
-                
-                if (itemsRaw) {
-                    const itemData = itemsRaw.split(':');
-                    const subId = itemData[0];
-                    const subName = itemData[1];
-                    const subCount = parseInt(itemData[2]);
-                    const subTotalAmt = parseFloat(itemData[3]);
-                    const subLeft = parseInt(itemData[4]);
-                    
-                    const div = document.createElement('div');
-                    div.style.marginBottom = '10px';
-                    div.style.padding = '10px';
-                    div.style.background = '#fff';
-                    div.style.borderRadius = '8px';
-                    div.style.border = '1px solid var(--border-color)';
-                    
-                    let inputs = '';
-                    if (catType === 'count') {
-                        let maxAttr = subLeft > 0 ? `max="${subLeft}"` : '';
-                        let placeholder = subLeft > 0 ? `Max ${subLeft}` : 'Unlimited';
-                        inputs = `
-                            <div style="display: flex; gap: 10px; margin-top: 8px; align-items: center;">
-                                <input type="number" name="count_${subId}" min="1" ${maxAttr} placeholder="${placeholder}" style="width: 80px; padding: 5px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem;">
-                                <span style="font-size: 0.75rem; color: var(--text-muted);">₹${subTotalAmt.toFixed(2)}/each</span>
-                            </div>
-                        `;
-                    } else {
-                        inputs = `
-                            <div style="margin-top: 8px; font-size: 0.8rem; font-weight: 600; color: #198754;">
-                                ₹${subTotalAmt.toFixed(2)} Total
-                            </div>
-                        `;
-                    }
-                    
-                    div.innerHTML = `
-                        <div style="display: flex; align-items: flex-start; gap: 10px;">
-                            <input type="checkbox" name="selected_items" value="${subId}" checked style="width: 16px; height: 16px; margin-top: 2px;">
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600; font-size: 0.85rem;">${subName}</div>
-                                ${inputs}
-                            </div>
-                        </div>
-                    `;
-                    
-                    leadItemsList.appendChild(div);
-                }
-                
-                leadModal.style.display = 'block';
-            });
-        });
-
-        if (closeLeadModal) {
-            closeLeadModal.onclick = function() {
-                leadModal.style.display = 'none';
-            }
+        if (data.length === 0) {
+            grid.innerHTML = `
+                <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-muted);">
+                    <i class="fa-solid fa-folder-open fa-3x" style="margin-bottom:15px;opacity:0.4;"></i>
+                    <h4>No items found.</h4>
+                </div>`;
+            renderPagination(0, 1, 1);
+            return;
         }
-        
-        window.onclick = function(event) {
-            if (event.target == leadModal) {
-                leadModal.style.display = 'none';
+
+        grid.innerHTML = data.map(item => {
+            const imgHtml = item.image_url
+                ? `<img src="${item.image_url}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" onclick="showImage('${item.image_url}')" alt="Image">`
+                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;"><i class="fa-solid fa-image fa-3x"></i></div>`;
+
+            const descHtml = item.description
+                ? `<div style="font-size:0.85rem;color:var(--text-muted);background:var(--role-bg-extra-light);padding:10px;border-radius:6px;border-left:3px solid var(--role-color);margin-bottom:15px;flex-grow:1;">${item.description}</div>`
+                : `<div style="flex-grow:1;"></div>`;
+
+            let leadBtn = '';
+            if (usertype === 'marketing' && reqStatus === 'approved') {
+                const itemsAttr = `${item.subcategory_id}:${item.subcategory_name}:${item.count}:${item.total_amount}:${item.left_count}`;
+                leadBtn = `
+                    <button type="button" class="btn btn-success add-lead-btn"
+                        data-id="${reqId}" data-title="${reqTitle}"
+                        data-cat-type="${catType}"
+                        data-items="${itemsAttr}"
+                        style="flex:1;font-weight:600;border-radius:6px;padding:8px;">
+                        <i class="fa-solid fa-user-plus" style="margin-right:5px;"></i> Add Lead
+                    </button>`;
             }
+
+            return `
+                <div class="card h-100 shadow-sm" style="border-radius:12px;overflow:hidden;border:1px solid var(--border-color);transition:transform 0.3s,box-shadow 0.3s;">
+                    <div style="height:220px;background:#f8f9fa;">${imgHtml}</div>
+                    <div class="card-body" style="padding:20px;display:flex;flex-direction:column;">
+                        <h5 style="font-weight:700;color:var(--text-main);margin-bottom:10px;">${item.subcategory_name}</h5>
+                        ${descHtml}
+                        <div style="display:flex;gap:10px;margin-top:15px;">${leadBtn}</div>
+                    </div>
+                </div>`;
+        }).join('');
+
+        renderPagination(total, page, totalPages);
+    }
+
+    function renderPagination(total, page, totalPages) {
+        const el = document.getElementById('itemPagination');
+        if (totalPages <= 1) { el.innerHTML = ''; return; }
+        let html = `<button class="page-btn" onclick="goToItemPage(${page-1})" ${page<=1?'disabled':''}><i class="fa-solid fa-chevron-left"></i></button>`;
+        for (let i = 1; i <= totalPages; i++) {
+            if (totalPages > 7 && i !== 1 && i !== totalPages && Math.abs(i - page) > 2) {
+                if (i === 2 || i === totalPages - 1) html += `<span style="padding:0 4px;color:var(--text-muted);">…</span>`;
+                continue;
+            }
+            html += `<button class="page-btn ${i===page?'active':''}" onclick="goToItemPage(${i})">${i}</button>`;
         }
+        html += `<button class="page-btn" onclick="goToItemPage(${page+1})" ${page>=totalPages?'disabled':''}><i class="fa-solid fa-chevron-right"></i></button>`;
+        el.innerHTML = html;
+    }
+
+    function loadItems(page, search) {
+        const grid = document.getElementById('itemsGrid');
+        grid.style.opacity = '0.5';
+        grid.style.pointerEvents = 'none';
+        const params = new URLSearchParams({ card_view: '1', page, per_page: PER_PAGE, search });
+        fetch(`${DETAIL_URL}?${params}`)
+            .then(r => r.json())
+            .then(json => {
+                grid.style.opacity = '1';
+                grid.style.pointerEvents = '';
+                renderItems(json.data, json.total, json.page, json.total_pages);
+            })
+            .catch(() => { grid.style.opacity = '1'; grid.style.pointerEvents = ''; });
+    }
+
+    window.goToItemPage = function(page) {
+        if (page < 1) return;
+        currentPage = page;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        loadItems(currentPage, currentSearch);
+    };
+
+    document.getElementById('itemSearchInput').addEventListener('input', function() {
+        clearTimeout(searchTimer);
+        const val = this.value.trim();
+        searchTimer = setTimeout(() => {
+            currentSearch = val;
+            currentPage = 1;
+            loadItems(currentPage, currentSearch);
+        }, 350);
     });
+
+    loadItems(1, '');
+
+    /* ---- Lead Modal (event delegation – works on AJAX-rendered cards) ---- */
+    const leadModal    = document.getElementById('leadModal');
+    const leadForm     = document.getElementById('leadForm');
+    const leadReqTitle = document.getElementById('leadReqTitle');
+    const leadItemsList = document.getElementById('lead-items-list');
+
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.add-lead-btn');
+        if (!btn) return;
+
+        const rId      = btn.getAttribute('data-id');
+        const rTitle   = btn.getAttribute('data-title');
+        const rCatType = btn.getAttribute('data-cat-type');
+        const itemsRaw = btn.getAttribute('data-items');
+
+        leadForm.reset();
+        leadForm.action = `/requirements/${rId}/lead/create/`;
+        leadReqTitle.textContent = rTitle;
+        leadItemsList.innerHTML = '';
+
+        if (itemsRaw) {
+            const d = itemsRaw.split(':');
+            const subId = d[0], subName = d[1], subLeft = parseInt(d[4]);
+            const subTotalAmt = parseFloat(d[3]);
+            let inputs = '';
+            if (rCatType === 'count') {
+                let maxAttr = subLeft > 0 ? `max="${subLeft}"` : '';
+                let placeholder = subLeft > 0 ? `Max ${subLeft}` : 'Unlimited';
+                inputs = `<div style="display:flex;gap:10px;margin-top:8px;align-items:center;">
+                    <input type="number" name="count_${subId}" min="1" ${maxAttr} placeholder="${placeholder}" style="width:80px;padding:5px;border-radius:5px;border:1px solid var(--border-color);font-size:0.8rem;">
+                    <span style="font-size:0.75rem;color:var(--text-muted);">₹${subTotalAmt.toFixed(2)}/each</span>
+                </div>`;
+            } else {
+                inputs = `<div style="margin-top:8px;font-size:0.8rem;font-weight:600;color:#198754;">₹${subTotalAmt.toFixed(2)} Total</div>`;
+            }
+            const div = document.createElement('div');
+            div.style.cssText = 'margin-bottom:10px;padding:10px;background:#fff;border-radius:8px;border:1px solid var(--border-color);';
+            div.innerHTML = `
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                    <input type="checkbox" name="selected_items" value="${subId}" checked style="width:16px;height:16px;margin-top:2px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:600;font-size:0.85rem;">${subName}</div>
+                        ${inputs}
+                    </div>
+                </div>`;
+            leadItemsList.appendChild(div);
+        }
+        leadModal.style.display = 'block';
+    });
+
+    document.getElementById('closeLeadModal').onclick = () => leadModal.style.display = 'none';
+    window.addEventListener('click', e => { if (e.target === leadModal) leadModal.style.display = 'none'; });
+})();
 </script>
 
 {% endblock %}

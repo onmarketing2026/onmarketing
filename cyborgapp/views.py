@@ -647,7 +647,42 @@ def requirement_detail(request, req_id):
         if requirement.customer != request.user:
             messages.error(request, 'You do not have permission to view this requirement.')
             return redirect('requirement_list')
-            
+
+    # AJAX request for paginated items (card grid)
+    if request.GET.get('card_view') == '1':
+        from django.db.models import Q
+        search = request.GET.get('search', '').strip()
+        page = int(request.GET.get('page', 1))
+        per_page = int(request.GET.get('per_page', 12))
+
+        items_qs = requirement.items.select_related('subcategory').all()
+        if search:
+            items_qs = items_qs.filter(subcategory__name__icontains=search)
+
+        total = items_qs.count()
+        start = (page - 1) * per_page
+        items_slice = items_qs[start:start + per_page]
+
+        data = []
+        for item in items_slice:
+            data.append({
+                'id': item.id,
+                'subcategory_id': item.subcategory_id,
+                'subcategory_name': item.subcategory.name,
+                'count': item.count,
+                'total_amount': float(item.total_amount),
+                'left_count': item.get_left_count,
+                'description': item.description or '',
+                'image_url': item.image.url if item.image else '',
+            })
+        return JsonResponse({
+            'data': data,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+        })
+
     items = requirement.items.all()
     return render(request, 'cyborgapp/requirements/detail.html', {
         'requirement': requirement,
@@ -677,6 +712,41 @@ def requirement_list(request):
         ).distinct().order_by('-created_at')
     else:
         requirements = CustomerRequirement.objects.none()
+
+    # AJAX for card view (district/marketing/manager/mandalam)
+    if request.GET.get('card_view') == '1':
+        from django.db.models import Q
+        search = request.GET.get('search', '').strip()
+        page = int(request.GET.get('page', 1))
+        per_page = int(request.GET.get('per_page', 12))
+
+        if search:
+            requirements = requirements.filter(
+                Q(title__icontains=search) |
+                Q(category__name__icontains=search) |
+                Q(customer__name__icontains=search)
+            )
+
+        total = requirements.count()
+        start_idx = (page - 1) * per_page
+        reqs_slice = requirements[start_idx:start_idx + per_page]
+
+        data = []
+        for req in reqs_slice:
+            data.append({
+                'id': req.id,
+                'title': req.title,
+                'category_name': req.category.name if req.category else 'No Category',
+                'status': req.status,
+                'image_url': req.image.url if req.image else '',
+            })
+        return JsonResponse({
+            'data': data,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+        })
 
     # Check if AJAX DataTable request
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('draw'):
