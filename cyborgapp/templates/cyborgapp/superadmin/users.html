@@ -304,12 +304,12 @@
                 <input type="hidden" id="userId" name="user_id" value="">
                 
                 <div class="form-group">
-                    <label>Name</label>
+                    <label>Name <span style="color: red;">*</span></label>
                     <input type="text" id="name" name="name" class="form-control" required>
                 </div>
 
                 <div class="form-group">
-                    <label>Email (Username)</label>
+                    <label>Email (Username) <span style="color: red;">*</span></label>
                     <input type="email" id="email" name="email" class="form-control" required>
                     <small id="emailError" style="color: #dc3545; display: none; margin-top: 5px; font-weight: 600;">This email is already in use.</small>
                 </div>
@@ -322,12 +322,12 @@
                 </div>
 
                 <div class="form-group" id="passwordContainer">
-                    <label id="passwordLabel">Password <span id="passwordHelp" style="font-weight: normal; font-size: 0.8rem; color: var(--text-muted); display: none;">(Leave blank to keep current)</span></label>
+                    <label id="passwordLabel">Password <span id="passwordHelp" style="font-weight: normal; font-size: 0.8rem; color: var(--text-muted); display: none;">(Leave blank to keep current)</span> <span style="color: red;">*</span></label>
                     <input type="text" id="password" name="password" class="form-control" required>
                 </div>
 
                 <div class="form-group">
-                    <label>User Role</label>
+                    <label>User Role <span style="color: red;">*</span></label>
                     <select name="usertype" id="usertype" class="form-control" required>
                         <option value="">Select Role</option>
                         {% if request.user.usertype == 'superadmin' %}

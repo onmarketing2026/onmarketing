@@ -349,11 +349,11 @@
             <form action="" method="POST">
                 {% csrf_token %}
                 <div class="form-group">
-                    <label for="username">Username / Email</label>
+                    <label for="username">Username / Email <span style="color: red;">*</span></label>
                     <input type="text" id="username" name="username" class="form-control" placeholder="Enter your identifier" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">Security Key</label>
+                    <label for="password">Security Key <span style="color: red;">*</span></label>
                     <input type="password" id="password" name="password" class="form-control" placeholder="Enter security key" required>
                 </div>
                 <div class="form-options">

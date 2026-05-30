@@ -640,6 +640,21 @@ def check_email(request):
     return JsonResponse({'exists': False})
 
 @login_required(login_url='login')
+def requirement_detail(request, req_id):
+    requirement = get_object_or_404(CustomerRequirement, id=req_id)
+    # Check permissions if necessary
+    if request.user.usertype not in ['superadmin', 'marketing', 'district', 'manager', 'mandalam']:
+        if requirement.customer != request.user:
+            messages.error(request, 'You do not have permission to view this requirement.')
+            return redirect('requirement_list')
+            
+    items = requirement.items.all()
+    return render(request, 'cyborgapp/requirements/detail.html', {
+        'requirement': requirement,
+        'items': items
+    })
+
+@login_required(login_url='login')
 def requirement_list(request):
     current_user = request.user
     if current_user.usertype == 'superadmin':
@@ -979,12 +994,23 @@ def razorpay_webhook(request):
             payload = json.loads(request.body.decode('utf-8'))
             event = payload.get('event')
             
-            if event == 'payment.captured':
-                payment_entity = payload['payload']['payment']['entity']
-                notes = payment_entity.get('notes', {})
-                lead_id = notes.get('lead_id')
-                user_id = notes.get('user_id')
-                payment_id = payment_entity.get('id')
+            if event in ['payment.captured', 'payment_link.paid']:
+                payment_id = None
+                lead_id = None
+                user_id = None
+                
+                if event == 'payment.captured':
+                    payment_entity = payload['payload']['payment']['entity']
+                    notes = payment_entity.get('notes', {})
+                    lead_id = notes.get('lead_id')
+                    user_id = notes.get('user_id')
+                    payment_id = payment_entity.get('id')
+                elif event == 'payment_link.paid':
+                    payment_link_entity = payload['payload']['payment_link']['entity']
+                    notes = payment_link_entity.get('notes', {})
+                    lead_id = notes.get('lead_id')
+                    payment_entity = payload['payload'].get('payment', {}).get('entity', {})
+                    payment_id = payment_entity.get('id')
                 
                 if lead_id:
                     lead = Lead.objects.filter(id=lead_id).first()
@@ -999,7 +1025,7 @@ def razorpay_webhook(request):
                         
                         LeadUpdate.objects.create(
                             lead=lead, 
-                            update_text=f"Payment confirmed via Webhook. Payment ID: {payment_id}"
+                            update_text=f"Payment confirmed via Webhook ({event}). Payment ID: {payment_id}"
                         )
                 elif user_id:
                     user = CustomUser.objects.filter(id=user_id).first()
@@ -1568,6 +1594,8 @@ def lead_create(request, req_id):
         referer = request.META.get('HTTP_REFERER', '')
         if 'leads' in referer:
             return redirect('lead_list')
+        elif 'detail' in referer:
+            return redirect('requirement_detail', req_id=req_id)
         return redirect('requirement_list')
     
     return redirect('requirement_list')
@@ -1668,6 +1696,135 @@ def lead_edit(request, lead_id):
         messages.success(request, 'Lead updated successfully!')
         return redirect('lead_list')
     return redirect('lead_list')
+
+@login_required(login_url='login')
+def share_lead_payment(request, lead_id):
+    lead = get_object_or_404(Lead, id=lead_id)
+    
+    # 1. Validation: Only the user currently controlling the lead is allowed to share
+    effective_user_level = request.user.usertype
+    if effective_user_level == 'manager':
+        effective_user_level = 'district'
+        
+    if effective_user_level != lead.current_level:
+        return JsonResponse({'status': 'error', 'message': 'You do not have control over this lead currently.'}, status=403)
+        
+    if not lead.email:
+        return JsonResponse({'status': 'error', 'message': 'Lead email is required to share details and payment link.'}, status=400)
+    
+    total_amount = lead.get_total_amount
+    amount_in_paise = int(total_amount * 100)
+    if amount_in_paise <= 0:
+        return JsonResponse({'status': 'error', 'message': 'Lead total amount must be greater than 0 to generate a payment link.'}, status=400)
+
+    try:
+        import razorpay
+        import time
+        from django.conf import settings
+        from django.core.mail import EmailMultiAlternatives
+        from django.template.loader import render_to_string
+        
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        
+        # 2. Sanitization: Clean phone number and ensure it conforms to Razorpay constraints (8 to 14 chars)
+        phone = lead.phone.strip() if lead.phone else ""
+        if phone:
+            phone = "".join(filter(str.isdigit, phone))
+            if len(phone) == 10:
+                phone = f"+91{phone}"
+            elif len(phone) > 10 and not phone.startswith('+'):
+                phone = f"+{phone}"
+            
+            # Safely omit invalid phone lengths to prevent Razorpay validation exceptions
+            if not (8 <= len(phone) <= 14):
+                phone = ""
+
+        # Create Razorpay Payment Link
+        items_desc = ", ".join([f"{item.subcategory.name} (Qty: {item.count})" for item in lead.items.all()])
+        desc = f"Payment for Lead #{lead.id}: {items_desc}"
+        if len(desc) > 200:
+            desc = desc[:197] + "..."
+
+        link_data = {
+            "amount": amount_in_paise,
+            "currency": "INR",
+            "accept_partial": False,
+            "description": desc,
+            "customer": {
+                "name": lead.name,
+                "email": lead.email,
+            },
+            "notify": {
+                "sms": False,
+                "email": False
+            },
+            "notes": {
+                "lead_id": str(lead.id)
+            }
+        }
+        if phone:
+            link_data["customer"]["contact"] = phone
+
+        payment_link = client.payment_link.create(link_data)
+        short_url = payment_link.get('short_url')
+        
+        # Construct rich subcategory items for the email
+        rich_items = []
+        for item in lead.items.all():
+            req_item = lead.requirement.items.filter(subcategory=item.subcategory).first()
+            image_url = None
+            if req_item and req_item.image:
+                image_url = request.build_absolute_uri(req_item.image.url)
+            
+            rich_items.append({
+                'name': item.subcategory.name,
+                'count': item.count,
+                'price': req_item.total_amount if req_item else 0.00,
+                'description': req_item.description if req_item else "",
+                'image_url': image_url
+            })
+
+        # Send Email
+        subject = f"Product Requirements & Payment Details - Lead #{lead.id}"
+        from_email = settings.DEFAULT_FROM_EMAIL
+        to_email = [lead.email]
+        
+        html_content = render_to_string('cyborgapp/emails/lead_payment_share.html', {
+            'lead': lead,
+            'payment_link': short_url,
+            'rich_items': rich_items
+        })
+        
+        msg = EmailMultiAlternatives(subject, "", from_email, to_email)
+        msg.attach_alternative(html_content, "text/html")
+        
+        try:
+            sent_count = msg.send(fail_silently=False)
+            if sent_count == 0:
+                # Brevo accepted the connection but refused to send - typically a sender verification issue
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Email was not sent (0 emails delivered). Please verify that "{from_email}" is a verified sender in your Brevo account.'
+                }, status=500)
+        except Exception as email_error:
+            import traceback
+            print("EMAIL SEND ERROR:", traceback.format_exc())
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Email sending failed: {str(email_error)}'
+            }, status=500)
+        
+        # Create Lead Update for progress log
+        LeadUpdate.objects.create(
+            lead=lead,
+            update_text=f"Shared details and payment link to {lead.email}. Link: {short_url}"
+        )
+        
+        return JsonResponse({'status': 'success', 'message': 'Details and payment link shared successfully via email!'})
+    except Exception as e:
+        import traceback
+        print("SHARE LEAD ERROR:", traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Failed to share: {str(e)}'}, status=500)
 
 @login_required(login_url='login')
 def lead_add_update(request, lead_id):

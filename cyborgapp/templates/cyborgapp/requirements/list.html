@@ -171,37 +171,97 @@
         transform: translateY(-2px);
         box-shadow: 0 5px 15px var(--role-bg-light);
     }
+    
+    .responsive-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 25px;
+        margin-top: 20px;
+    }
+    @media (min-width: 1500px) {
+        .responsive-grid {
+            grid-template-columns: repeat(4, 1fr);
+        }
+    }
+    @media (max-width: 992px) {
+        .responsive-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 576px) {
+        .responsive-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
 </style>
 {% endblock %}
 
 {% block content %}
-    <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
-        <div class="table-header">
-            <h3>Requirement Dashboard</h3>
-            {% if request.user.usertype == 'customer' %}
-                <button class="btn-create" id="openCreateModal" style="margin-bottom: 0;">
-                    <i class="fa-solid fa-plus"></i> Add Requirement
-                </button>
-            {% endif %}
+    {% if request.user.usertype in 'district,marketing,manager,mandalam' %}
+        <div class="responsive-grid">
+            {% for req in requirements %}
+                <div class="card h-100 shadow-sm" style="border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                        <a href="{% url 'requirement_detail' req.id %}" style="display: block; height: 200px; background: #f8f9fa; position: relative; text-decoration: none;">
+                            {% if req.image %}
+                                <img src="{{ req.image.url }}" style="width: 100%; height: 100%; object-fit: cover;" alt="Category Image">
+                            {% else %}
+                                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #ccc;">
+                                    <i class="fa-solid fa-image fa-3x"></i>
+                                </div>
+                            {% endif %}
+                            <div style="position: absolute; top: 10px; right: 10px;">
+                                <span class="status-badge status-{{ req.status }}">{{ req.status }}</span>
+                            </div>
+                        </a>
+                        <div class="card-body" style="padding: 15px; display: flex; flex-direction: column; flex-grow: 1;">
+                            <h5 style="font-weight: 700; color: var(--text-main); margin-bottom: 5px;">{{ req.title }}</h5>
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; flex-grow: 1;">
+                                <i class="fa-solid fa-folder-open" style="margin-right: 5px; color: var(--role-color);"></i>
+                                {{ req.category.name|default:"No Category" }}
+                            </p>
+                            
+                            <div style="display: flex; gap: 10px; margin-top: auto;">
+                                <a href="{% url 'requirement_detail' req.id %}" class="btn-submit" style="flex: 1; text-align: center; text-decoration: none; padding: 8px; border-radius: 6px; font-weight: 600; background: var(--role-bg-light); color: var(--role-color); border: 1px solid var(--role-color); display: flex; align-items: center; justify-content: center;">View Details</a>
+                            </div>
+                        </div>
+                    </div>
+            {% empty %}
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+                    <i class="fa-solid fa-folder-open fa-3x" style="margin-bottom: 15px; opacity: 0.5;"></i>
+                    <h4>No Requirements Found</h4>
+                </div>
+            {% endfor %}
         </div>
-        <div style="padding: 25px;">
-            <table id="requirementsTable" class="display" style="width:100%">
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    <th>Associate Company</th>
-                    <th>Category & Items</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Dynamically loaded via DataTable ServerSide AJAX -->
-            </tbody>
-        </table>
+    {% else %}
+        <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
+            <div class="table-header">
+                <h3>Requirement Dashboard</h3>
+                {% if request.user.usertype == 'customer' %}
+                    <button class="btn-create" id="openCreateModal" style="margin-bottom: 0;">
+                        <i class="fa-solid fa-plus"></i> Add Requirement
+                    </button>
+                {% endif %}
+            </div>
+            <div style="padding: 25px;">
+                <table id="requirementsTable" class="display" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Associate Company</th>
+                        <th>Category & Items</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Dynamically loaded via DataTable ServerSide AJAX -->
+                </tbody>
+            </table>
+            </div>
         </div>
-    </div>
+    {% endif %}
 
     <!-- Requirement Modal -->
     <div id="requirementModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
@@ -212,11 +272,11 @@
             <form id="requirementForm" method="POST" action="{% url 'requirement_create' %}" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Title</label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Title <span style="color: red;">*</span></label>
                     <input type="text" id="reqTitle" name="title" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                 </div>
                 <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Category <span style="color: #dc3545;">*</span></label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Category <span style="color: red;">*</span></label>
                     <select name="category" id="reqCategory" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                         <option value="">Select Category</option>
                         {% for cat in categories %}
@@ -225,7 +285,7 @@
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Category Image <span style="color: #dc3545;">*</span></label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Category Image <span style="color: red;">*</span></label>
                     <div style="display: flex; align-items: center; gap: 15px;">
                         <img id="currentReqImage" src="" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; display: none;" onclick="showImage(this.src)" title="Current Image">
                         <input type="file" id="reqImage" name="image" class="form-control" accept="image/*" style="flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px;" required>
@@ -267,11 +327,11 @@
             <form id="leadForm" method="POST" action="">
                 {% csrf_token %}
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Lead Name</label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Lead Name <span style="color: red;">*</span></label>
                     <input type="text" name="name" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Phone Number</label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Phone Number <span style="color: red;">*</span></label>
                     <input type="text" name="phone" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">

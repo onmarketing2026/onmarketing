@@ -55,6 +55,9 @@
     
     .btn-history-premium { background: rgba(111, 66, 193, 0.1); color: #6f42c1; }
     .btn-history-premium:hover { background: #6f42c1; color: white; transform: scale(1.1); }
+    
+    .btn-share-premium { background: rgba(25, 135, 84, 0.1); color: #198754; }
+    .btn-share-premium:hover { background: #198754; color: white; transform: scale(1.1); }
 
     .update-item {
 </style>
@@ -175,6 +178,9 @@
                             <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-status="{{ lead.status }}" data-level="{{ lead.current_level }}" title="Status & Timeline">
                                 <i class="fa-solid fa-clock-rotate-left"></i>
                             </button>
+                            <button class="action-btn-circle btn-share-premium share-lead-btn" data-id="{{ lead.id }}" data-email="{{ lead.email|default:'' }}" title="Share Details & Payment Link">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -195,16 +201,16 @@
                 {% csrf_token %}
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div class="form-group">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 700;">Lead Name</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700;">Lead Name <span style="color: red;">*</span></label>
                         <input type="text" name="name" id="leadName" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                     </div>
                     <div class="form-group">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 700;">Phone Number</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700;">Phone Number <span style="color: red;">*</span></label>
                         <input type="text" name="phone" id="leadPhone" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                     </div>
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;" id="reqSelectGroup">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Select Requirement</label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Select Requirement <span style="color: red;">*</span></label>
                     <select name="requirement" id="leadRequirement" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                         <option value="">Select Requirement</option>
                         {% for req in approved_requirements %}
@@ -219,8 +225,8 @@
                     <div id="lead-items-list"></div>
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Email (Optional)</label>
-                    <input type="email" name="email" id="leadEmail" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 700;">Email <span style="color: red;">*</span></label>
+                    <input type="email" name="email" id="leadEmail" class="form-control" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 8px; font-weight: 700;">Address</label>
@@ -320,6 +326,65 @@
             columnDefs: [
                 { orderable: false, targets: -1 }
             ]
+        });
+
+        // Share Details and Payment Link
+        document.querySelectorAll('.share-lead-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const leadId = this.getAttribute('data-id');
+                const leadEmail = this.getAttribute('data-email');
+                
+                if (!leadEmail) {
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'Lead email is required to share details and payment link.',
+                        icon: 'error',
+                        confirmButtonColor: '#0d6efd'
+                    });
+                    return;
+                }
+                
+                Swal.fire({
+                    title: 'Share Lead Details?',
+                    text: `This will generate a Razorpay payment link and send it along with the subcategory details to ${leadEmail}.`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#198754',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Yes, Share!',
+                    showLoaderOnConfirm: true,
+                    preConfirm: () => {
+                        return fetch(`/leads/${leadId}/share/`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': '{{ csrf_token }}',
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                return response.json().then(err => { throw new Error(err.message || 'Failed to share') });
+                            }
+                            return response.json();
+                        })
+                        .catch(error => {
+                            Swal.showValidationMessage(`Request failed: ${error.message}`);
+                        });
+                    },
+                    allowOutsideClick: () => !Swal.isLoading()
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        Swal.fire({
+                            title: 'Success!',
+                            text: result.value.message,
+                            icon: 'success',
+                            confirmButtonColor: '#198754'
+                        }).then(() => {
+                            location.reload();
+                        });
+                    }
+                });
+            });
         });
 
         const leadModal = document.getElementById('leadModal');

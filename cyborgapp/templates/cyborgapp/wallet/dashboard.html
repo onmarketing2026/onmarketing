@@ -226,7 +226,7 @@
         <form action="{% url 'request_withdrawal' %}" method="POST">
             {% csrf_token %}
             <div class="form-group" style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 8px; font-weight: 700;">Amount to Withdraw (Max: ₹{{ wallet.balance }})</label>
+                <label style="display: block; margin-bottom: 8px; font-weight: 700;">Amount to Withdraw (Max: ₹{{ wallet.balance }}) <span style="color: red;">*</span></label>
                 <input type="number" step="0.01" name="amount" max="{{ wallet.balance }}" required class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1.1rem; font-weight: 700;">
             </div>
 
@@ -234,22 +234,22 @@
                 <h4 style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-main); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Bank Account Details</h4>
                 
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">Account Number</label>
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">Account Number <span style="color: red;">*</span></label>
                     <input type="text" name="account_number" value="{{ wallet.user.bank_account_number|default:'' }}" required class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem;">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">IFSC Code</label>
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">IFSC Code <span style="color: red;">*</span></label>
                     <input type="text" name="ifsc_code" value="{{ wallet.user.bank_ifsc|default:'' }}" required class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem;">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">Account Holder Name</label>
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">Account Holder Name <span style="color: red;">*</span></label>
                     <input type="text" name="account_holder" value="{{ wallet.user.bank_account_holder|default:'' }}" required class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem;">
                 </div>
 
                 <div class="form-group">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">Phone Linked to Account</label>
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.8rem; font-weight: 700;">Phone Linked to Account <span style="color: red;">*</span></label>
                     <input type="text" name="phone_linked" value="{{ wallet.user.bank_phone|default:'' }}" required class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem;">
                 </div>
             </div>

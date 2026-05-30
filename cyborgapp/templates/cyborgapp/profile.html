@@ -111,12 +111,12 @@
         <form method="POST" id="profileForm">
             {% csrf_token %}
             <div class="form-group">
-                <label>Full Name</label>
+                <label>Full Name <span style="color: red;">*</span></label>
                 <input type="text" name="name" value="{{ user.name }}" required class="form-control" placeholder="Enter your full name">
             </div>
 
             <div class="form-group">
-                <label>Email Address (Username)</label>
+                <label>Email Address (Username) <span style="color: red;">*</span></label>
                 <input type="email" name="email" id="profileEmail" value="{{ user.email }}" required class="form-control" placeholder="Enter your email">
                 <small id="emailStatus" class="email-status"></small>
             </div>
@@ -159,22 +159,22 @@
         <form action="{% url 'update_bank_details' %}" method="POST">
             {% csrf_token %}
             <div class="form-group">
-                <label>Account Number</label>
+                <label>Account Number <span style="color: red;">*</span></label>
                 <input type="text" name="account_number" value="{{ bank_user.bank_account_number|default:'' }}" required class="form-control" placeholder="Enter account number">
             </div>
 
             <div class="form-group">
-                <label>IFSC Code</label>
+                <label>IFSC Code <span style="color: red;">*</span></label>
                 <input type="text" name="ifsc_code" value="{{ bank_user.bank_ifsc|default:'' }}" required class="form-control" placeholder="Enter IFSC code">
             </div>
 
             <div class="form-group">
-                <label>Account Holder Name</label>
+                <label>Account Holder Name <span style="color: red;">*</span></label>
                 <input type="text" name="account_holder" value="{{ bank_user.bank_account_holder|default:'' }}" required class="form-control" placeholder="Enter holder name">
             </div>
 
             <div class="form-group">
-                <label>Phone Linked to Account</label>
+                <label>Phone Linked to Account <span style="color: red;">*</span></label>
                 <input type="text" name="phone_linked" value="{{ bank_user.bank_phone|default:'' }}" required class="form-control" placeholder="Enter linked phone number">
             </div>
 

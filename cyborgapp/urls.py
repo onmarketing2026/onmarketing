@@ -31,6 +31,7 @@ urlpatterns = [
     path('requirements/', views.requirement_list, name='requirement_list'),
     path('requirements/create/', views.requirement_create, name='requirement_create'),
     path('requirements/<int:req_id>/edit/', views.requirement_edit, name='requirement_edit'),
+    path('requirements/<int:req_id>/detail/', views.requirement_detail, name='requirement_detail'),
     path('requirements/<int:req_id>/delete/', views.requirement_delete, name='requirement_delete'),
     path('requirements/<int:req_id>/toggle/', views.requirement_toggle_status, name='requirement_toggle_status'),
     path('requirements/<int:req_id>/lead/create/', views.lead_create, name='lead_create'),
@@ -50,6 +51,7 @@ urlpatterns = [
     path('leads/<int:lead_id>/edit/', views.lead_edit, name='lead_edit'),
     path('leads/<int:lead_id>/update/', views.lead_add_update, name='lead_add_update'),
     path('leads/<int:lead_id>/updates/get/', views.lead_get_updates, name='lead_get_updates'),
+    path('leads/<int:lead_id>/share/', views.share_lead_payment, name='share_lead_payment'),
     path('razorpay-webhook/', views.razorpay_webhook, name='razorpay_webhook'),
     path('superadmin/commissions/', views.commission_settings, name='commission_settings'),
     
