@@ -162,5 +162,17 @@
             </div>
         </div>
         {% endif %}
+
+        {% if 'assigned_fcs_count' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon icon-franchise" style="background: rgba(111, 66, 193, 0.1); color: #6f42c1;">
+                <i class="fa-solid fa-building"></i>
+            </div>
+            <div class="stat-info">
+                <h3>{{ stats.assigned_fcs_count }}</h3>
+                <p>Assigned Fecilitation Centers</p>
+            </div>
+        </div>
+        {% endif %}
     </div>
 {% endblock %}

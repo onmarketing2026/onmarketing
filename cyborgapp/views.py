@@ -82,6 +82,8 @@ def login_view(request):
                 
             if user.usertype == 'superadmin':
                 return redirect('superadmin_dashboard')
+            elif user.usertype == 'staff':
+                return redirect('superadmin_dashboard')
             # Add other role redirects later as needed
             return redirect('superadmin_dashboard') # Default redirect for now
         else:
@@ -95,6 +97,41 @@ def logout_view(request):
 
 from django.db.models import Sum, F, Count, Q
 from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, CommissionTransaction, RegistrationCommission, WithdrawalRequest, Wallet
+
+def get_target_user(request):
+    """
+    Returns the target FC user for staff monitoring queries.
+    Saves to/reads from session so the monitored FC persists across page loads.
+    """
+    user = request.user
+    if user.is_authenticated and user.usertype == 'staff':
+        # If clear_fc is requested, clear the session
+        if 'clear_fc' in request.GET:
+            request.session.pop('staff_monitored_fc_id', None)
+            return user
+
+        # If explicitly passed via GET, update the session
+        fc_id = request.GET.get('fc_id')
+        if fc_id:
+            if user.assigned_facilitation_centers.filter(id=fc_id).exists():
+                request.session['staff_monitored_fc_id'] = fc_id
+
+        # Fallback to session
+        monitored_fc_id = request.session.get('staff_monitored_fc_id')
+        if monitored_fc_id:
+            try:
+                return user.assigned_facilitation_centers.get(id=monitored_fc_id)
+            except Exception:
+                pass
+    return user
+
+def render_fc_selection(request):
+    """Show the FC selection card list for staff on the current nav page."""
+    assigned_fcs = request.user.assigned_facilitation_centers.all().order_by('name')
+    return render(request, 'cyborgapp/staff/fc_select.html', {
+        'assigned_fcs': assigned_fcs,
+        'next_url': request.path
+    })
 
 @login_required(login_url='login')
 def superadmin_dashboard(request):
@@ -156,6 +193,8 @@ def superadmin_dashboard(request):
         
     elif user.usertype == 'customer':
         stats['total_requirements'] = CustomerRequirement.objects.filter(customer=user).count()
+    elif user.usertype == 'staff':
+        stats['assigned_fcs_count'] = user.assigned_facilitation_centers.count()
 
     return render(request, 'cyborgapp/superadmin/dashboard.html', {'stats': stats})
 
@@ -240,22 +279,29 @@ def superadmin_users(request):
     current_user = request.user
     selected_usertype = request.GET.get('usertype')
     
-    if current_user.usertype == 'superadmin':
-        users = CustomUser.objects.exclude(usertype='superadmin').order_by('-id')
-    elif current_user.usertype == 'district':
-        # Districts see users assigned to them (Managers, Mandalams, Marketing under them)
-        users = CustomUser.objects.filter(assigned_district=current_user).exclude(id=current_user.id).order_by('-id')
-    elif current_user.usertype == 'manager':
-        # Managers see all users belonging to their assigned district
-        if current_user.assigned_district:
-            users = CustomUser.objects.filter(assigned_district=current_user.assigned_district).exclude(id=current_user.id).order_by('-id')
-        else:
-            users = CustomUser.objects.filter(created_by=current_user).order_by('-id')
-    elif current_user.usertype == 'mandalam':
-        # Mandalams see all marketing users assigned to their mandalam
-        users = CustomUser.objects.filter(assigned_mandalam=current_user, usertype='marketing').order_by('-id')
+    if current_user.usertype == 'staff':
+        selected_usertype = 'marketing'
+        target_user = get_target_user(request)
+        if target_user == current_user:
+            return render_fc_selection(request)
+        users = CustomUser.objects.filter(assigned_mandalam=target_user, usertype='marketing').order_by('-id')
     else:
-        users = CustomUser.objects.none()
+        if current_user.usertype == 'superadmin':
+            users = CustomUser.objects.exclude(usertype='superadmin').order_by('-id')
+        elif current_user.usertype == 'district':
+            # Districts see users assigned to them (Managers, Mandalams, Marketing under them)
+            users = CustomUser.objects.filter(assigned_district=current_user).exclude(id=current_user.id).order_by('-id')
+        elif current_user.usertype == 'manager':
+            # Managers see all users belonging to their assigned district
+            if current_user.assigned_district:
+                users = CustomUser.objects.filter(assigned_district=current_user.assigned_district).exclude(id=current_user.id).order_by('-id')
+            else:
+                users = CustomUser.objects.filter(created_by=current_user).order_by('-id')
+        elif current_user.usertype == 'mandalam':
+            # Mandalams see all marketing users assigned to their mandalam
+            users = CustomUser.objects.filter(assigned_mandalam=current_user, usertype='marketing').order_by('-id')
+        else:
+            users = CustomUser.objects.none()
 
     # Rule: Associate Company (customer) needed only for superadmin
     if current_user.usertype != 'superadmin':
@@ -319,6 +365,15 @@ def superadmin_users(request):
         data = []
         for u in users_slice:
             acc_dists = ",".join([str(d.id) for d in u.accessible_districts.all()])
+            # Hierarchy display fields
+            district_name = u.assigned_district.name if u.assigned_district else ''
+            mandalam_name = u.assigned_mandalam.name if u.assigned_mandalam else ''
+            # For marketing: get the mandalam's district
+            mandalam_district_name = ''
+            if u.assigned_mandalam and u.assigned_mandalam.assigned_district:
+                mandalam_district_name = u.assigned_mandalam.assigned_district.name
+            assigned_fcs = ",".join([str(fc.id) for fc in u.assigned_facilitation_centers.all()]) if u.usertype == 'staff' else ''
+            assigned_fc_names = [fc.name for fc in u.assigned_facilitation_centers.all()] if u.usertype == 'staff' else []
             data.append({
                 'id': u.id,
                 'name': u.name,
@@ -328,8 +383,13 @@ def superadmin_users(request):
                 'created_by': u.created_by.name if u.created_by else 'Superadmin',
                 'is_active': u.is_active,
                 'assigned_district_id': u.assigned_district_id or '',
+                'assigned_district_name': district_name,
                 'assigned_mandalam_id': u.assigned_mandalam_id or '',
-                'accessible_districts': acc_dists
+                'assigned_mandalam_name': mandalam_name,
+                'mandalam_district_name': mandalam_district_name,
+                'accessible_districts': acc_dists,
+                'assigned_facilitation_centers': assigned_fcs,
+                'assigned_fc_names': assigned_fc_names
             })
             
         return JsonResponse({
@@ -378,6 +438,10 @@ def superadmin_user_create(request):
         if usertype == 'manager' and current_user.usertype != 'superadmin':
             messages.error(request, 'Permission denied: Only Superadmin can create Manager.')
             return redirect('superadmin_users')
+
+        if usertype == 'staff' and current_user.usertype != 'superadmin':
+            messages.error(request, 'Permission denied: Only Superadmin can create Staff.')
+            return redirect('superadmin_users')
             
         try:
             # Base creation
@@ -424,6 +488,12 @@ def superadmin_user_create(request):
                 if district_ids:
                     user.accessible_districts.set(district_ids)
                         
+            # Handle assigned facilitation centers for Staff
+            if usertype == 'staff':
+                fc_ids = request.POST.getlist('assigned_facilitation_centers')
+                if fc_ids:
+                    user.assigned_facilitation_centers.set(fc_ids)
+
             user.save()
             
             user.save()
@@ -453,6 +523,10 @@ def superadmin_user_edit(request, user_id):
     if user.usertype == 'manager' and current_user.usertype != 'superadmin':
         messages.error(request, 'Permission denied: Only Superadmin can edit Manager.')
         return redirect('superadmin_users')
+
+    if user.usertype == 'staff' and current_user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied: Only Superadmin can edit Staff.')
+        return redirect('superadmin_users')
         
     if request.method == 'POST':
         new_usertype = request.POST.get('usertype')
@@ -461,6 +535,9 @@ def superadmin_user_edit(request, user_id):
             return redirect('superadmin_users')
         if new_usertype == 'manager' and current_user.usertype != 'superadmin':
             messages.error(request, 'Permission denied: Cannot assign Manager role.')
+            return redirect('superadmin_users')
+        if new_usertype == 'staff' and current_user.usertype != 'superadmin':
+            messages.error(request, 'Permission denied: Cannot assign Staff role.')
             return redirect('superadmin_users')
             
         user.name = request.POST.get('name')
@@ -497,6 +574,11 @@ def superadmin_user_edit(request, user_id):
         if user.usertype == 'customer':
             district_ids = request.POST.getlist('accessible_districts')
             user.accessible_districts.set(district_ids)
+            
+        # Handle assigned facilitation centers for Staff
+        if user.usertype == 'staff':
+            fc_ids = request.POST.getlist('assigned_facilitation_centers')
+            user.assigned_facilitation_centers.set(fc_ids)
                 
         try:
             user.save()
@@ -531,6 +613,10 @@ def superadmin_user_delete(request, user_id):
             messages.error(request, 'Permission denied: Only Superadmin can delete Manager.')
             return redirect('superadmin_users')
             
+        if user.usertype == 'staff' and current_user.usertype != 'superadmin':
+            messages.error(request, 'Permission denied: Only Superadmin can delete Staff.')
+            return redirect('superadmin_users')
+            
         user.delete()
         messages.success(request, 'User deleted successfully!')
         return redirect(f"/superadmin/users/?usertype={user.usertype}")
@@ -552,6 +638,9 @@ def superadmin_user_toggle_status(request, user_id):
             
         if user.usertype == 'manager' and current_user.usertype != 'superadmin':
             return JsonResponse({'status': 'error', 'message': 'Permission denied: Only Superadmin can toggle Manager status.'})
+
+        if user.usertype == 'staff' and current_user.usertype != 'superadmin':
+            return JsonResponse({'status': 'error', 'message': 'Permission denied: Only Superadmin can toggle Staff status.'})
         
         # New Rule: Restrict manager activation if district is inactive
         if not user.is_active: # If we are trying to ACTIVATE
@@ -642,10 +731,28 @@ def check_email(request):
 @login_required(login_url='login')
 def requirement_detail(request, req_id):
     requirement = get_object_or_404(CustomerRequirement, id=req_id)
+    if request.user.usertype == 'staff':
+        user = get_target_user(request)
+        if user == request.user:
+            return redirect('requirement_list')
+    else:
+        user = request.user
+    
     # Check permissions if necessary
-    if request.user.usertype not in ['superadmin', 'marketing', 'district', 'manager', 'mandalam']:
-        if requirement.customer != request.user:
+    if user.usertype not in ['superadmin', 'marketing', 'district', 'manager', 'mandalam']:
+        if requirement.customer != user:
             messages.error(request, 'You do not have permission to view this requirement.')
+            return redirect('requirement_list')
+
+    # Mandalam/marketing: verify they have an assignment for this requirement
+    if user.usertype in ['mandalam', 'marketing']:
+        from .models import RequirementAssignment
+        user_mandalam = user if user.usertype == 'mandalam' else user.assigned_mandalam
+        if not user_mandalam or not RequirementAssignment.objects.filter(
+            requirement_item__requirement=requirement,
+            facilitation_center=user_mandalam
+        ).exists():
+            messages.error(request, 'You are not assigned to this requirement.')
             return redirect('requirement_list')
 
     # AJAX request for paginated items (card grid)
@@ -659,22 +766,50 @@ def requirement_detail(request, req_id):
         if search:
             items_qs = items_qs.filter(subcategory__name__icontains=search)
 
+        user_mandalam = None
+        if user.usertype == 'mandalam':
+            user_mandalam = user
+        elif user.usertype == 'marketing' and user.assigned_mandalam:
+            user_mandalam = user.assigned_mandalam
+
+        if user_mandalam:
+            from .models import RequirementAssignment
+            assigned_ids = RequirementAssignment.objects.filter(
+                requirement_item__requirement=requirement,
+                facilitation_center=user_mandalam
+            ).values_list('requirement_item_id', flat=True)
+            items_qs = items_qs.filter(id__in=assigned_ids)
+
         total = items_qs.count()
         start = (page - 1) * per_page
         items_slice = items_qs[start:start + per_page]
 
         data = []
         for item in items_slice:
-            data.append({
+            item_data = {
                 'id': item.id,
                 'subcategory_id': item.subcategory_id,
                 'subcategory_name': item.subcategory.name,
                 'count': item.count,
+                'customer_amount': float(item.customer_amount),
+                'admin_markup': float(item.admin_markup),
+                'other_expenses': float(item.other_expenses),
+                'gst': float(item.gst),
                 'total_amount': float(item.total_amount),
                 'left_count': item.get_left_count,
                 'description': item.description or '',
                 'image_url': item.image.url if item.image else '',
-            })
+            }
+            if user_mandalam:
+                from .models import RequirementAssignment
+                asgn = RequirementAssignment.objects.filter(
+                    requirement_item=item, facilitation_center=user_mandalam
+                ).first()
+                if asgn:
+                    item_data['count'] = asgn.assigned_count
+                    item_data['left_count'] = asgn.get_left_count
+            data.append(item_data)
+
         return JsonResponse({
             'data': data,
             'total': total,
@@ -690,26 +825,189 @@ def requirement_detail(request, req_id):
     })
 
 @login_required(login_url='login')
+def assign_mandalams(request, item_id):
+    """District Franchise or Manager assigns a RequirementItem to Facilitation Centers (mandalams).
+    
+    The limit is based on the associate company's item count (RequirementItem.count).
+    Count input is always required regardless of category type.
+    """
+    if request.user.usertype not in ['district', 'manager']:
+        return JsonResponse({'status': 'error', 'message': 'Only District Franchise or Manager can assign requirements to facilitation centers.'}, status=403)
+
+    district_user = request.user
+    if request.user.usertype == 'manager':
+        if not request.user.assigned_district:
+            return JsonResponse({'status': 'error', 'message': 'Manager must be assigned to a district.'}, status=403)
+        district_user = request.user.assigned_district
+
+    from .models import RequirementItem, RequirementAssignment, CustomUser
+    item = get_object_or_404(RequirementItem, id=item_id)
+    cat_type = item.requirement.category.cat_type if item.requirement.category else 'other'
+    # Use the associate company's count as the global ceiling (always, regardless of cat_type)
+    item_count = item.count or 0
+
+    if request.method == 'POST':
+        checked_mandalam_ids = [int(x) for x in request.POST.getlist('mandalams')]
+
+        # Always parse count input for every mandalam regardless of cat_type
+        total_new = 0
+        assignments_to_save = []
+        for m_id in checked_mandalam_ids:
+            try:
+                cnt = int(request.POST.get(f'count_{m_id}', 0))
+                if cnt < 0:
+                    cnt = 0
+            except (ValueError, TypeError):
+                cnt = 0
+            assignments_to_save.append((m_id, cnt))
+            total_new += cnt
+
+        # Get existing assignments first to check sold count
+        existing_assignments = {
+            a.facilitation_center_id: a
+            for a in RequirementAssignment.objects.filter(
+                requirement_item=item,
+                facilitation_center__assigned_district=district_user
+            ).select_related('facilitation_center')
+        }
+
+        # Calculate what has been assigned to other districts
+        from django.db.models import Sum
+        total_already_assigned = RequirementAssignment.objects.filter(
+            requirement_item=item
+        ).aggregate(Sum('assigned_count'))['assigned_count__sum'] or 0
+        already_this_district_before = sum(a.assigned_count for a in existing_assignments.values())
+        other_district_assigned = total_already_assigned - already_this_district_before
+
+        # Validate against available limit for this district
+        max_allowed_this_district = max(0, item_count - other_district_assigned) if item_count else None
+        if max_allowed_this_district is not None and total_new > max_allowed_this_district:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Total assigned count ({total_new}) cannot exceed the maximum allowed for this district ({max_allowed_this_district}).'
+            }, status=400)
+
+        # 1. Validation for removed/unchecked FCs
+        for m_id, assignment in existing_assignments.items():
+            if m_id not in checked_mandalam_ids:
+                sold = assignment.get_sold_count
+                if sold > 0:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Cannot remove Facilitation Center {assignment.facilitation_center.name} because it already has {sold} confirmed lead(s).'
+                    }, status=400)
+
+        # 2. Validation for decreased counts on checked FCs
+        for m_id, cnt in assignments_to_save:
+            if m_id in existing_assignments:
+                assignment = existing_assignments[m_id]
+                sold = assignment.get_sold_count
+                if cnt < sold:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Cannot decrease count for {assignment.facilitation_center.name} to {cnt} because it already has {sold} confirmed lead(s).'
+                    }, status=400)
+
+        # Remove FC assignments for this item that are no longer checked (under this district)
+        RequirementAssignment.objects.filter(
+            requirement_item=item,
+            facilitation_center__assigned_district=district_user
+        ).exclude(facilitation_center_id__in=checked_mandalam_ids).delete()
+
+        # Save/update selected FC assignments
+        for m_id, cnt in assignments_to_save:
+            RequirementAssignment.objects.update_or_create(
+                requirement_item=item,
+                facilitation_center_id=m_id,
+                defaults={'assigned_count': cnt, 'assigned_by': request.user}
+            )
+
+        return JsonResponse({'status': 'success', 'message': 'Facilitation Center assignments updated successfully.'})
+
+    # GET – return list of FCs under this district with current assignment data
+    mandalams = CustomUser.objects.filter(
+        usertype='mandalam', assigned_district=district_user, is_active=True
+    ).order_by('name')
+
+    current_assignments = {
+        a.facilitation_center_id: a.assigned_count
+        for a in RequirementAssignment.objects.filter(
+            requirement_item=item,
+            facilitation_center__assigned_district=district_user
+        )
+    }
+
+    # How much is already assigned (across all districts' FCs)
+    from django.db.models import Sum
+    total_already_assigned = RequirementAssignment.objects.filter(
+        requirement_item=item
+    ).aggregate(Sum('assigned_count'))['assigned_count__sum'] or 0
+    # Available for this district to assign = item_count - total_already_assigned
+    district_available = max(0, item_count - total_already_assigned) if item_count else None
+
+    mand_list = []
+    for mand in mandalams:
+        mand_list.append({
+            'id': mand.id,
+            'name': mand.name or mand.username,
+            'checked': mand.id in current_assignments,
+            'assigned_count': current_assignments.get(mand.id, 0)
+        })
+
+    return JsonResponse({
+        'status': 'success',
+        'cat_type': cat_type,
+        'subcategory_name': item.subcategory.name,
+        'item_count': item_count,
+        'district_available': district_available,
+        'mandalams': mand_list
+    })
+
+@login_required(login_url='login')
 def requirement_list(request):
-    current_user = request.user
+    if request.user.usertype == 'staff':
+        target_user = get_target_user(request)
+        if target_user == request.user:
+            return render_fc_selection(request)
+    else:
+        target_user = request.user
+
+    current_user = target_user
     if current_user.usertype == 'superadmin':
         requirements = CustomerRequirement.objects.all().order_by('-created_at')
     elif current_user.usertype == 'customer':
         requirements = CustomerRequirement.objects.filter(customer=current_user).order_by('-created_at')
-    elif current_user.usertype in ['district', 'manager', 'mandalam', 'marketing']:
-        # Only show approved requirements for the assigned/accessible districts
+    elif current_user.usertype in ['district', 'manager']:
         if current_user.usertype == 'district':
             districts = [current_user]
         elif current_user.assigned_district:
             districts = [current_user.assigned_district]
         else:
             districts = []
-        
-        # Approved requirements from customers who have access to these districts
         requirements = CustomerRequirement.objects.filter(
             status='approved',
             customer__accessible_districts__in=districts
         ).distinct().order_by('-created_at')
+    elif current_user.usertype == 'mandalam':
+        from .models import RequirementAssignment
+        req_ids = RequirementAssignment.objects.filter(
+            facilitation_center=current_user
+        ).values_list('requirement_item__requirement_id', flat=True).distinct()
+        requirements = CustomerRequirement.objects.filter(
+            id__in=req_ids, status='approved'
+        ).order_by('-created_at')
+    elif current_user.usertype == 'marketing':
+        from .models import RequirementAssignment
+        mandalam = current_user.assigned_mandalam
+        if mandalam:
+            req_ids = RequirementAssignment.objects.filter(
+                facilitation_center=mandalam
+            ).values_list('requirement_item__requirement_id', flat=True).distinct()
+            requirements = CustomerRequirement.objects.filter(
+                id__in=req_ids, status='approved'
+            ).order_by('-created_at')
+        else:
+            requirements = CustomerRequirement.objects.none()
     else:
         requirements = CustomerRequirement.objects.none()
 
@@ -803,6 +1101,8 @@ def requirement_list(request):
                     'count': item.count,
                     'customer_amount': float(item.customer_amount),
                     'admin_markup': float(item.admin_markup),
+                    'other_expenses': float(item.other_expenses),
+                    'gst': float(item.gst),
                     'total_amount': float(item.total_amount),
                     'sold_count': item.get_sold_count,
                     'left_count': item.get_left_count,
@@ -917,9 +1217,21 @@ def requirement_edit(request, req_id):
                 
             requirement.save()
             
-            # Update markups for items
+            # Update markups, other expenses, and GST for items
             for item in requirement.items.all():
-                item.admin_markup = request.POST.get(f'admin_markup_{item.subcategory_id}', 0)
+                sub_id = item.subcategory_id
+                try:
+                    item.admin_markup = float(request.POST.get(f'admin_markup_{sub_id}', 0) or 0)
+                except (ValueError, TypeError):
+                    item.admin_markup = 0
+                try:
+                    item.other_expenses = float(request.POST.get(f'other_expenses_{sub_id}', 0) or 0)
+                except (ValueError, TypeError):
+                    item.other_expenses = 0
+                try:
+                    item.gst = float(request.POST.get(f'gst_{sub_id}', 0) or 0)
+                except (ValueError, TypeError):
+                    item.gst = 0
                 item.save()
         else:
             # Customer updates their details
@@ -1114,12 +1426,17 @@ def razorpay_webhook(request):
 @login_required(login_url='login')
 def wallet_dashboard(request, user_id=None):
     current_user = request.user
-    target_user = current_user
     
-    if user_id and current_user.usertype == 'superadmin':
+    if current_user.usertype == 'staff':
+        target_user = get_target_user(request)
+        if target_user == current_user:
+            return render_fc_selection(request)
+    elif user_id and current_user.usertype == 'superadmin':
         target_user = get_object_or_404(CustomUser, id=user_id)
     elif current_user.usertype == 'manager' and current_user.assigned_district:
         target_user = current_user.assigned_district
+    else:
+        target_user = current_user
         
     wallet = get_or_create_wallet(target_user)
     
@@ -1637,6 +1954,55 @@ def lead_create(request, req_id):
         email = request.POST.get('email')
         address = request.POST.get('address')
         remarks = request.POST.get('remarks')
+        selected_item_ids = request.POST.getlist('selected_items')
+
+        # Validate count limits from POST data
+        from .models import RequirementAssignment
+        m_user = request.user
+        
+        for sub_id in selected_item_ids:
+            req_item = requirement.items.filter(subcategory_id=sub_id).first()
+            if not req_item:
+                messages.error(request, 'Invalid requirement item selection.')
+                return redirect(request.META.get('HTTP_REFERER', 'lead_list'))
+            
+            # Determine the requested count (1 for non-count categories, or from POST for count categories)
+            if requirement.category and requirement.category.cat_type == 'count':
+                try:
+                    count_val = int(request.POST.get(f'count_{sub_id}', 0))
+                except (ValueError, TypeError):
+                    count_val = 0
+            else:
+                count_val = 1
+                
+            # If it's a count category, check global stock
+            if requirement.category and requirement.category.cat_type == 'count':
+                left_global = req_item.get_left_count
+                if count_val > left_global:
+                    messages.error(request, f'Insufficient global stock for {req_item.subcategory.name}. Available: {left_global}, Requested: {count_val}.')
+                    return redirect(request.META.get('HTTP_REFERER', 'lead_list'))
+            
+            # Check facilitation center limits
+            if m_user.assigned_mandalam:
+                asgn = RequirementAssignment.objects.filter(
+                    requirement_item=req_item,
+                    facilitation_center=m_user.assigned_mandalam
+                ).first()
+                
+                # If they are not assigned to this subcategory, block them
+                if not asgn:
+                    messages.error(request, f'Your facilitation center ({m_user.assigned_mandalam.name}) is not assigned to {req_item.subcategory.name}.')
+                    return redirect(request.META.get('HTTP_REFERER', 'lead_list'))
+                
+                # If they have a limit (either count category OR assigned_count > 0), check left count
+                if (requirement.category and requirement.category.cat_type == 'count') or asgn.assigned_count > 0:
+                    left_mandalam = asgn.get_left_count
+                    if count_val > left_mandalam:
+                        messages.error(request, f'Insufficient assigned count for {req_item.subcategory.name} in your facilitation center. Available: {left_mandalam}, Requested: {count_val}.')
+                        return redirect(request.META.get('HTTP_REFERER', 'lead_list'))
+            else:
+                messages.error(request, 'You must be assigned to a facilitation center to create leads.')
+                return redirect(request.META.get('HTTP_REFERER', 'lead_list'))
         
         lead = Lead.objects.create(
             requirement=requirement,
@@ -1676,35 +2042,62 @@ from django.db.models import Case, When, Value, IntegerField
 
 @login_required(login_url='login')
 def lead_list(request):
-    user = request.user
-    
-    # Custom sort: pending first, then by date
+    if request.user.usertype == 'staff':
+        target_user = get_target_user(request)
+        if target_user == request.user:
+            return render_fc_selection(request)
+        user = target_user
+    else:
+        user = request.user
+    from .models import LeadInstallment
+    from django.db.models import Exists, OuterRef
+
+    # Annotate each lead with whether it has any pending installments
+    pending_inst_sq = LeadInstallment.objects.filter(lead=OuterRef('pk'), status='pending')
+
+    # Sort: pending=0, confirmed+part+installment_pending=1, confirmed=2, by created_at desc
     status_order = Case(
         When(status='pending', then=Value(0)),
-        When(status='confirmed', then=Value(1)),
+        When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
+        When(status='confirmed', then=Value(2)),
         default=Value(2),
         output_field=IntegerField(),
     )
-    
+
+    def annotated_leads(qs):
+        return qs.annotate(
+            installment_pending=Exists(pending_inst_sq)
+        ).annotate(
+            display_order=Case(
+                When(status='pending', then=Value(0)),
+                When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
+                When(status='confirmed', then=Value(2)),
+                default=Value(2),
+                output_field=IntegerField()
+            )
+        ).order_by('display_order', '-created_at')
+
     if user.usertype == 'superadmin':
-        leads = Lead.objects.all().order_by(status_order, '-created_at')
+        leads = annotated_leads(Lead.objects.all())
     elif user.usertype == 'marketing':
-        leads = Lead.objects.filter(marketing_user=user).order_by(status_order, '-created_at')
+        leads = annotated_leads(Lead.objects.filter(marketing_user=user))
     elif user.usertype == 'mandalam':
-        leads = Lead.objects.filter(marketing_user__assigned_mandalam=user).order_by(status_order, '-created_at')
+        leads = annotated_leads(Lead.objects.filter(marketing_user__assigned_mandalam=user))
     elif user.usertype == 'district':
-        leads = Lead.objects.filter(marketing_user__assigned_district=user).order_by(status_order, '-created_at')
+        leads = annotated_leads(Lead.objects.filter(marketing_user__assigned_district=user))
     elif user.usertype == 'manager':
         if user.assigned_district:
-            leads = Lead.objects.filter(marketing_user__assigned_district=user.assigned_district).order_by(status_order, '-created_at')
+            leads = annotated_leads(Lead.objects.filter(marketing_user__assigned_district=user.assigned_district))
         else:
-            leads = Lead.objects.filter(marketing_user__created_by=user).order_by(status_order, '-created_at')
+            leads = annotated_leads(Lead.objects.filter(marketing_user__created_by=user))
     else:
         leads = Lead.objects.none()
 
     # Get approved requirements for marketers to add leads directly from leads section
     approved_requirements = []
+    req_assigned_items_json = {}   # req.id -> list of item dicts (filtered by FC assignment)
     if user.usertype == 'marketing':
+        user_mandalam = user.assigned_mandalam
         if user.assigned_district:
             districts = [user.assigned_district]
         else:
@@ -1714,9 +2107,42 @@ def lead_list(request):
             customer__accessible_districts__in=districts
         ).distinct().order_by('-created_at')
 
+        # Build per-requirement item data filtered to only FC-assigned items
+        from .models import RequirementAssignment
+        for req in approved_requirements:
+            if user_mandalam:
+                assignments = RequirementAssignment.objects.filter(
+                    requirement_item__requirement=req,
+                    facilitation_center=user_mandalam
+                ).select_related('requirement_item__subcategory')
+                req_assigned_items_json[str(req.id)] = [
+                    {
+                        'id': a.requirement_item.subcategory_id,
+                        'name': a.requirement_item.subcategory.name,
+                        'count': a.assigned_count,
+                        'price': float(a.requirement_item.total_amount),
+                        'left': a.get_left_count,
+                    }
+                    for a in assignments
+                ]
+            else:
+                items = list(req.items.select_related('subcategory').all())
+                req_assigned_items_json[str(req.id)] = [
+                    {
+                        'id': item.subcategory_id,
+                        'name': item.subcategory.name,
+                        'count': item.count,
+                        'price': float(item.total_amount),
+                        'left': item.get_left_count,
+                    }
+                    for item in items
+                ]
+
+    import json
     return render(request, 'cyborgapp/leads/list.html', {
         'leads': leads,
-        'approved_requirements': approved_requirements
+        'approved_requirements': approved_requirements,
+        'req_assigned_items_json': json.dumps(req_assigned_items_json),
     })
 
 @login_required(login_url='login')
@@ -1752,9 +2178,58 @@ def lead_edit(request, lead_id):
         lead.remarks = request.POST.get('remarks')
         lead.save()
         
+        # Validate count limits from POST data
+        from .models import RequirementAssignment
+        m_user = lead.marketing_user
+        requirement = lead.requirement
+        selected_item_ids = request.POST.getlist('selected_items')
+        
+        for sub_id in selected_item_ids:
+            req_item = requirement.items.filter(subcategory_id=sub_id).first()
+            if not req_item:
+                messages.error(request, 'Invalid requirement item selection.')
+                return redirect('lead_list')
+            
+            # Determine the requested count (1 for non-count categories, or from POST for count categories)
+            if requirement.category and requirement.category.cat_type == 'count':
+                try:
+                    count_val = int(request.POST.get(f'count_{sub_id}', 0))
+                except (ValueError, TypeError):
+                    count_val = 0
+            else:
+                count_val = 1
+                
+            # If it's a count category, check global stock
+            if requirement.category and requirement.category.cat_type == 'count':
+                left_global = req_item.get_left_count
+                if count_val > left_global:
+                    messages.error(request, f'Insufficient global stock for {req_item.subcategory.name}. Available: {left_global}, Requested: {count_val}.')
+                    return redirect('lead_list')
+            
+            # Check facilitation center limits
+            if m_user.assigned_mandalam:
+                asgn = RequirementAssignment.objects.filter(
+                    requirement_item=req_item,
+                    facilitation_center=m_user.assigned_mandalam
+                ).first()
+                
+                # If they are not assigned to this subcategory, block them
+                if not asgn:
+                    messages.error(request, f'Facilitation center ({m_user.assigned_mandalam.name}) is not assigned to {req_item.subcategory.name}.')
+                    return redirect('lead_list')
+                
+                # If they have a limit (either count category OR assigned_count > 0), check left count
+                if (requirement.category and requirement.category.cat_type == 'count') or asgn.assigned_count > 0:
+                    left_mandalam = asgn.get_left_count
+                    if count_val > left_mandalam:
+                        messages.error(request, f'Insufficient assigned count for {req_item.subcategory.name} in the facilitation center. Available: {left_mandalam}, Requested: {count_val}.')
+                        return redirect('lead_list')
+            else:
+                messages.error(request, 'Marketing user must be assigned to a facilitation center.')
+                return redirect('lead_list')
+
         # Update Lead Items
         lead.items.all().delete()
-        selected_item_ids = request.POST.getlist('selected_items')
         for sub_id in selected_item_ids:
             count = request.POST.get(f'count_{sub_id}', 0)
             LeadItem.objects.create(
@@ -1767,9 +2242,59 @@ def lead_edit(request, lead_id):
         return redirect('lead_list')
     return redirect('lead_list')
 
+def check_assignment_limits(lead):
+    from .models import RequirementAssignment
+    m_user = lead.marketing_user
+    requirement = lead.requirement
+    cat_type = requirement.category.cat_type if requirement.category else 'other'
+
+    for l_item in lead.items.all():
+        req_item = requirement.items.filter(subcategory=l_item.subcategory).first()
+        if not req_item:
+            return f"Subcategory {l_item.subcategory.name} not found in this requirement."
+
+        # Determine how many units this lead item consumes
+        if cat_type == 'count':
+            requested = l_item.count or 0
+            # Check global stock
+            left_global = req_item.get_left_count
+            if requested > left_global:
+                return f"Insufficient global stock for {l_item.subcategory.name}. Available: {left_global}, Requested: {requested}."
+        else:
+            requested = 1  # non-count: each lead item consumes 1 slot
+
+        # Check facilitation center assignment
+        if not m_user.assigned_mandalam:
+            return "Marketing user must be assigned to a facilitation center to confirm this lead."
+
+        asgn = RequirementAssignment.objects.filter(
+            requirement_item=req_item,
+            facilitation_center=m_user.assigned_mandalam
+        ).first()
+
+        if not asgn:
+            return f"Your facilitation center ({m_user.assigned_mandalam.name}) is not assigned to {l_item.subcategory.name}."
+
+        # For count-type OR any assignment that has a numeric limit, check left count
+        if cat_type == 'count' or asgn.assigned_count > 0:
+            left_mandalam = asgn.get_left_count
+            if requested > left_mandalam:
+                return (
+                    f"Insufficient assigned count for {l_item.subcategory.name} in your facilitation center "
+                    f"({m_user.assigned_mandalam.name}). Available: {left_mandalam}, Requested: {requested}."
+                )
+
+    return None
+
+
 @login_required(login_url='login')
 def share_lead_payment(request, lead_id):
     lead = get_object_or_404(Lead, id=lead_id)
+    
+    # Check count assignment limits
+    limit_error = check_assignment_limits(lead)
+    if limit_error:
+        return JsonResponse({'status': 'error', 'message': limit_error}, status=400)
     
     # 1. Validation: Only the user currently controlling the lead is allowed to share
     effective_user_level = request.user.usertype
@@ -1921,7 +2446,15 @@ def lead_add_update(request, lead_id):
         update_text = data.get('update_text')
         new_status = data.get('status')
         pass_lead = data.get('pass_lead')
+
+        # Escalation and Confirmed status are mutually exclusive
+        if pass_lead and new_status == 'confirmed':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'You cannot escalate to the next level and confirm the lead at the same time. Please choose one.'
+            }, status=400)
         
+
         if update_text and lead.status == 'pending':
             # Block update if requirement is not approved (only for pending leads)
             if lead.requirement.status != 'approved':
@@ -1940,16 +2473,17 @@ def lead_add_update(request, lead_id):
                 except Exception:
                     pass
             
+            usertype_display = request.user.get_usertype_display().upper()
             if created_at:
                 LeadUpdate.objects.create(
                     lead=lead, 
-                    update_text=f"[{request.user.usertype.upper()}] {update_text}",
+                    update_text=f"[{usertype_display}] {update_text}",
                     created_at=created_at
                 )
             else:
                 LeadUpdate.objects.create(
                     lead=lead, 
-                    update_text=f"[{request.user.usertype.upper()}] {update_text}"
+                    update_text=f"[{usertype_display}] {update_text}"
                 )
         
         if new_status in ['pending', 'confirmed'] and lead.status == 'pending':
@@ -1959,18 +2493,10 @@ def lead_add_update(request, lead_id):
             
             old_status = lead.status
             if new_status == 'confirmed' and old_status != 'confirmed':
-                # NEW: Check for stock availability if count based
-                if lead.requirement.category and lead.requirement.category.cat_type == 'count':
-                    for l_item in lead.items.all():
-                        req_item = lead.requirement.items.filter(subcategory=l_item.subcategory).first()
-                        if req_item and req_item.count: # Only check if max count is set (not infinity)
-                             left = req_item.get_left_count
-                             requested = l_item.count or 0
-                             if requested > left:
-                                 return JsonResponse({
-                                     'status': 'error', 
-                                     'message': f'Insufficient stock for {l_item.subcategory.name}. Available: {left}, Requested in this Lead: {requested}. Please reduce quantity or contact admin.'
-                                 }, status=400)
+                # Check count assignment and stock limits
+                limit_error = check_assignment_limits(lead)
+                if limit_error:
+                    return JsonResponse({'status': 'error', 'message': limit_error}, status=400)
 
                 razorpay_payment_id = data.get('razorpay_payment_id')
                 razorpay_order_id = data.get('razorpay_order_id')
@@ -1978,54 +2504,140 @@ def lead_add_update(request, lead_id):
 
                 import razorpay
                 from django.conf import settings
+                from decimal import Decimal
+                from .models import LeadInstallment
                 client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
-                if not razorpay_payment_id:
-                    # Step 1: Create Razorpay Order
-                    amount_in_paise = int(lead.get_total_amount * 100)
-                    if amount_in_paise > 0:
-                        order_data = {
-                            'amount': amount_in_paise,
-                            'currency': 'INR',
-                            'payment_capture': '1',
-                            'notes': {
-                                'lead_id': str(lead.id),
-                                'project': 'onmarketing'
-                            }
-                        }
-                        razorpay_order = client.order.create(data=order_data)
-                        return JsonResponse({
-                            'status': 'payment_required',
-                            'order_id': razorpay_order['id'],
-                            'amount': amount_in_paise,
-                            'key': settings.RAZORPAY_KEY_ID,
-                            'lead_name': lead.name,
-                            'lead_email': lead.email,
-                            'lead_phone': lead.phone
-                        })
-                    else:
-                        # If amount is 0, proceed directly
-                        pass
-                else:
-                    # Step 2: Verify Payment Signature
-                    try:
-                        client.utility.verify_payment_signature({
-                            'razorpay_order_id': razorpay_order_id,
-                            'razorpay_payment_id': razorpay_payment_id,
-                            'razorpay_signature': razorpay_signature
-                        })
-                    except razorpay.errors.SignatureVerificationError:
-                        return JsonResponse({'status': 'error', 'message': 'Payment verification failed. Security signature mismatch.'}, status=400)
-                    
-                    LeadUpdate.objects.create(
-                        lead=lead, 
-                        update_text=f"Payment verified successfully. Payment ID: {razorpay_payment_id}"
-                    )
-                    lead.razorpay_payment_id = razorpay_payment_id
+                user_can_split = request.user.usertype in ['superadmin', 'district', 'manager']
+                payment_mode = data.get('payment_mode', 'single') if user_can_split else 'single'
 
-                # Save static total amount for history
+                if payment_mode == 'part':
+                    installments_list = data.get('installments', [])
+                    if len(installments_list) < 2:
+                        return JsonResponse({'status': 'error', 'message': 'Part payment must have at least 2 parts.'}, status=400)
+                    
+                    try:
+                        parsed_installments = [Decimal(str(x)) for x in installments_list]
+                        if any(x <= 0 for x in parsed_installments):
+                            return JsonResponse({'status': 'error', 'message': 'All installment amounts must be positive.'}, status=400)
+                    except (ValueError, TypeError):
+                        return JsonResponse({'status': 'error', 'message': 'Invalid installment amounts.'}, status=400)
+
+                    total_inst_amount = sum(parsed_installments)
+                    total_lead_amount = lead.get_total_amount
+                    if abs(total_inst_amount - total_lead_amount) > Decimal('0.01'):
+                        return JsonResponse({'status': 'error', 'message': f'The sum of installment amounts (₹{total_inst_amount}) must equal the total lead amount (₹{total_lead_amount}).'}, status=400)
+
+                    if not razorpay_payment_id:
+                        # Step 1: Initialize installments and first payment
+                        lead.payment_mode = 'part'
+                        lead.save()
+                        # Delete existing ones just in case we are retrying / re-splitting
+                        lead.installments.all().delete()
+                        for idx, amt in enumerate(parsed_installments, start=1):
+                            LeadInstallment.objects.create(
+                                lead=lead,
+                                installment_number=idx,
+                                amount=amt,
+                                status='pending'
+                            )
+
+                        first_inst = lead.installments.first()
+                        amount_in_paise = int(first_inst.amount * 100)
+                        if amount_in_paise > 0:
+                            order_data = {
+                                'amount': amount_in_paise,
+                                'currency': 'INR',
+                                'payment_capture': '1',
+                                'notes': {
+                                    'lead_id': str(lead.id),
+                                    'installment_id': str(first_inst.id),
+                                    'project': 'onmarketing'
+                                }
+                            }
+                            razorpay_order = client.order.create(data=order_data)
+                            return JsonResponse({
+                                'status': 'payment_required',
+                                'order_id': razorpay_order['id'],
+                                'amount': amount_in_paise,
+                                'key': settings.RAZORPAY_KEY_ID,
+                                'lead_name': lead.name,
+                                'lead_email': lead.email,
+                                'lead_phone': lead.phone,
+                                'payment_mode': 'part'
+                            })
+                        else:
+                            # If first installment is somehow 0, proceed directly
+                            pass
+                    else:
+                        # Step 2: Verify first installment payment
+                        try:
+                            client.utility.verify_payment_signature({
+                                'razorpay_order_id': razorpay_order_id,
+                                'razorpay_payment_id': razorpay_payment_id,
+                                'razorpay_signature': razorpay_signature
+                            })
+                        except razorpay.errors.SignatureVerificationError:
+                            return JsonResponse({'status': 'error', 'message': 'Payment verification failed.'}, status=400)
+
+                        first_inst = lead.installments.first()
+                        if first_inst:
+                            first_inst.status = 'paid'
+                            first_inst.razorpay_payment_id = razorpay_payment_id
+                            first_inst.save()
+
+                        LeadUpdate.objects.create(
+                            lead=lead, 
+                            update_text=f"First installment of ₹{first_inst.amount} paid successfully. Payment ID: {razorpay_payment_id}"
+                        )
+                        lead.razorpay_payment_id = razorpay_payment_id
+                else:
+                    # Single payment
+                    if not razorpay_payment_id:
+                        amount_in_paise = int(lead.get_total_amount * 100)
+                        if amount_in_paise > 0:
+                            order_data = {
+                                'amount': amount_in_paise,
+                                'currency': 'INR',
+                                'payment_capture': '1',
+                                'notes': {
+                                    'lead_id': str(lead.id),
+                                    'project': 'onmarketing'
+                                }
+                            }
+                            razorpay_order = client.order.create(data=order_data)
+                            return JsonResponse({
+                                'status': 'payment_required',
+                                'order_id': razorpay_order['id'],
+                                'amount': amount_in_paise,
+                                'key': settings.RAZORPAY_KEY_ID,
+                                'lead_name': lead.name,
+                                'lead_email': lead.email,
+                                'lead_phone': lead.phone,
+                                'payment_mode': 'single'
+                            })
+                        else:
+                            pass
+                    else:
+                        try:
+                            client.utility.verify_payment_signature({
+                                'razorpay_order_id': razorpay_order_id,
+                                'razorpay_payment_id': razorpay_payment_id,
+                                'razorpay_signature': razorpay_signature
+                            })
+                        except razorpay.errors.SignatureVerificationError:
+                            return JsonResponse({'status': 'error', 'message': 'Payment verification failed.'}, status=400)
+                        
+                        LeadUpdate.objects.create(
+                            lead=lead, 
+                            update_text=f"Payment verified successfully. Payment ID: {razorpay_payment_id}"
+                        )
+                        lead.razorpay_payment_id = razorpay_payment_id
+
+                # Save static total amount and distribute commission (only once upon confirmation)
+                lead.payment_mode = payment_mode
                 lead.total_amount = lead.get_total_amount
-                
+                lead.confirmed_by = request.user
                 from .utils import distribute_product_sale_commission
                 distribute_product_sale_commission(lead)
             
@@ -2038,12 +2650,20 @@ def lead_add_update(request, lead_id):
                 return JsonResponse({'status': 'error', 'message': 'Requirement for this lead is not in approved state. Currently cannot update, contact admin.'}, status=403)
             
             levels = ['marketing', 'mandalam', 'district', 'superadmin']
+            LEVEL_DISPLAY_MAP = {
+                'marketing': 'DIGITAL FRANCHISE',
+                'mandalam': 'FECILITATION CENTER',
+                'district': 'DISTRICT FRANCHISE',
+                'superadmin': 'SUPERADMIN'
+            }
             try:
                 current_idx = levels.index(lead.current_level)
                 if current_idx < len(levels) - 1:
                     old_level = lead.current_level
                     lead.current_level = levels[current_idx + 1]
-                    LeadUpdate.objects.create(lead=lead, update_text=f"SYSTEM: Lead passed from {old_level} to {lead.current_level}")
+                    old_display = LEVEL_DISPLAY_MAP.get(old_level, old_level.upper())
+                    new_display = LEVEL_DISPLAY_MAP.get(lead.current_level, lead.current_level.upper())
+                    LeadUpdate.objects.create(lead=lead, update_text=f"SYSTEM: Lead passed from {old_display} to {new_display}")
             except ValueError:
                 pass
                 
@@ -2067,6 +2687,16 @@ def lead_get_updates(request, lead_id):
     
     if not requirement_approved:
         can_update = False
+        
+    installments_data = []
+    for inst in lead.installments.all().order_by('installment_number'):
+        installments_data.append({
+            'id': inst.id,
+            'installment_number': inst.installment_number,
+            'amount': float(inst.amount),
+            'status': inst.status,
+            'razorpay_payment_id': inst.razorpay_payment_id or ''
+        })
     
     return JsonResponse({
         'status': 'success',
@@ -2074,8 +2704,107 @@ def lead_get_updates(request, lead_id):
         'lead_status': lead.status,
         'current_level': lead.current_level,
         'can_update': can_update,
-        'requirement_approved': requirement_approved
+        'requirement_approved': requirement_approved,
+        'total_amount': float(lead.get_total_amount),
+        'payment_mode': lead.payment_mode,
+        'installments': installments_data,
+        'confirmed_by_id': lead.confirmed_by_id
     })
+
+@login_required(login_url='login')
+def pay_installment(request, installment_id):
+    from .models import LeadInstallment
+    installment = get_object_or_404(LeadInstallment, id=installment_id)
+
+    # Only the user who confirmed the lead can pay subsequent installments.
+    # If no user has confirmed the lead (e.g. pre-existing), allow any superadmin, district, or manager to pay and become the confirmed_by user.
+    if installment.lead.confirmed_by_id:
+        if installment.lead.confirmed_by_id != request.user.id:
+            return JsonResponse({'status': 'error', 'message': 'Only the user who confirmed this lead can make installment payments.'}, status=403)
+    else:
+        if request.user.usertype not in ['superadmin', 'district', 'manager']:
+            return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+        # Assign confirmed_by immediately
+        installment.lead.confirmed_by = request.user
+        installment.lead.save()
+    
+    # Check that previous installments are paid!
+    previous_pending = LeadInstallment.objects.filter(
+        lead=installment.lead,
+        installment_number__lt=installment.installment_number,
+        status='pending'
+    ).exists()
+    if previous_pending:
+        return JsonResponse({'status': 'error', 'message': 'Please pay the previous installments first.'}, status=400)
+
+    if installment.status == 'paid':
+        return JsonResponse({'status': 'error', 'message': 'Installment is already paid.'}, status=400)
+    
+    import razorpay
+    from django.conf import settings
+    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    
+    amount_in_paise = int(installment.amount * 100)
+    order_data = {
+        'amount': amount_in_paise,
+        'currency': 'INR',
+        'payment_capture': '1',
+        'notes': {
+            'lead_id': str(installment.lead.id),
+            'installment_id': str(installment.id),
+            'project': 'onmarketing'
+        }
+    }
+    razorpay_order = client.order.create(data=order_data)
+    
+    return JsonResponse({
+        'status': 'payment_required',
+        'order_id': razorpay_order['id'],
+        'amount': amount_in_paise,
+        'key': settings.RAZORPAY_KEY_ID,
+        'lead_name': installment.lead.name,
+        'lead_email': installment.lead.email,
+        'lead_phone': installment.lead.phone
+    })
+
+@login_required(login_url='login')
+def verify_installment_payment(request, installment_id):
+    from .models import LeadInstallment
+    installment = get_object_or_404(LeadInstallment, id=installment_id)
+    if request.user.usertype not in ['superadmin', 'district', 'manager']:
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+        
+    if request.method == 'POST':
+        import json
+        data = json.loads(request.body)
+        razorpay_payment_id = data.get('razorpay_payment_id')
+        razorpay_order_id = data.get('razorpay_order_id')
+        razorpay_signature = data.get('razorpay_signature')
+        
+        import razorpay
+        from django.conf import settings
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        
+        try:
+            client.utility.verify_payment_signature({
+                'razorpay_order_id': razorpay_order_id,
+                'razorpay_payment_id': razorpay_payment_id,
+                'razorpay_signature': razorpay_signature
+            })
+        except razorpay.errors.SignatureVerificationError:
+            return JsonResponse({'status': 'error', 'message': 'Payment verification failed.'}, status=400)
+            
+        installment.status = 'paid'
+        installment.razorpay_payment_id = razorpay_payment_id
+        installment.save()
+        
+        LeadUpdate.objects.create(
+            lead=installment.lead,
+            update_text=f"Installment {installment.installment_number} of ₹{installment.amount} paid successfully. Payment ID: {razorpay_payment_id}"
+        )
+        
+        return JsonResponse({'status': 'success', 'message': 'Installment paid successfully.'})
+    return JsonResponse({'status': 'error'}, status=400)
 
 from .models import Category, SubCategory, RequirementItem, LeadItem
 
@@ -2200,3 +2929,16 @@ def delete_withdrawal_request(request, request_id):
     withdrawal_request.delete()
     return JsonResponse({'status': 'success', 'message': 'Withdrawal request deleted successfully.'})
 
+
+@login_required(login_url='login')
+def get_mandalams_by_district(request):
+    """AJAX endpoint: returns all mandalam users under a given district (for staff user creation)."""
+    if request.user.usertype != 'superadmin':
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+    district_id = request.GET.get('district_id')
+    if not district_id:
+        return JsonResponse({'status': 'error', 'message': 'district_id is required.'}, status=400)
+    mandalams = CustomUser.objects.filter(
+        usertype='mandalam', assigned_district_id=district_id, is_active=True
+    ).values('id', 'name', 'email').order_by('name')
+    return JsonResponse({'status': 'success', 'mandalams': list(mandalams)})

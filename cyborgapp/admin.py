@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import (
     CustomUser, Category, SubCategory, CustomerRequirement, 
     RequirementItem, Lead, LeadItem, LeadUpdate, CommissionSetting,
-    RegistrationCommission, Wallet, CommissionTransaction, WithdrawalRequest
+    RegistrationCommission, Wallet, CommissionTransaction, WithdrawalRequest,
+    RequirementAssignment, LeadInstallment
 )
 
 @admin.register(CustomUser)
@@ -14,7 +15,7 @@ class CustomUserAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Personal Info', {'fields': ('name', 'email', 'usertype', 'pass_word')}),
-        ('Assignments', {'fields': ('assigned_district', 'assigned_mandalam', 'created_by', 'accessible_districts')}),
+        ('Assignments', {'fields': ('assigned_district', 'assigned_mandalam', 'created_by', 'accessible_districts', 'assigned_facilitation_centers')}),
         ('Bank Account Details', {'fields': ('bank_account_number', 'bank_ifsc', 'bank_account_holder', 'bank_phone')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
@@ -92,3 +93,15 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
         }),
         ('Metadata', {'fields': ('created_at', 'updated_at')}),
     )
+
+@admin.register(RequirementAssignment)
+class RequirementAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('requirement_item', 'facilitation_center', 'assigned_count', 'assigned_by', 'created_at')
+    list_filter = ('facilitation_center', 'assigned_by')
+    search_fields = ('requirement_item__requirement__title', 'facilitation_center__name')
+
+@admin.register(LeadInstallment)
+class LeadInstallmentAdmin(admin.ModelAdmin):
+    list_display = ('lead', 'installment_number', 'amount', 'status', 'razorpay_payment_id', 'created_at')
+    list_filter = ('status',)
+    search_fields = ('lead__name', 'razorpay_payment_id')

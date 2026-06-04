@@ -1,0 +1,196 @@
+{% extends 'cyborgapp/base.html' %}
+
+{% block title %}Select Fecilitation Center{% endblock %}
+{% block page_title %}Fecilitation Centers{% endblock %}
+
+{% block extra_css %}
+<style>
+    .fc-intro {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 20px 25px;
+        margin-bottom: 25px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .fc-intro-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(111, 66, 193, 0.1);
+        color: #6f42c1;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+
+    .fc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+        gap: 20px;
+    }
+
+    .fc-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 22px 24px;
+        position: relative;
+        transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
+        overflow: hidden;
+    }
+
+    .fc-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #6f42c1, #9b6fe0);
+        opacity: 0;
+        transition: opacity 0.28s;
+    }
+
+    .fc-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 14px 28px rgba(111, 66, 193, 0.1);
+        border-color: rgba(111, 66, 193, 0.25);
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .fc-card:hover::before {
+        opacity: 1;
+    }
+
+    .fc-icon {
+        width: 44px;
+        height: 44px;
+        background: rgba(111, 66, 193, 0.1);
+        color: #6f42c1;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        flex-shrink: 0;
+    }
+
+    .fc-name {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--text-main);
+        margin: 0;
+    }
+
+    .fc-email {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        word-break: break-all;
+    }
+
+    .fc-district-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #6f42c1;
+        background: rgba(111, 66, 193, 0.08);
+        border: 1px solid rgba(111, 66, 193, 0.15);
+        padding: 4px 10px;
+        border-radius: 20px;
+        width: fit-content;
+    }
+
+    .fc-arrow {
+        position: absolute;
+        right: 22px;
+        bottom: 22px;
+        width: 32px;
+        height: 32px;
+        background: rgba(111, 66, 193, 0.08);
+        color: #6f42c1;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        transition: background 0.2s, transform 0.2s;
+    }
+
+    .fc-card:hover .fc-arrow {
+        background: #6f42c1;
+        color: white;
+        transform: translateX(3px);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 70px 30px;
+        background: var(--card-bg);
+        border: 2px dashed var(--border-color);
+        border-radius: 16px;
+        grid-column: 1 / -1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fc-intro">
+    <div class="fc-intro-icon">
+        <i class="fa-solid fa-building-user"></i>
+    </div>
+    <div>
+        <div style="font-weight: 800; font-size: 1rem; color: var(--text-main); margin-bottom: 3px;">Select a Fecilitation Center to Monitor</div>
+        <div style="color: var(--text-muted); font-size: 0.88rem;">Click any center below to view its data in this section. You have <strong>{{ assigned_fcs.count }}</strong> assigned center{{ assigned_fcs.count|pluralize }}.</div>
+    </div>
+</div>
+
+{% if assigned_fcs %}
+    <div class="fc-grid">
+        {% for fc in assigned_fcs %}
+            <a href="{{ next_url }}?fc_id={{ fc.id }}" class="fc-card">
+                <div style="display: flex; align-items: flex-start; gap: 14px;">
+                    <div class="fc-icon">
+                        <i class="fa-solid fa-building"></i>
+                    </div>
+                    <div style="flex: 1; min-width: 0; padding-right: 40px;">
+                        <p class="fc-name">{{ fc.name }}</p>
+                        <p class="fc-email"><i class="fa-solid fa-envelope" style="margin-right: 5px; font-size: 0.75rem;"></i>{{ fc.email }}</p>
+                        {% if fc.assigned_district %}
+                        <div class="fc-district-tag">
+                            <i class="fa-solid fa-map-pin"></i>
+                            {{ fc.assigned_district.name }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="fc-arrow">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="fc-grid">
+        <div class="empty-state">
+            <i class="fa-solid fa-building-circle-exclamation" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 16px; display: block;"></i>
+            <h3 style="color: var(--text-main); font-weight: 800; margin-bottom: 6px;">No Assigned Fecilitation Centers</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Please contact Superadmin to assign Fecilitation Centers to your account.</p>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

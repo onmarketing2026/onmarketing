@@ -79,7 +79,7 @@
         </div>
         {% endif %}
         
-        {% if request.user.usertype != 'superadmin' and request.user.usertype != 'customer' and wallet.balance > 0 %}
+        {% if request.user.usertype != 'superadmin' and request.user.usertype != 'customer' and request.user.usertype != 'staff' and wallet.balance > 0 %}
         <button id="openWithdrawModal" style="margin-top: 15px; background: white; color: var(--role-color); border: none; padding: 12px 25px; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px; width: fit-content;">
             <i class="fa-solid fa-hand-holding-dollar"></i> Request Withdrawal
         </button>
@@ -165,7 +165,7 @@
             </div>
         {% endif %}
 
-        {% if request.user.usertype != 'superadmin' and request.user.usertype != 'customer' %}
+        {% if request.user.usertype != 'superadmin' and request.user.usertype != 'customer' and request.user.usertype != 'staff' %}
         <button id="openManageRequestsModal" class="btn-create" style="border: 2px solid var(--role-color); justify-content: center; cursor: pointer; width: 100%; background: #ffffff; color: var(--role-color); height: 60px; font-size: 1.1rem; border-radius: 15px;">
             <i class="fa-solid fa-clock-rotate-left"></i> View All Requests
         </button>

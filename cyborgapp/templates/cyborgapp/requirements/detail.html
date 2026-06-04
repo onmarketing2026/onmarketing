@@ -6,6 +6,11 @@
 
 {% block content %}
 <style>
+    .back-btn:hover {
+        background: var(--role-bg-extra-light) !important;
+        border-color: var(--role-color) !important;
+        color: var(--role-color) !important;
+    }
     .responsive-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -28,6 +33,19 @@
         }
     }
 </style>
+
+<div style="margin-bottom: 20px;">
+    {% if request.user.usertype == 'staff' %}
+    <a href="{% url 'requirement_list' %}?fc_id={{ request.GET.fc_id }}" class="back-btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.9rem; transition: all 0.2s ease;">
+        <i class="fa-solid fa-arrow-left"></i> Back to Requirements
+    </a>
+    {% else %}
+    <a href="{% url 'requirement_list' %}" class="back-btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.9rem; transition: all 0.2s ease;">
+        <i class="fa-solid fa-arrow-left"></i> Back to Requirements
+    </a>
+    {% endif %}
+</div>
+
 <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; overflow: hidden;">
     <div style="background: linear-gradient(135deg, var(--role-color), #2c3e50); padding: 30px; color: white;">
         <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -148,6 +166,82 @@
     </div>
 </div>
 
+<style>
+    #mandalamAssignTable_wrapper {
+        padding: 5px 0;
+    }
+    #mandalamAssignTable {
+        border-collapse: collapse !important;
+        margin-top: 10px !important;
+        margin-bottom: 10px !important;
+        font-size: 0.85rem;
+        width: 100% !important;
+    }
+    #mandalamAssignTable th {
+        background: var(--role-bg-extra-light);
+        color: var(--text-main);
+        font-weight: 700;
+        padding: 10px;
+        border-bottom: 2px solid var(--border-color);
+    }
+    #mandalamAssignTable td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: middle;
+    }
+    #mandalamAssignTable_filter input {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-size: 0.8rem;
+        outline: none;
+        margin-left: 5px;
+    }
+    #mandalamAssignTable_length select {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 3px 5px;
+        font-size: 0.8rem;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        padding: 3px 10px !important;
+        margin-left: 2px !important;
+        border-radius: 4px !important;
+        font-size: 0.8rem !important;
+    }
+</style>
+
+<div id="mandalamAssignModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+    <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 650px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+        <span class="close-modal" id="closeMandalamAssignModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+        <h2 style="margin-bottom: 5px; font-size: 1.5rem;">Assign to Facilitation Centers</h2>
+        <h4 id="mandModalSubName" style="color: var(--role-color); font-weight: 700; margin-bottom: 20px;">Subcategory Name</h4>
+
+        <div id="mandModalLimitsSection" style="margin-bottom: 20px; padding: 12px; background: var(--role-bg-extra-light); border-radius: 8px; font-size: 0.9rem; font-weight: 600; display: none;">
+            <!-- Dynamic limit info -->
+        </div>
+
+        <form id="mandalamAssignForm" method="POST">
+            {% csrf_token %}
+            <div id="mandalamTableWrapper" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 20px; background: var(--card-bg); max-height: 450px; overflow-y: auto;">
+                <table id="mandalamAssignTable" class="display nowrap">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">Select</th>
+                            <th>Facilitation Center</th>
+                            <th style="width: 100px; text-align: center;">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamic checklist here -->
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn-submit" style="width: 100%; background: #0d6efd; color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">Save Assignments</button>
+        </form>
+    </div>
+</div>
+
 <script>
 (function() {
     const DETAIL_URL = window.location.pathname;
@@ -156,6 +250,9 @@
     const catType    = '{{ requirement.category.cat_type|default:"other" }}';
     const reqId      = '{{ requirement.id }}';
     const reqTitle   = '{{ requirement.title|escapejs }}';
+    // Preserve fc_id for staff navigation
+    const staffFcId     = new URLSearchParams(window.location.search).get('fc_id') || '';
+    const staffFcSuffix = staffFcId ? `?fc_id=${staffFcId}` : '';
     let currentPage  = 1;
     let currentSearch = '';
     let searchTimer  = null;
@@ -188,9 +285,35 @@
                 ? `<div style="font-size:0.85rem;color:var(--text-muted);background:var(--role-bg-extra-light);padding:10px;border-radius:6px;border-left:3px solid var(--role-color);margin-bottom:15px;flex-grow:1;">${item.description}</div>`
                 : `<div style="flex-grow:1;"></div>`;
 
+            let priceSection = '';
+            const base = item.customer_amount + item.admin_markup + item.other_expenses;
+            const gstAmt = base * (item.gst / 100);
+            if (usertype === 'superadmin') {
+                priceSection = `
+                    <div style="margin-bottom: 12px;">
+                        <span style="font-weight: 700; color: #198754; font-size: 1.1rem;">₹${item.total_amount.toFixed(2)}</span>
+                        <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 4px; line-height: 1.3;">
+                            C: ₹${item.customer_amount.toFixed(2)} | M: ₹${item.admin_markup.toFixed(2)} | E: ₹${item.other_expenses.toFixed(2)} | GST: ${item.gst}% (₹${gstAmt.toFixed(2)})
+                        </div>
+                    </div>
+                `;
+            } else {
+                const finalPrice = (usertype === 'customer') ? item.customer_amount : item.total_amount;
+                let extraInfo = '';
+                if (usertype !== 'customer' && item.gst > 0) {
+                    extraInfo = `<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-left: 8px;">(GST: ${item.gst}% | ₹${gstAmt.toFixed(2)})</span>`;
+                }
+                priceSection = `
+                    <div style="margin-bottom: 12px;">
+                        <span style="font-weight: 700; color: #198754; font-size: 1.1rem;">₹${finalPrice.toFixed(2)}</span>
+                        ${extraInfo}
+                    </div>
+                `;
+            }
+
             let leadBtn = '';
-            if (usertype === 'marketing' && reqStatus === 'approved') {
-                const itemsAttr = `${item.subcategory_id}:${item.subcategory_name}:${item.count}:${item.total_amount}:${item.left_count}`;
+            if (usertype === 'marketing' && reqStatus === 'approved' && usertype !== 'staff') {
+                const itemsAttr = `${item.subcategory_id}:${item.subcategory_name}:${item.count}:${item.total_amount}:${item.left_count}:${item.gst}`;
                 leadBtn = `
                     <button type="button" class="btn btn-success add-lead-btn"
                         data-id="${reqId}" data-title="${reqTitle}"
@@ -201,13 +324,44 @@
                     </button>`;
             }
 
+            let assignBtn = '';
+            if (reqStatus === 'approved' && (usertype === 'district' || usertype === 'manager') && usertype !== 'staff') {
+                assignBtn = `
+                    <button type="button" class="assign-mandalam-btn"
+                        data-item-id="${item.id}" data-subname="${item.subcategory_name}"
+                        style="flex:1;font-weight:600;border-radius:6px;padding:8px;background:linear-gradient(135deg,#0d6efd,#198754);border:none;color:#fff;cursor:pointer;font-size:0.85rem;">
+                        <i class="fa-solid fa-sitemap" style="margin-right:5px;"></i> Assign FCs
+                    </button>`;
+            }
+
+            let countBadge = '';
+            const isMandalamOrMarketing = (usertype === 'mandalam' || usertype === 'marketing');
+            if (catType === 'count' || isMandalamOrMarketing) {
+                const leftColor = item.left_count > 0 ? '#198754' : '#dc3545';
+                const totalLabel = isMandalamOrMarketing
+                    ? `Assigned by District: ${item.count ?? '0'}`
+                    : `Total: ${item.count ?? '∞'}`;
+                const leftLabel = item.left_count === 999999 ? 'Remaining: Unlimited' : `Remaining: ${item.left_count}`;
+                countBadge = `
+                    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                        <span style="font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:20px;background:#e9ecef;color:#495057;">
+                            ${totalLabel}
+                        </span>
+                        <span style="font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:20px;background:${leftColor}20;color:${leftColor};">
+                            ${leftLabel}
+                        </span>
+                    </div>`;
+            }
+
             return `
                 <div class="card h-100 shadow-sm" style="border-radius:12px;overflow:hidden;border:1px solid var(--border-color);transition:transform 0.3s,box-shadow 0.3s;">
                     <div style="height:220px;background:#f8f9fa;">${imgHtml}</div>
                     <div class="card-body" style="padding:20px;display:flex;flex-direction:column;">
                         <h5 style="font-weight:700;color:var(--text-main);margin-bottom:10px;">${item.subcategory_name}</h5>
+                        ${priceSection}
+                        ${countBadge}
                         ${descHtml}
-                        <div style="display:flex;gap:10px;margin-top:15px;">${leadBtn}</div>
+                        <div style="display:flex;gap:10px;margin-top:15px;">${leadBtn}${assignBtn}</div>
                     </div>
                 </div>`;
         }).join('');
@@ -286,18 +440,31 @@
 
         if (itemsRaw) {
             const d = itemsRaw.split(':');
-            const subId = d[0], subName = d[1], subLeft = parseInt(d[4]);
+            const subId = d[0], subName = d[1], subLeft = parseInt(d[4]), subGst = parseFloat(d[5] || '0');
+            if (subLeft <= 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Limit Reached',
+                    text: 'You cannot add a lead because the remaining limit is 0.'
+                });
+                return;
+            }
             const subTotalAmt = parseFloat(d[3]);
+            let gstText = '';
+            if (subGst > 0) {
+                const gstAmt = subTotalAmt - (subTotalAmt / (1 + subGst / 100));
+                gstText = ` (incl. ${subGst}% GST | ₹${gstAmt.toFixed(2)})`;
+            }
             let inputs = '';
             if (rCatType === 'count') {
                 let maxAttr = subLeft > 0 ? `max="${subLeft}"` : '';
                 let placeholder = subLeft > 0 ? `Max ${subLeft}` : 'Unlimited';
                 inputs = `<div style="display:flex;gap:10px;margin-top:8px;align-items:center;">
                     <input type="number" name="count_${subId}" min="1" ${maxAttr} placeholder="${placeholder}" style="width:80px;padding:5px;border-radius:5px;border:1px solid var(--border-color);font-size:0.8rem;">
-                    <span style="font-size:0.75rem;color:var(--text-muted);">₹${subTotalAmt.toFixed(2)}/each</span>
+                    <span style="font-size:0.75rem;color:var(--text-muted);">₹${subTotalAmt.toFixed(2)}/each${gstText}</span>
                 </div>`;
             } else {
-                inputs = `<div style="margin-top:8px;font-size:0.8rem;font-weight:600;color:#198754;">₹${subTotalAmt.toFixed(2)} Total</div>`;
+                inputs = `<div style="margin-top:8px;font-size:0.8rem;font-weight:600;color:#198754;">₹${subTotalAmt.toFixed(2)} Total${gstText}</div>`;
             }
             const div = document.createElement('div');
             div.style.cssText = 'margin-bottom:10px;padding:10px;background:#fff;border-radius:8px;border:1px solid var(--border-color);';
@@ -316,6 +483,141 @@
 
     document.getElementById('closeLeadModal').onclick = () => leadModal.style.display = 'none';
     window.addEventListener('click', e => { if (e.target === leadModal) leadModal.style.display = 'none'; });
+
+    /* ---- Mandalam (Facilitation Center) Assignment Modal ---- */
+    const mandalamAssignModal = document.getElementById('mandalamAssignModal');
+    const mandalamAssignForm  = document.getElementById('mandalamAssignForm');
+    const mandModalSubName    = document.getElementById('mandModalSubName');
+    const mandModalLimitsSection = document.getElementById('mandModalLimitsSection');
+    let currentMandalamItemId = null;
+    let mandalamDataTable = null;
+
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.assign-mandalam-btn');
+        if (!btn) return;
+        currentMandalamItemId = btn.getAttribute('data-item-id');
+        mandModalSubName.textContent = btn.getAttribute('data-subname');
+        
+        if ($.fn.DataTable.isDataTable('#mandalamAssignTable')) {
+            $('#mandalamAssignTable').DataTable().destroy();
+        }
+        const tbody = document.querySelector('#mandalamAssignTable tbody');
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</td></tr>';
+        
+        mandModalLimitsSection.style.display = 'none';
+        mandalamAssignModal.style.display = 'block';
+
+        fetch(`/requirements/item/${currentMandalamItemId}/assign-mandalams/`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#dc3545;padding:20px;">${data.message}</td></tr>`;
+                    return;
+                }
+                // Always show limit info
+                const limitLabel = data.district_available !== null
+                    ? `Available to assign: <strong>${data.district_available}</strong> out of <strong>${data.item_count}</strong> (set by associate company)`
+                    : `Total count set by associate company: <strong>${data.item_count || '∞'}</strong>`;
+                mandModalLimitsSection.innerHTML = `<i class="fa-solid fa-circle-info" style="margin-right:6px;color:var(--role-color);"></i>${limitLabel}`;
+                mandModalLimitsSection.style.display = 'block';
+
+                if (!data.mandalams || data.mandalams.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px;">No facilitation centers found under your district.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.mandalams.map(m => `
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <input type="checkbox" name="mandalams" value="${m.id}" id="mand_${m.id}" ${m.checked ? 'checked' : ''}
+                                style="width:16px;height:16px;cursor:pointer;" onchange="toggleMandCountInput(${m.id}, this.checked)">
+                        </td>
+                        <td style="vertical-align: middle;">
+                            <label for="mand_${m.id}" style="font-weight:600;margin:0;cursor:pointer;display:block;width:100%;">${m.name}</label>
+                        </td>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <input type="number" name="count_${m.id}" id="mand_count_${m.id}" min="0" value="${m.assigned_count || 0}"
+                                placeholder="Count" ${m.checked ? '' : 'disabled'}
+                                style="width:90px;padding:6px;border-radius:6px;border:1px solid var(--border-color);font-size:0.85rem;${m.checked ? '' : 'opacity:0.4;'}">
+                        </td>
+                    </tr>
+                `).join('');
+
+                // Initialize DataTable
+                mandalamDataTable = $('#mandalamAssignTable').DataTable({
+                    pageLength: 10,
+                    lengthMenu: [10, 25, 50, 100],
+                    order: [[1, 'asc']],
+                    columnDefs: [
+                        { orderable: false, targets: [0, 2] }
+                    ],
+                    language: {
+                        search: "_INPUT_",
+                        searchPlaceholder: "Search centers..."
+                    }
+                });
+            })
+            .catch(() => {
+                const tbody = document.querySelector('#mandalamAssignTable tbody');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#dc3545;padding:20px;">Failed to load facilitation centers.</td></tr>';
+            });
+    });
+
+    window.toggleMandCountInput = function(id, checked) {
+        const inp = document.getElementById(`mand_count_${id}`);
+        if (inp) {
+            inp.disabled = !checked;
+            inp.style.opacity = checked ? '1' : '0.4';
+        } else if (mandalamDataTable) {
+            const $inp = mandalamDataTable.$(`#mand_count_${id}`);
+            if ($inp.length) {
+                $inp.prop('disabled', !checked);
+                $inp.css('opacity', checked ? '1' : '0.4');
+            }
+        }
+    };
+
+    mandalamAssignForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (!currentMandalamItemId) return;
+        
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', mandalamAssignForm.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        if (mandalamDataTable) {
+            mandalamDataTable.$('input').each(function() {
+                if (this.type === 'checkbox') {
+                    if (this.checked) {
+                        formData.append(this.name, this.value);
+                    }
+                } else if (this.type === 'number') {
+                    const mandId = this.name.replace('count_', '');
+                    const cb = mandalamDataTable.$(`#mand_${mandId}`)[0];
+                    if (cb && cb.checked) {
+                        formData.append(this.name, this.value);
+                    }
+                }
+            });
+        }
+
+        fetch(`/requirements/item/${currentMandalamItemId}/assign-mandalams/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') },
+            body: formData
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                mandalamAssignModal.style.display = 'none';
+                Swal.fire({ icon: 'success', title: 'Assigned!', text: data.message, timer: 2000, showConfirmButton: false });
+                loadItems(currentPage, currentSearch);
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: data.message });
+            }
+        }).catch(() => Swal.fire({ icon: 'error', title: 'Error', text: 'Something went wrong.' }));
+    });
+
+    document.getElementById('closeMandalamAssignModal').onclick = () => mandalamAssignModal.style.display = 'none';
+    window.addEventListener('click', e => { if (e.target === mandalamAssignModal) mandalamAssignModal.style.display = 'none'; });
+
 })();
 </script>
 

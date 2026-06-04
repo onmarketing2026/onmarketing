@@ -35,6 +35,7 @@ urlpatterns = [
     path('requirements/<int:req_id>/delete/', views.requirement_delete, name='requirement_delete'),
     path('requirements/<int:req_id>/toggle/', views.requirement_toggle_status, name='requirement_toggle_status'),
     path('requirements/<int:req_id>/lead/create/', views.lead_create, name='lead_create'),
+    path('requirements/item/<int:item_id>/assign-mandalams/', views.assign_mandalams, name='assign_mandalams'),
     
     path('wallet/', views.wallet_dashboard, name='wallet_dashboard'),
     path('superadmin/user-wallets/', views.superadmin_user_wallets, name='superadmin_user_wallets'),
@@ -52,6 +53,8 @@ urlpatterns = [
     path('leads/<int:lead_id>/update/', views.lead_add_update, name='lead_add_update'),
     path('leads/<int:lead_id>/updates/get/', views.lead_get_updates, name='lead_get_updates'),
     path('leads/<int:lead_id>/share/', views.share_lead_payment, name='share_lead_payment'),
+    path('installments/<int:installment_id>/pay/', views.pay_installment, name='pay_installment'),
+    path('installments/<int:installment_id>/verify/', views.verify_installment_payment, name='verify_installment_payment'),
     path('razorpay-webhook/', views.razorpay_webhook, name='razorpay_webhook'),
     path('superadmin/commissions/', views.commission_settings, name='commission_settings'),
     
@@ -61,4 +64,5 @@ urlpatterns = [
     path('superadmin/categories/<int:cat_id>/edit/', views.category_edit, name='category_edit'),
     path('superadmin/categories/<int:cat_id>/delete/', views.category_delete, name='category_delete'),
     path('api/get_subcategories/<int:cat_id>/', views.get_subcategories, name='get_subcategories'),
+    path('api/get_mandalams_by_district/', views.get_mandalams_by_district, name='get_mandalams_by_district'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

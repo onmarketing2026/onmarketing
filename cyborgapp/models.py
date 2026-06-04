@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
+from django.conf import settings
 
 class CustomUser(AbstractUser):
     USER_TYPE_CHOICES = (
@@ -10,6 +11,7 @@ class CustomUser(AbstractUser):
         ('district', 'District Franchise'),
         ('mandalam', 'Fecilitation Center'),
         ('marketing', 'Digital Franchise'),
+        ('staff', 'Staff'),
     )
 
     name = models.CharField(max_length=255)
@@ -24,6 +26,9 @@ class CustomUser(AbstractUser):
     
     # For Customers to see requirements from multiple districts
     accessible_districts = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='customer_accessible_districts')
+
+    # For Staff to monitor multiple Fecilitation Centers
+    assigned_facilitation_centers = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='staff_users')
 
     # Bank Account Details (Stored for pre-filling)
     bank_account_number = models.CharField(max_length=50, null=True, blank=True)
@@ -68,6 +73,8 @@ class CustomerRequirement(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     customer_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     admin_markup = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    other_expenses = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # GST percentage
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -86,8 +93,21 @@ class CustomerRequirement(models.Model):
         return self.admin_markup
 
     @property
+    def get_other_expenses(self):
+        items = self.items.all()
+        if items.exists():
+            return sum(item.other_expenses for item in items)
+        return self.other_expenses
+
+    @property
     def get_total_amount(self):
-        return self.get_customer_amount + self.get_admin_markup
+        items = self.items.all()
+        if items.exists():
+            return sum(item.total_amount for item in items)
+        from decimal import Decimal
+        base = self.customer_amount + self.admin_markup + self.other_expenses
+        gst_amt = base * (self.gst / Decimal('100.00'))
+        return base + gst_amt
 
     def __str__(self):
         return f"{self.title} - {self.customer.name}"
@@ -98,12 +118,17 @@ class RequirementItem(models.Model):
     count = models.IntegerField(default=0, null=True, blank=True)
     customer_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     admin_markup = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    other_expenses = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # GST percentage
     description = models.TextField(null=True, blank=True)
     image = models.ImageField(upload_to='requirement_items/', null=True, blank=True)
 
     @property
     def total_amount(self):
-        return self.customer_amount + self.admin_markup
+        from decimal import Decimal
+        base = self.customer_amount + self.admin_markup + self.other_expenses
+        gst_amt = base * (self.gst / Decimal('100.00'))
+        return base + gst_amt
 
     @property
     def get_sold_count(self):
@@ -119,6 +144,16 @@ class RequirementItem(models.Model):
     def get_left_count(self):
         if not self.count: return 0
         return self.count - self.get_sold_count
+
+    @property
+    def get_total_assigned_count(self):
+        from django.db.models import Sum
+        return self.district_assignments.aggregate(Sum('assigned_count'))['assigned_count__sum'] or 0
+
+    @property
+    def get_remaining_assignable_count(self):
+        if not self.count: return 0
+        return self.count - self.get_total_assigned_count
 
     def __str__(self):
         return f"{self.subcategory.name} ({self.count})"
@@ -145,6 +180,13 @@ class Lead(models.Model):
     current_level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='marketing')
     total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     razorpay_payment_id = models.CharField(max_length=255, null=True, blank=True)
+    payment_mode = models.CharField(max_length=20, default='single', choices=(('single', 'Single'), ('part', 'Part')))
+    confirmed_by = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='confirmed_leads'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -181,6 +223,25 @@ class Lead(models.Model):
                 qty = item.count if self.requirement.category and self.requirement.category.cat_type == 'count' else 1
                 total += req_item.admin_markup * (qty or 1)
         return total
+
+    @property
+    def get_req_items_with_fc_limits(self):
+        fc = self.marketing_user.assigned_mandalam
+        items_data = []
+        for item in self.requirement.items.select_related('subcategory').all():
+            count = item.count
+            left = item.get_left_count
+            if fc:
+                from .models import RequirementAssignment
+                asgn = RequirementAssignment.objects.filter(requirement_item=item, facilitation_center=fc).first()
+                if asgn:
+                    count = asgn.assigned_count
+                    left = asgn.get_left_count
+                else:
+                    count = 0
+                    left = 0
+            items_data.append(f"{item.subcategory_id}:{item.subcategory.name}:{count}:{item.total_amount}:{left}")
+        return "|".join(items_data)
 
     def __str__(self):
         return f"{self.name} - {self.requirement.title}"
@@ -269,3 +330,94 @@ class WithdrawalRequest(models.Model):
 
     def __str__(self):
         return f"{self.user.name} - {self.amount} ({self.status})"
+
+class DistrictRequirementAssignment(models.Model):
+    requirement_item = models.ForeignKey(RequirementItem, on_delete=models.CASCADE, related_name='district_assignments')
+    district = models.ForeignKey(CustomUser, on_delete=models.CASCADE, limit_choices_to={'usertype': 'district'}, related_name='assigned_district_requirements')
+    assigned_count = models.IntegerField(default=0)
+    assigned_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE, null=True, blank=True, related_name='given_district_assignments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('requirement_item', 'district')
+
+    def __str__(self):
+        return f"{self.requirement_item.subcategory.name} -> {self.district.name}"
+
+    @property
+    def get_sold_count(self):
+        from .models import LeadItem
+        from django.db.models import Sum
+        marketing_users = CustomUser.objects.filter(assigned_district=self.district, usertype='marketing')
+        qs = LeadItem.objects.filter(
+            subcategory=self.requirement_item.subcategory,
+            lead__requirement=self.requirement_item.requirement,
+            lead__status='confirmed',
+            lead__marketing_user__in=marketing_users
+        )
+        if self.requirement_item.requirement.category and self.requirement_item.requirement.category.cat_type == 'count':
+            return qs.aggregate(Sum('count'))['count__sum'] or 0
+        return qs.count()
+
+    @property
+    def get_left_count(self):
+        if not self.requirement_item.requirement.category or self.requirement_item.requirement.category.cat_type != 'count':
+            if self.assigned_count > 0:
+                return self.assigned_count - self.get_sold_count
+            return 999999
+        return self.assigned_count - self.get_sold_count
+
+
+class RequirementAssignment(models.Model):
+    requirement_item = models.ForeignKey(RequirementItem, on_delete=models.CASCADE, related_name='assignments')
+    facilitation_center = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='item_assignments', limit_choices_to={'usertype': 'mandalam'})
+    assigned_count = models.IntegerField(default=0)
+    assigned_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE, null=True, blank=True, related_name='given_item_assignments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('requirement_item', 'facilitation_center')
+
+    def __str__(self):
+        return f"{self.requirement_item.subcategory.name} -> {self.facilitation_center.name}"
+
+    @property
+    def get_sold_count(self):
+        from .models import LeadItem
+        from django.db.models import Sum
+        marketing_users = CustomUser.objects.filter(assigned_mandalam=self.facilitation_center, usertype='marketing')
+        qs = LeadItem.objects.filter(
+            subcategory=self.requirement_item.subcategory,
+            lead__requirement=self.requirement_item.requirement,
+            lead__status='confirmed',
+            lead__marketing_user__in=marketing_users
+        )
+        if self.requirement_item.requirement.category and self.requirement_item.requirement.category.cat_type == 'count':
+            return qs.aggregate(Sum('count'))['count__sum'] or 0
+        return qs.count()
+
+    @property
+    def get_left_count(self):
+        if not self.requirement_item.requirement.category or self.requirement_item.requirement.category.cat_type != 'count':
+            if self.assigned_count > 0:
+                return self.assigned_count - self.get_sold_count
+            return 999999
+        return self.assigned_count - self.get_sold_count
+
+class LeadInstallment(models.Model):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='installments')
+    installment_number = models.IntegerField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=(('pending', 'Pending'), ('paid', 'Paid')), default='pending')
+    razorpay_payment_id = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['installment_number']
+
+    def __str__(self):
+        return f"Lead {self.lead.id} - Installment {self.installment_number}: {self.amount} ({self.status})"
+

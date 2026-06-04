@@ -71,6 +71,13 @@
             --role-bg-light: rgba(231, 74, 59, 0.1);
             --role-bg-extra-light: rgba(231, 74, 59, 0.05);
         }
+        body.user-staff {
+            --role-color: #6f42c1;
+            --role-color-hover: #59359a;
+            --role-bg-light: rgba(111, 66, 193, 0.1);
+            --role-bg-extra-light: rgba(111, 66, 193, 0.05);
+        }
+
 
         * {
             margin: 0;
@@ -513,7 +520,7 @@
                 <i class="fa-solid fa-chart-pie"></i>
                 Dashboard
             </a>
-            <a href="{% url 'requirement_list' %}" class="menu-item {% if request.resolver_match.url_name == 'requirement_list' %}active{% endif %}">
+            <a href="{% url 'requirement_list' %}" class="menu-item {% if request.resolver_match.url_name == 'requirement_list' or request.resolver_match.url_name == 'requirement_detail' %}active{% endif %}">
                 <i class="fa-solid fa-clipboard-list"></i>
                 {% if request.user.usertype == 'customer' %}Requirements{% else %}Company Requirements{% endif %}
             </a>
@@ -551,7 +558,7 @@
                     </a>
                     {% endif %}
 
-                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' or request.user.usertype == 'mandalam' %}
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' or request.user.usertype == 'mandalam' or request.user.usertype == 'staff' %}
                     <a href="{% url 'superadmin_users' %}?usertype=marketing" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'marketing' %}active{% endif %}">
                         <i class="fa-solid fa-circle"></i>
                         Digital Franchise
@@ -562,6 +569,13 @@
                     <a href="{% url 'superadmin_users' %}?usertype=manager" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'manager' %}active{% endif %}">
                         <i class="fa-solid fa-circle"></i>
                         Manager
+                    </a>
+                    {% endif %}
+
+                    {% if request.user.usertype == 'superadmin' %}
+                    <a href="{% url 'superadmin_users' %}?usertype=staff" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'staff' %}active{% endif %}">
+                        <i class="fa-solid fa-circle"></i>
+                        Staff
                     </a>
                     {% endif %}
                 </div>
@@ -596,6 +610,20 @@
                 </span>
                 {% endif %}
             </a>
+            {% endif %}
+
+            {% if request.user.usertype == 'staff' and assigned_fcs %}
+            <div class="menu-label" style="margin-top: 20px; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; padding-left: 20px;">Assigned Centers</div>
+            <div style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 0 15px;">
+                {% for fc in assigned_fcs %}
+                <a href="{% url 'superadmin_dashboard' %}?fc_id={{ fc.id }}" 
+                   class="menu-item {% if monitored_fc.id == fc.id %}active{% endif %}" 
+                   style="padding: 10px 15px; border-radius: 8px; font-size: 0.82rem; line-height: 1.3; font-weight: 600; display: flex; align-items: center; gap: 10px; border-left: none; {% if monitored_fc.id == fc.id %}background-color: var(--role-bg-extra-light); color: var(--role-color);{% endif %}">
+                    <i class="fa-solid fa-building" style="font-size: 0.95rem; margin-right: 0; min-width: 16px; text-align: center; color: {% if monitored_fc.id == fc.id %}var(--role-color){% else %}var(--text-muted){% endif %};"></i>
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">{{ fc.name }}</span>
+                </a>
+                {% endfor %}
+            </div>
             {% endif %}
             {% endblock %}
         </div>
@@ -650,6 +678,13 @@
 
         <!-- Main Content -->
         <main class="content">
+            {% if request.user.usertype == 'staff' and monitored_fc %}
+            <div style="background: linear-gradient(135deg, var(--primary-gold) 0%, #b8912d 100%); color: white; padding: 12px 25px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border-radius: 12px; margin-bottom: 25px;">
+                <span><i class="fa-solid fa-eye" style="margin-right: 8px;"></i> Monitoring: <strong>{{ monitored_fc.name }}</strong> &mdash; <small style="opacity:0.85;">{{ monitored_fc.email }}</small></span>
+                <a href="{{ request.path }}?clear_fc=1" style="color: white; font-weight: bold; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 6px 14px; border-radius: 8px; text-decoration: none;"><i class="fa-solid fa-list"></i> All Fecilitation Centers</a>
+            </div>
+            {% endif %}
+
             {% block content %}
             {% endblock %}
         </main>

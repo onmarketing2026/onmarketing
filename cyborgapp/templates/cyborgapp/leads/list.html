@@ -16,6 +16,7 @@
     }
     .status-pending { background: rgba(255, 193, 7, 0.12); color: #d39e00; border: 1px solid rgba(255, 193, 7, 0.2); }
     .status-confirmed { background: rgba(25, 135, 84, 0.12); color: #198754; border: 1px solid rgba(25, 135, 84, 0.2); }
+    .status-payment-pending { background: rgba(253, 126, 20, 0.12); color: #fd7e14; border: 1px solid rgba(253, 126, 20, 0.25); }
 
     .btn-create-premium {
         background: linear-gradient(135deg, var(--role-color), #4facfe);
@@ -154,7 +155,13 @@
                     </td>
                     {% endif %}
                     <td>
-                        <span class="status-badge status-{{ lead.status }}">{{ lead.status }}</span>
+                        {% if lead.status == 'confirmed' and lead.payment_mode == 'part' and lead.installment_pending %}
+                            <span class="status-badge status-payment-pending"><i class="fa-solid fa-credit-card" style="margin-right:4px;"></i>Payment Pending</span>
+                        {% elif lead.status == 'confirmed' %}
+                            <span class="status-badge status-confirmed">Confirmed</span>
+                        {% else %}
+                            <span class="status-badge status-{{ lead.status }}">{{ lead.status }}</span>
+                        {% endif %}
                     </td>
                     <td>
                         <div style="display: flex; gap: 10px; justify-content: center;">
@@ -170,7 +177,7 @@
                                         data-status="{{ lead.status }}"
                                         data-cat-type="{{ lead.requirement.category.cat_type|default:'other' }}"
                                         data-items="{% for item in lead.items.all %}{{ item.subcategory_id }}:{{ item.count }}{% if not forloop.last %},{% endif %}{% endfor %}"
-                                        data-all-req-items="{% for item in lead.requirement.items.all %}{{ item.subcategory_id }}:{{ item.subcategory.name }}:{{ item.count }}:{{ item.total_amount }}:{{ item.get_left_count }}{% if not forloop.last %}|{% endif %}{% endfor %}"
+                                        data-all-req-items="{{ lead.get_req_items_with_fc_limits }}"
                                         title="View/Edit Lead Details">
                                     <i class="fa-solid fa-pen-to-square"></i>
                                 </button>
@@ -214,7 +221,7 @@
                     <select name="requirement" id="leadRequirement" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                         <option value="">Select Requirement</option>
                         {% for req in approved_requirements %}
-                            <option value="{{ req.id }}" data-cat-type="{{ req.category.cat_type|default:'other' }}" data-items="{% for item in req.items.all %}{{ item.subcategory_id }}:{{ item.subcategory.name }}:{{ item.count }}:{{ item.total_amount }}:{{ item.get_left_count }}{% if not forloop.last %}|{% endif %}{% endfor %}">
+                            <option value="{{ req.id }}" data-cat-type="{{ req.category.cat_type|default:'other' }}">
                                 {{ req.title }} (By {{ req.customer.name }})
                             </option>
                         {% endfor %}
@@ -279,6 +286,36 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Payment Config Section (only for superadmin, district, manager) -->
+                {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                <div id="paymentConfigSection" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid var(--border-color); border-radius: 8px; background: #f8f9fa;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Payment Mode</label>
+                        <select id="leadPaymentMode" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                            <option value="single">Single Payment</option>
+                            <option value="part">Part Payment</option>
+                        </select>
+                    </div>
+                    <div id="partPaymentConfig" style="display: none;">
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Number of Parts</label>
+                            <select id="paymentPartsCount" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                                <option value="2">2 Parts</option>
+                                <option value="3">3 Parts</option>
+                                <option value="4">4 Parts</option>
+                                <option value="5">5 Parts</option>
+                            </select>
+                        </div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Installment Amounts (₹)</label>
+                        <div id="partsAmountContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+                            <!-- Dynamically generated inputs -->
+                        </div>
+                        <div id="paymentTotalValidation" style="font-weight: bold; font-size: 0.8rem; margin-top: 8px; color: #dc3545; display: none;"></div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <button type="button" id="saveUpdateBtn" style="width: 100%; background: var(--role-color); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 0.95rem;">Save & Update Lead</button>
             </div>
 
@@ -290,6 +327,17 @@
             <div id="confirmedMsg" style="display: none; margin-bottom: 30px; padding: 20px; background: rgba(25, 135, 84, 0.08); color: #198754; border-radius: 10px; text-align: center; border: 1px solid rgba(25, 135, 84, 0.2);">
                 <i class="fa-solid fa-circle-check" style="font-size: 1.5rem; margin-bottom: 10px; display: block;"></i>
                 <strong>Lead Confirmed!</strong><br>The conversion is complete.
+            </div>
+
+            <!-- Installments Display Section -->
+            <div id="installmentsSection" style="display: none; margin-bottom: 30px; padding: 20px; border: 1px solid var(--border-color); border-radius: 12px; background: #f8f9fa;">
+                <h4 style="margin-bottom: 15px; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; font-weight: bold;">
+                    <i class="fa-solid fa-credit-card" style="color: var(--role-color);"></i>
+                    Payment Installments
+                </h4>
+                <div id="installmentsList" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Dynamically populated installments list -->
+                </div>
             </div>
 
             <div id="reqRejectedMsg" style="display: none; margin-bottom: 30px; padding: 20px; background: rgba(220, 53, 69, 0.08); color: #dc3545; border-radius: 10px; text-align: center; border: 1px solid rgba(220, 53, 69, 0.2);">
@@ -318,6 +366,13 @@
 {% block extra_js %}
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
+    // Assigned items per requirement for this marketing user (filtered by FC assignment)
+    const reqAssignedItems = {{ req_assigned_items_json|safe }};
+    const currentUserUsertype = "{{ request.user.usertype }}";
+    const currentUserId = {{ request.user.id }};
+    let currentLeadTotalAmount = 0;
+    let currentLeadConfirmedById = null;
+
     document.addEventListener('DOMContentLoaded', function() {
         $('#leadsTable').DataTable({
             responsive: true,
@@ -413,20 +468,49 @@
                     div.style.border = '1px solid var(--border-color)';
                     
                     let countInput = '';
+                    const leftDisplay = parseInt(leftCount) === 999999 ? 'Unlimited' : leftCount;
                     if (catType === 'count') {
                         countInput = `
-                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
+                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                                 <input type="number" name="count_${subId}" value="${countValue}" placeholder="Qty" class="item-input" data-left="${leftCount}" style="width: 75px; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.85rem; font-weight: 600;">
+                                <span style="background: #e9ecef; color: #495057; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; border: 1px solid var(--border-color);">
+                                    Assigned: ${maxCount}
+                                </span>
                                 <span style="background: rgba(25, 135, 84, 0.08); color: #198754; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(25, 135, 84, 0.15);">
-                                    <i class="fa-solid fa-boxes-stacked" style="margin-right: 4px;"></i>LEFT: ${parseInt(maxCount) === 0 ? '∞' : leftCount}
+                                    Remaining: ${leftDisplay}
                                 </span>
                             </div>
                         `;
+                    } else {
+                        if (parseInt(maxCount) > 0) {
+                            countInput = `
+                                <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                    <span style="background: #e9ecef; color: #495057; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; border: 1px solid var(--border-color);">
+                                        Assigned: ${maxCount}
+                                    </span>
+                                    <span style="background: rgba(25, 135, 84, 0.08); color: #198754; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(25, 135, 84, 0.15);">
+                                        Remaining: ${leftDisplay}
+                                    </span>
+                                </div>
+                            `;
+                        }
                     }
 
+                    const isDisabled = parseInt(leftCount) <= 0;
+                    if (isDisabled) {
+                        div.style.opacity = '0.6';
+                        div.style.cursor = 'not-allowed';
+                        div.onclick = function() {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Item Unavailable',
+                                text: 'You cannot check this because the remaining limit is 0.'
+                            });
+                        };
+                    }
                     div.innerHTML = `
-                        <input type="checkbox" name="selected_items" value="${subId}" ${isSelected ? 'checked' : ''} class="item-input" style="width: 18px; height: 18px; margin-top: 3px;">
-                        <div style="flex: 1;">
+                        <input type="checkbox" name="selected_items" value="${subId}" data-left="${leftCount}" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} class="item-input" style="width: 18px; height: 18px; margin-top: 3px; ${isDisabled ? 'pointer-events: none;' : ''}">
+                        <div style="flex: 1; ${isDisabled ? 'pointer-events: none;' : ''}">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <span style="font-size: 0.85rem; font-weight: 600;">${subName}</span>
                                 <span style="font-size: 0.8rem; font-weight: 700; color: #198754;">₹${itemPrice}</span>
@@ -462,7 +546,17 @@
             const selectedOption = this.options[this.selectedIndex];
             if (selectedOption.value) {
                 leadForm.action = `/requirements/${selectedOption.value}/lead/create/`;
-                renderItems(selectedOption.getAttribute('data-cat-type'), selectedOption.getAttribute('data-items'));
+                const reqId = selectedOption.value;
+                const catType = selectedOption.getAttribute('data-cat-type');
+                // Build pipe-separated items string from the server-filtered assigned items
+                const assignedItems = reqAssignedItems[reqId] || [];
+                let itemsRaw = '';
+                if (assignedItems.length > 0) {
+                    itemsRaw = assignedItems.map(i =>
+                        `${i.id}:${i.name}:${i.count}:${i.price}:${i.left}`
+                    ).join('|');
+                }
+                renderItems(catType, itemsRaw || null);
             } else {
                 leadItemsSection.style.display = 'none';
             }
@@ -482,13 +576,14 @@
             const selectedOption = leadRequirement.options[leadRequirement.selectedIndex];
             const catType = selectedOption ? selectedOption.getAttribute('data-cat-type') : '';
             
-            if (catType === 'count') {
-                let valid = true;
-                selectedItems.forEach(cb => {
-                    const subId = cb.value;
+            let valid = true;
+            selectedItems.forEach(cb => {
+                const subId = cb.value;
+                const left = parseInt(cb.getAttribute('data-left')) || 0;
+                
+                if (catType === 'count') {
                     const qtyInput = leadForm.querySelector(`input[name="count_${subId}"]`);
                     const qty = parseInt(qtyInput.value) || 0;
-                    const left = parseInt(qtyInput.getAttribute('data-left')) || 0;
                     
                     if (qty <= 0) {
                         valid = false;
@@ -497,7 +592,7 @@
                             title: 'Quantity Required',
                             text: 'Please enter a valid quantity for all selected items.'
                         });
-                    } else if (qty > left && left > 0) {
+                    } else if (qty > left) {
                         valid = false;
                         Swal.fire({
                             icon: 'error',
@@ -505,9 +600,19 @@
                             text: `Quantity for item exceeds available stock (Left: ${left}).`
                         });
                     }
-                });
-                if (!valid) e.preventDefault();
-            }
+                } else {
+                    // For non-count categories, check if remaining count is 0 (or less)
+                    if (left <= 0) {
+                        valid = false;
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Insufficient Limit',
+                            text: 'No remaining limit left for this subcategory (Remaining: 0).'
+                        });
+                    }
+                }
+            });
+            if (!valid) e.preventDefault();
         });
 
         const editBtns = document.querySelectorAll('.edit-lead-btn');
@@ -520,7 +625,7 @@
                 const submitBtn = document.getElementById('leadSubmitBtn');
                 const inputs = leadForm.querySelectorAll('input, textarea, select');
                 
-                if (status === 'confirmed') {
+                if (status === 'confirmed' || currentUserUsertype === 'staff') {
                     leadModalTitle.textContent = "View Lead Details";
                     submitBtn.style.display = 'none';
                     inputs.forEach(input => input.disabled = true);
@@ -548,9 +653,21 @@
                         selectedItems[parts[0]] = parts[1];
                     });
                 }
-                renderItems(this.getAttribute('data-cat-type'), this.getAttribute('data-all-req-items'), selectedItems);
+                const catType = this.getAttribute('data-cat-type');
+                const reqId = this.getAttribute('data-req-id');
+                // Use district-assigned filtered items if available; fall back to data-all-req-items
+                const assignedItems = reqAssignedItems[reqId];
+                let allReqItemsRaw;
+                if (assignedItems !== undefined) {
+                    allReqItemsRaw = assignedItems.length > 0
+                        ? assignedItems.map(i => `${i.id}:${i.name}:${i.count}:${i.price}:${i.left}`).join('|')
+                        : null;
+                } else {
+                    allReqItemsRaw = this.getAttribute('data-all-req-items');
+                }
+                renderItems(catType, allReqItemsRaw, selectedItems);
                 
-                if (status === 'confirmed') {
+                if (status === 'confirmed' || currentUserUsertype === 'staff') {
                     setTimeout(() => {
                         leadItemsList.querySelectorAll('.item-input').forEach(i => i.disabled = true);
                     }, 10);
@@ -574,6 +691,153 @@
         let currentLeadId = null;
         let historyDataTable = null;
 
+        window.generateInstallmentInputs = function() {
+            const countSelect = document.getElementById('paymentPartsCount');
+            if (!countSelect) return;
+            const parts = parseInt(countSelect.value || 2);
+            const container = document.getElementById('partsAmountContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            const leadTotal = parseFloat(currentLeadTotalAmount);
+            const baseShare = Math.floor((leadTotal / parts) * 100) / 100;
+            const diff = Math.round((leadTotal - (baseShare * parts)) * 100) / 100;
+            
+            for (let i = 1; i <= parts; i++) {
+                const div = document.createElement('div');
+                div.style.cssText = "display: flex; align-items: center; gap: 10px;";
+                
+                const label = document.createElement('span');
+                label.style.cssText = "font-size: 0.85rem; font-weight: bold; width: 60px; color: var(--text-muted);";
+                label.textContent = `Part ${i}:`;
+                
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'form-control installment-amount-input';
+                input.step = '0.01';
+                input.style.cssText = "flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; height: 38px;";
+                
+                let prefillVal = baseShare;
+                if (i === parts) {
+                    prefillVal = Math.round((baseShare + diff) * 100) / 100;
+                }
+                input.value = prefillVal.toFixed(2);
+                
+                input.oninput = window.validateInstallmentTotal;
+                
+                div.appendChild(label);
+                div.appendChild(input);
+                container.appendChild(div);
+            }
+            window.validateInstallmentTotal();
+        };
+
+        window.validateInstallmentTotal = function() {
+            const inputs = document.querySelectorAll('.installment-amount-input');
+            let sum = 0;
+            inputs.forEach(input => {
+                sum += parseFloat(input.value || 0);
+            });
+            sum = Math.round(sum * 100) / 100;
+            const leadTotal = parseFloat(currentLeadTotalAmount);
+            const diff = Math.round((leadTotal - sum) * 100) / 100;
+            
+            const validationDiv = document.getElementById('paymentTotalValidation');
+            if (!validationDiv) return false;
+            
+            if (Math.abs(diff) > 0.01) {
+                validationDiv.style.display = 'block';
+                validationDiv.style.color = '#dc3545';
+                validationDiv.textContent = `Total: ₹${sum.toFixed(2)} of ₹${leadTotal.toFixed(2)} (₹${diff > 0 ? diff.toFixed(2) + ' remaining' : Math.abs(diff).toFixed(2) + ' over limit'})`;
+                return false;
+            } else {
+                validationDiv.style.display = 'block';
+                validationDiv.style.color = '#198754';
+                validationDiv.textContent = `Total matches exactly: ₹${leadTotal.toFixed(2)}`;
+                return true;
+            }
+        };
+
+        window.initiateInstallmentPayment = function(installmentId, amount, btn) {
+            // Disable the button immediately to prevent double-clicks
+            if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
+
+            const reEnableBtn = function() {
+                if (btn) { btn.disabled = false; btn.textContent = 'Pay Now'; }
+            };
+
+            Swal.fire({
+                title: 'Initiate Payment',
+                text: `Confirm payment of ₹${amount.toFixed(2)} for this installment?`,
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: 'var(--role-color)',
+                cancelButtonColor: '#aaa'
+            }).then(res => {
+                if (res.isConfirmed) {
+                    fetch(`/installments/${installmentId}/pay/`)
+                    .then(r => r.json())
+                    .then(payData => {
+                        if (payData.status === 'payment_required') {
+                            var options = {
+                                "key": payData.key,
+                                "amount": payData.amount,
+                                "currency": "INR",
+                                "name": "OnCyborg",
+                                "description": "Installment Payment",
+                                "order_id": payData.order_id,
+                                "handler": function (response) {
+                                    fetch(`/installments/${installmentId}/verify/`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRFToken': '{{ csrf_token }}'
+                                        },
+                                        body: JSON.stringify({
+                                            razorpay_payment_id: response.razorpay_payment_id,
+                                            razorpay_order_id: response.razorpay_order_id,
+                                            razorpay_signature: response.razorpay_signature
+                                        })
+                                    })
+                                    .then(vr => vr.json())
+                                    .then(vData => {
+                                        if (vData.status === 'success') {
+                                            Swal.fire('Success', 'Installment paid successfully!', 'success')
+                                            .then(() => location.reload());
+                                        } else {
+                                            reEnableBtn();
+                                            Swal.fire('Error', vData.message, 'error');
+                                        }
+                                    });
+                                },
+                                "modal": {
+                                    "ondismiss": reEnableBtn
+                                },
+                                "prefill": {
+                                    "name": payData.lead_name,
+                                    "email": payData.lead_email,
+                                    "contact": payData.lead_phone
+                                },
+                                "theme": {
+                                    "color": "#198754"
+                                }
+                            };
+                            var rzp = new Razorpay(options);
+                            rzp.on('payment.failed', function() { reEnableBtn(); });
+                            rzp.open();
+                        } else {
+                            reEnableBtn();
+                            Swal.fire('Error', payData.message || 'Failed to initiate payment.', 'error');
+                        }
+                    })
+                    .catch(() => reEnableBtn());
+                } else {
+                    // User cancelled the Swal confirm dialog
+                    reEnableBtn();
+                }
+            });
+        };
+
         $(document).on('click', '.history-lead-btn', function() {
             currentLeadId = this.getAttribute('data-id');
             historyLeadName.textContent = this.getAttribute('data-name');
@@ -595,16 +859,31 @@
                 return map[level] || (level ? level.toUpperCase() : '');
             }
 
-            // Fetch Updates and Permissions
             fetch(`/leads/${currentLeadId}/updates/get/`)
                 .then(r => r.json())
                 .then(data => {
+                    currentLeadTotalAmount = data.total_amount;
+                    currentLeadConfirmedById = data.confirmed_by_id || null;
+
                     historyList.innerHTML = '';
                     if (data.updates.length > 0) {
                         data.updates.forEach(u => {
+                            let text = u.update_text;
+                            // Clean up role type names in the logs to use friendly display names
+                            text = text.replace(/\[MARKETING\]/gi, '[DIGITAL FRANCHISE]');
+                            text = text.replace(/\[MANDALAM\]/gi, '[FECILITATION CENTER]');
+                            text = text.replace(/\[DISTRICT\]/gi, '[DISTRICT FRANCHISE]');
+                            text = text.replace(/\[SUPERADMIN\]/gi, '[SUPERADMIN]');
+                            text = text.replace(/\[MANAGER\]/gi, '[MANAGER]');
+
+                            text = text.replace(/\bmarketing\b/g, 'DIGITAL FRANCHISE');
+                            text = text.replace(/\bmandalam\b/g, 'FECILITATION CENTER');
+                            text = text.replace(/\bdistrict\b/g, 'DISTRICT FRANCHISE');
+                            text = text.replace(/\bsuperadmin\b/g, 'SUPERADMIN');
+
                             const row = document.createElement('tr');
                             row.innerHTML = `
-                                <td style="padding: 12px 15px; line-height: 1.5; color: var(--text-main);">${u.update_text}</td>
+                                <td style="padding: 12px 15px; line-height: 1.5; color: var(--text-main);">${text}</td>
                                 <td style="padding: 12px 15px; color: var(--text-muted); font-size: 0.8rem;">${u.created_at}</td>
                             `;
                             historyList.appendChild(row);
@@ -627,18 +906,74 @@
                     const confirmedMsg = document.getElementById('confirmedMsg');
                     const reqRejectedMsg = document.getElementById('reqRejectedMsg');
                     const noPermissionMsg = document.getElementById('noPermissionMsg');
+                    const paymentConfigSection = document.getElementById('paymentConfigSection');
+                    const leadPaymentMode = document.getElementById('leadPaymentMode');
+                    const partPaymentConfig = document.getElementById('partPaymentConfig');
                     
                     // Default hide all
                     addUpdateSection.style.display = 'none';
                     noPermissionMsg.style.display = 'none';
                     confirmedMsg.style.display = 'none';
                     reqRejectedMsg.style.display = 'none';
+                    if (paymentConfigSection) {
+                        paymentConfigSection.style.display = 'none';
+                        leadPaymentMode.value = 'single';
+                        partPaymentConfig.style.display = 'none';
+                        document.getElementById('partsAmountContainer').innerHTML = '';
+                        document.getElementById('paymentTotalValidation').style.display = 'none';
+                    }
+
+                    // Reset and Populate Installments
+                    const instSection = document.getElementById('installmentsSection');
+                    const instList = document.getElementById('installmentsList');
+                    if (instSection && instList) {
+                        instSection.style.display = 'none';
+                        instList.innerHTML = '';
+                        if (data.installments && data.installments.length > 0) {
+                            instSection.style.display = 'block';
+                            let hasPayBtn = false;
+                            data.installments.forEach(inst => {
+                                const row = document.createElement('div');
+                                row.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 8px; background: #fff; border: 1px solid var(--border-color);";
+                                
+                                const left = document.createElement('div');
+                                left.innerHTML = `<span style="font-weight: bold; color: var(--text-main);">Installment ${inst.installment_number}</span><br><span style="font-size: 0.85rem; color: var(--text-muted);">₹${inst.amount.toFixed(2)}</span>`;
+                                
+                                const right = document.createElement('div');
+                                if (inst.status === 'paid') {
+                                    right.innerHTML = `<span style="color: #198754; font-weight: bold; display: flex; align-items: center; gap: 5px;"><i class="fa-solid fa-circle-check"></i> Paid</span>`;
+                                } else {
+                                    const isNextUnpaid = !hasPayBtn;
+                                    hasPayBtn = true;
+                                    // Only the user who confirmed this lead can pay installments
+                                    // If no user has confirmed it yet, let any superadmin, district, or manager pay it
+                                    const canPay = (currentUserUsertype !== 'staff') && ((currentLeadConfirmedById === null && ['superadmin', 'district', 'manager'].includes(currentUserUsertype)) || (currentUserId === currentLeadConfirmedById));
+                                    if (canPay && isNextUnpaid) {
+                                        const payBtn = document.createElement('button');
+                                        payBtn.className = "btn btn-sm btn-success";
+                                        payBtn.style.cssText = "font-weight: bold; padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; background: #198754; color: #fff;";
+                                        payBtn.textContent = "Pay Now";
+                                        payBtn.onclick = function() {
+                                            window.initiateInstallmentPayment(inst.id, inst.amount, this);
+                                        };
+                                        right.appendChild(payBtn);
+                                    } else {
+                                        right.innerHTML = `<span style="color: #dc3545; font-weight: bold; display: flex; align-items: center; gap: 5px;"><i class="fa-solid fa-clock"></i> Pending</span>`;
+                                    }
+                                }
+                                row.appendChild(left);
+                                row.appendChild(right);
+                                instList.appendChild(row);
+                            });
+                        }
+                    }
+
 
                     if (data.lead_status === 'confirmed') {
                         confirmedMsg.style.display = 'block';
                     } else if (!data.requirement_approved) {
                         reqRejectedMsg.style.display = 'block';
-                    } else if (!data.can_update) {
+                    } else if (!data.can_update || currentUserUsertype === 'staff') {
                         lockedLevelName.textContent = formatLevelName(data.current_level);
                         noPermissionMsg.style.display = 'block';
                     } else {
@@ -654,9 +989,36 @@
                         document.getElementById('updateDate').value = `${year}-${month}-${day}`;
                         document.getElementById('updateTime').value = `${hours}:${minutes}`;
                         
-                        document.getElementById('updateLeadStatus').value = data.lead_status;
+                        const statusSelect = document.getElementById('updateLeadStatus');
+                        statusSelect.value = data.lead_status;
                         document.getElementById('newUpdateText').value = '';
                         passToNext.checked = false;
+
+                        // Setup dynamic payment config visibility
+                        function togglePaymentConfigVisibility() {
+                            if (paymentConfigSection && statusSelect.value === 'confirmed' && ['superadmin', 'district', 'manager'].includes(currentUserUsertype)) {
+                                paymentConfigSection.style.display = 'block';
+                            } else if (paymentConfigSection) {
+                                paymentConfigSection.style.display = 'none';
+                            }
+                        }
+                        statusSelect.onchange = togglePaymentConfigVisibility;
+                        togglePaymentConfigVisibility();
+
+                        if (leadPaymentMode) {
+                            leadPaymentMode.onchange = function() {
+                                if (leadPaymentMode.value === 'part') {
+                                    partPaymentConfig.style.display = 'block';
+                                    window.generateInstallmentInputs();
+                                } else {
+                                    partPaymentConfig.style.display = 'none';
+                                }
+                            };
+                            const partsCountSelect = document.getElementById('paymentPartsCount');
+                            if (partsCountSelect) {
+                                partsCountSelect.onchange = window.generateInstallmentInputs;
+                            }
+                        }
 
                         // Set Next Level Name
                         const levels = ['marketing', 'mandalam', 'district', 'superadmin'];
@@ -689,9 +1051,47 @@
                 return;
             }
 
+            // Escalation and Confirmed status are mutually exclusive
+            if (pass && status === 'confirmed') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Invalid Combination',
+                    text: 'You cannot escalate to the next level and confirm the lead at the same time. Please choose one.',
+                    confirmButtonColor: 'var(--role-color)'
+                });
+                return;
+            }
+
             // Prevent multiple clicks
             saveUpdateBtn.disabled = true;
             saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+
+            const payload = { 
+                update_text: text, 
+                status: status,
+                pass_lead: pass,
+                custom_date: customDate,
+                custom_time: customTime
+            };
+
+            const leadPaymentMode = document.getElementById('leadPaymentMode');
+            if (leadPaymentMode && status === 'confirmed' && ['superadmin', 'district', 'manager'].includes(currentUserUsertype)) {
+                payload.payment_mode = leadPaymentMode.value;
+                if (leadPaymentMode.value === 'part') {
+                    if (!window.validateInstallmentTotal()) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Validation Error',
+                            text: 'Please make sure the sum of installment amounts matches the total lead amount exactly.',
+                            confirmButtonColor: 'var(--role-color)'
+                        });
+                        saveUpdateBtn.disabled = false;
+                        saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                        return;
+                    }
+                    payload.installments = Array.from(document.querySelectorAll('.installment-amount-input')).map(i => parseFloat(i.value || 0));
+                }
+            }
 
             fetch(`/leads/${currentLeadId}/update/`, {
                 method: 'POST',
@@ -699,13 +1099,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': '{{ csrf_token }}'
                 },
-                body: JSON.stringify({ 
-                    update_text: text, 
-                    status: status,
-                    pass_lead: pass,
-                    custom_date: customDate,
-                    custom_time: customTime
-                })
+                body: JSON.stringify(payload)
             })
             .then(r => r.json())
             .then(data => {
@@ -722,12 +1116,19 @@
                         "amount": data.amount, 
                         "currency": "INR",
                         "name": "OnCyborg",
-                        "description": "Lead Confirmation Payment",
+                        "description": data.payment_mode === 'part' ? "Lead Installment 1 Payment" : "Lead Confirmation Payment",
                         "order_id": data.order_id,
                         "handler": function (response) {
                             // On successful payment, verify with backend
                             saveUpdateBtn.disabled = true;
                             saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment...';
+                            
+                            const verifyPayload = {
+                                ...payload,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_signature: response.razorpay_signature
+                            };
                             
                             fetch(`/leads/${currentLeadId}/update/`, {
                                 method: 'POST',
@@ -735,16 +1136,7 @@
                                     'Content-Type': 'application/json',
                                     'X-CSRFToken': '{{ csrf_token }}'
                                 },
-                                body: JSON.stringify({ 
-                                    update_text: text, 
-                                    status: status,
-                                    pass_lead: pass,
-                                    custom_date: customDate,
-                                    custom_time: customTime,
-                                    razorpay_payment_id: response.razorpay_payment_id,
-                                    razorpay_order_id: response.razorpay_order_id,
-                                    razorpay_signature: response.razorpay_signature
-                                })
+                                body: JSON.stringify(verifyPayload)
                             })
                             .then(r => r.json())
                             .then(verifyData => {

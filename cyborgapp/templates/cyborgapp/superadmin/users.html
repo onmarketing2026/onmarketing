@@ -275,10 +275,27 @@
         <div style="padding: 20px;">
             <table id="usersTable" class="display" style="width: 100%;">
             <thead>
-                <tr>
+                            <tr>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th {% if request.user.usertype == 'mandalam' or selected_usertype == 'district' or selected_usertype == 'customer' or request.user.usertype == 'district' and selected_usertype == 'mandalam' or request.user.usertype == 'manager' and selected_usertype == 'mandalam' %}style="display:none;"{% endif %}>
+                        {% if request.user.usertype == 'superadmin' %}
+                            {% if selected_usertype == 'mandalam' or selected_usertype == 'manager' %}
+                                District
+                            {% elif selected_usertype == 'marketing' %}
+                                District/Feciliation Center
+                            {% elif selected_usertype == 'staff' %}
+                                Assigned Feciliation Centers
+                            {% else %}
+                                Hierarchy
+                            {% endif %}
+                        {% elif request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                            Feciliation Center
+                        {% else %}
+                            Hierarchy
+                        {% endif %}
+                    </th>
                     <th>Created By</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -336,6 +353,7 @@
                             {% if not selected_usertype or selected_usertype == 'district' %}<option value="district">District Franchise</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'mandalam' %}<option value="mandalam">Fecilitation Center</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'marketing' %}<option value="marketing">Digital Franchise</option>{% endif %}
+                            {% if not selected_usertype or selected_usertype == 'staff' %}<option value="staff">Staff</option>{% endif %}
                         {% elif request.user.usertype == 'district' or request.user.usertype == 'manager' %}
                             {% if not selected_usertype or selected_usertype == 'mandalam' %}<option value="mandalam">Fecilitation Center</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'marketing' %}<option value="marketing">Digital Franchise</option>{% endif %}
@@ -380,6 +398,34 @@
                             {% endfor %}
                         </div>
                     </div>
+
+                    <!-- Staff: Assign Facilitation Centers -->
+                    <div id="staff-fc-group" style="display: none;">
+                        <div class="form-group">
+                            <label>Select District to Add Fecilitation Centers</label>
+                            <select id="staffDistrictSelect" class="form-control">
+                                <option value="">-- Select District --</option>
+                                {% for d in districts %}
+                                    <option value="{{ d.id }}">{{ d.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group" id="staffFcListGroup" style="display: none;">
+                            <label>Select Fecilitation Centers to Assign</label>
+                            <div id="staffFcCheckboxList" style="background: #fff; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; max-height: 180px; overflow-y: auto;">
+                                <small style="color: var(--text-muted);">Loading...</small>
+                            </div>
+                            <small style="color: var(--text-muted); margin-top: 5px; display: block;">You can select multiple FCs from different districts. Add from each district separately.</small>
+                        </div>
+                        <div class="form-group" id="staffSelectedFcGroup" style="display: none;">
+                            <label style="font-weight: 700; color: var(--text-main);">Selected Fecilitation Centers</label>
+                            <div id="staffSelectedFcTags" style="display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; background: rgba(111,66,193,0.05); border: 1px solid rgba(111,66,193,0.15); border-radius: 8px; min-height: 40px;">
+                                <small style="color: var(--text-muted);">None selected yet.</small>
+                            </div>
+                            <!-- Hidden inputs will be injected here by JS -->
+                            <div id="staffFcHiddenInputs"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <button type="submit" id="submitBtn" class="btn-submit">Create User</button>
@@ -401,6 +447,9 @@
                 url: window.location.pathname + window.location.search,
                 type: 'GET'
             },
+            {% if request.user.usertype == 'mandalam' or selected_usertype == 'district' or selected_usertype == 'customer' or request.user.usertype == 'district' and selected_usertype == 'mandalam' or request.user.usertype == 'manager' and selected_usertype == 'mandalam' %}
+            columnDefs: [{ visible: false, targets: 3 }],
+            {% endif %}
             columns: [
                 { data: 'name' },
                 { data: 'email' },
@@ -408,6 +457,70 @@
                     data: 'usertype_display',
                     render: function(data, type, row) {
                         return `<span class="role-badge">${data}</span>`;
+                    }
+                },
+                {
+                    data: null,
+                    orderable: false,
+                    render: function(data, type, row) {
+                        const loggedInUsertype = "{{ request.user.usertype }}";
+                        const ut = row.usertype;
+                        if (ut === 'mandalam') {
+                            // Facilitation Center: show district
+                            return row.assigned_district_name
+                                ? `<div style="font-size:0.8rem;">
+                                       <i class="fa-solid fa-map-pin" style="color:var(--primary-gold);margin-right:4px;"></i>
+                                       <span style="font-weight:600;">${row.assigned_district_name}</span>
+                                   </div>`
+                                : `<span style="color:var(--text-muted);font-size:0.8rem;">—</span>`;
+                        } else if (ut === 'marketing') {
+                            // Digital Franchise: show district + facilitation center (if superadmin)
+                            // Or show only facilitation center (if district/manager)
+                            let html = '';
+                            const districtLabel = row.mandalam_district_name || row.assigned_district_name || '';
+                            const mandalamLabel = row.assigned_mandalam_name || '';
+                            if (loggedInUsertype === 'superadmin') {
+                                if (districtLabel) {
+                                    html += `<div style="font-size:0.78rem;">
+                                        <i class="fa-solid fa-map-pin" style="color:var(--primary-gold);margin-right:4px;"></i>
+                                        <span style="font-weight:600;">${districtLabel}</span>
+                                    </div>`;
+                                }
+                                if (mandalamLabel) {
+                                    html += `<div style="font-size:0.78rem;margin-top:3px;">
+                                        <i class="fa-solid fa-building" style="color:#0d6efd;margin-right:4px;"></i>
+                                        <span style="font-weight:600;">${mandalamLabel}</span>
+                                    </div>`;
+                                }
+                            } else {
+                                // Logged in user is district franchise or manager -> show only facilitation center
+                                if (mandalamLabel) {
+                                    html += `<div style="font-size:0.78rem;">
+                                        <i class="fa-solid fa-building" style="color:#0d6efd;margin-right:4px;"></i>
+                                        <span style="font-weight:600;">${mandalamLabel}</span>
+                                    </div>`;
+                                }
+                            }
+                        } else if (ut === 'staff') {
+                            if (row.assigned_fc_names && row.assigned_fc_names.length > 0) {
+                                let html = '<div style="display:flex; flex-wrap:wrap; gap:4px;">';
+                                row.assigned_fc_names.forEach(name => {
+                                    html += `<span class="status-badge" style="font-size:0.75rem; padding: 2px 6px; background-color: var(--role-bg-light); color: var(--role-color); font-weight:600; border-radius: 4px; border: 1px solid var(--role-color);">${name}</span>`;
+                                });
+                                html += '</div>';
+                                return html;
+                            }
+                            return `<span style="color:var(--text-muted);font-size:0.8rem;">—</span>`;
+                        } else if (ut === 'manager') {
+                            // Manager: show district
+                            return row.assigned_district_name
+                                ? `<div style="font-size:0.8rem;">
+                                       <i class="fa-solid fa-map-pin" style="color:var(--primary-gold);margin-right:4px;"></i>
+                                       <span style="font-weight:600;">${row.assigned_district_name}</span>
+                                   </div>`
+                                : `<span style="color:var(--text-muted);font-size:0.8rem;">—</span>`;
+                        }
+                        return '';
                     }
                 },
                 { data: 'created_by' },
@@ -452,7 +565,8 @@
                                         data-usertype="${row.usertype}"
                                         data-district="${row.assigned_district_id}"
                                         data-mandalam="${row.assigned_mandalam_id}"
-                                        data-accessible-districts="${row.accessible_districts}">
+                                        data-accessible-districts="${row.accessible_districts}"
+                                        data-assigned-fcs="${row.assigned_facilitation_centers || ''}">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <form action="/superadmin/users/${row.id}/delete/" method="POST" style="display:inline;" class="delete-form">
@@ -479,7 +593,7 @@
             const isChecked = this.checked;
             const checkbox = this;
             
-            if (isChecked && userType !== 'manager' && userType !== 'customer') {
+            if (isChecked && userType !== 'manager' && userType !== 'customer' && userType !== 'staff') {
                 e.preventDefault();
                 checkbox.checked = false; // Revert visually until confirmed
                 
@@ -645,22 +759,19 @@
             let showDistrict = false;
             let showMandalam = false;
             let showAccessibleDistricts = false;
+            let showStaffFc = false;
 
             if (currentUserType === 'superadmin') {
-                // Superadmin assigns districts to managers and mandalams
                 if (['manager', 'mandalam'].includes(role)) {
                     showDistrict = true;
-                } 
-                // Superadmin assigns mandalam to marketing
-                else if (role === 'marketing') {
+                } else if (role === 'marketing') {
                     showMandalam = true;
-                }
-                else if (role === 'customer') {
+                } else if (role === 'customer') {
                     showAccessibleDistricts = true;
+                } else if (role === 'staff') {
+                    showStaffFc = true;
                 }
             } else if (currentUserType === 'district' || currentUserType === 'manager') {
-                // District/Manager assigns mandalam to marketing
-                // For mandalam creation, the district is auto-assigned from the logged-in user
                 if (role === 'marketing') {
                     showMandalam = true;
                 }
@@ -668,20 +779,106 @@
                     showAccessibleDistricts = true;
                 }
             }
-            // Mandalam user creating Marketing: mandalam is auto-assigned, so nothing to show
 
-            if (showDistrict || showMandalam || showAccessibleDistricts) {
+            const staffFcGroup = document.getElementById('staff-fc-group');
+
+            if (showDistrict || showMandalam || showAccessibleDistricts || showStaffFc) {
                 hierarchySection.style.display = 'block';
                 if (districtGroup) districtGroup.style.display = showDistrict ? 'block' : 'none';
                 if (mandalamGroup) mandalamGroup.style.display = showMandalam ? 'block' : 'none';
                 if (accessibleDistrictsGroup) accessibleDistrictsGroup.style.display = showAccessibleDistricts ? 'block' : 'none';
+                if (staffFcGroup) staffFcGroup.style.display = showStaffFc ? 'block' : 'none';
             } else {
                 hierarchySection.style.display = 'none';
+                if (staffFcGroup) staffFcGroup.style.display = 'none';
             }
         }
 
         usertypeSelect.addEventListener('change', toggleHierarchy);
-        
+
+        // ---- Staff: District -> FC dynamic loader ----
+        const staffDistrictSelect = document.getElementById('staffDistrictSelect');
+        const staffFcListGroup = document.getElementById('staffFcListGroup');
+        const staffFcCheckboxList = document.getElementById('staffFcCheckboxList');
+        const staffSelectedFcGroup = document.getElementById('staffSelectedFcGroup');
+        const staffSelectedFcTags = document.getElementById('staffSelectedFcTags');
+        const staffFcHiddenInputs = document.getElementById('staffFcHiddenInputs');
+
+        let selectedFcs = {}; // { id: name }
+
+        function renderSelectedFcs() {
+            staffFcHiddenInputs.innerHTML = '';
+            const ids = Object.keys(selectedFcs);
+            if (ids.length > 0) {
+                staffSelectedFcGroup.style.display = 'block';
+                staffSelectedFcTags.innerHTML = ids.map(id => `
+                    <span style="background: rgba(111,66,193,0.12); color: #6f42c1; border: 1px solid rgba(111,66,193,0.2); padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                        ${selectedFcs[id]}
+                        <span style="cursor: pointer; font-size: 1rem; line-height: 1;" data-remove="${id}">&times;</span>
+                    </span>
+                `).join('');
+                ids.forEach(id => {
+                    const inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'assigned_facilitation_centers';
+                    inp.value = id;
+                    staffFcHiddenInputs.appendChild(inp);
+                });
+                // Remove tag click
+                staffSelectedFcTags.querySelectorAll('[data-remove]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        delete selectedFcs[btn.dataset.remove];
+                        renderSelectedFcs();
+                        // Also uncheck if visible
+                        const cb = staffFcCheckboxList.querySelector(`input[value="${btn.dataset.remove}"]`);
+                        if (cb) cb.checked = false;
+                    });
+                });
+            } else {
+                staffSelectedFcGroup.style.display = 'none';
+                staffSelectedFcTags.innerHTML = '<small style="color: var(--text-muted);">None selected yet.</small>';
+            }
+        }
+
+        if (staffDistrictSelect) {
+            staffDistrictSelect.addEventListener('change', function() {
+                const distId = this.value;
+                if (!distId) {
+                    staffFcListGroup.style.display = 'none';
+                    return;
+                }
+                staffFcCheckboxList.innerHTML = '<small style="color: var(--text-muted);">Loading...</small>';
+                staffFcListGroup.style.display = 'block';
+                fetch(`/api/get_mandalams_by_district/?district_id=${distId}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'success' && data.mandalams.length > 0) {
+                            staffFcCheckboxList.innerHTML = data.mandalams.map(m => `
+                                <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" class="staff-fc-checkbox" value="${m.id}" data-name="${m.name}" style="width: 16px; height: 16px; accent-color: #6f42c1;" ${selectedFcs[m.id] ? 'checked' : ''}>
+                                    <span>${m.name} <small style="color: var(--text-muted);">(${m.email})</small></span>
+                                </label>
+                            `).join('');
+                            staffFcCheckboxList.querySelectorAll('.staff-fc-checkbox').forEach(cb => {
+                                cb.addEventListener('change', function() {
+                                    if (this.checked) {
+                                        selectedFcs[this.value] = this.dataset.name;
+                                    } else {
+                                        delete selectedFcs[this.value];
+                                    }
+                                    renderSelectedFcs();
+                                });
+                            });
+                        } else {
+                            staffFcCheckboxList.innerHTML = '<small style="color: var(--text-muted);">No active Fecilitation Centers found in this district.</small>';
+                        }
+                    })
+                    .catch(() => {
+                        staffFcCheckboxList.innerHTML = '<small style="color: #dc3545;">Error loading data.</small>';
+                    });
+            });
+        }
+
         // Real-time Email Validation
         emailInput.addEventListener('input', function() {
             const email = this.value;
@@ -775,6 +972,12 @@
             usertypeSelect.value = "{{ selected_usertype }}";
             {% endif %}
             
+            // Reset staff FC selection
+            selectedFcs = {};
+            renderSelectedFcs();
+            if (staffDistrictSelect) staffDistrictSelect.value = '';
+            if (staffFcListGroup) staffFcListGroup.style.display = 'none';
+
             toggleHierarchy();
             modal.style.display = "block";
         }
@@ -788,6 +991,7 @@
             const districtId = this.getAttribute('data-district');
             const mandalamId = this.getAttribute('data-mandalam');
             const accessibleDistricts = this.getAttribute('data-accessible-districts');
+            const assignedFcsStr = this.getAttribute('data-assigned-fcs') || '';
 
             userForm.reset();
             userForm.action = `/superadmin/users/${id}/edit/`;
@@ -824,6 +1028,19 @@
             }
 
             toggleHierarchy();
+
+            // Pre-populate staff FC assignments if editing a staff user
+            selectedFcs = {};
+            if (usertype === 'staff' && assignedFcsStr) {
+                // We only have IDs, need to look up names from any existing tag labels
+                // Store just IDs for now; names will be populated when district is selected
+                // Alternatively, we fetch all assigned FCs and show them as tags
+                const fcIds = assignedFcsStr.split(',').filter(Boolean);
+                fcIds.forEach(fcId => {
+                    selectedFcs[fcId.trim()] = `FC #${fcId.trim()}`; // placeholder, updated when district loaded
+                });
+                renderSelectedFcs();
+            }
 
             if (districtId) {
                 document.getElementById('assigned_district').value = districtId;
