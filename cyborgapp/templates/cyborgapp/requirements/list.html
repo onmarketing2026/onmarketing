@@ -251,6 +251,9 @@
             let currentSearch = '';
             let searchTimer = null;
             const PER_PAGE = 12;
+            // staffFcSuffix needed for card href links (also used by staff monitoring)
+            const _staffFcId = new URLSearchParams(window.location.search).get('fc_id') || '';
+            const staffFcSuffix = _staffFcId ? `?fc_id=${_staffFcId}` : '';
 
             function renderCards(data, total, page, totalPages) {
                 const grid = document.getElementById('cardGrid');
