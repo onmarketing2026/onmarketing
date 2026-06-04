@@ -160,6 +160,17 @@
 </div>
 
 {% if assigned_fcs %}
+    <!-- Search Bar -->
+    <div style="margin-bottom: 25px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+        <div style="position: relative; max-width: 400px; width: 100%;">
+            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem;"></i>
+            <input type="text" id="fcSearchInput" placeholder="Search facilitation centers..." style="width: 100%; padding: 12px 15px 12px 42px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.9rem; font-weight: 500; outline: none; transition: border-color 0.2s;" oninput="filterFCs()">
+        </div>
+        <div style="color: var(--text-muted); font-size: 0.88rem; font-weight: 600;" id="fcCountText">
+            Showing all centers
+        </div>
+    </div>
+
     <div class="fc-grid">
         {% for fc in assigned_fcs %}
             <a href="{{ next_url }}?fc_id={{ fc.id }}" class="fc-card">
@@ -184,6 +195,13 @@
             </a>
         {% endfor %}
     </div>
+
+    <!-- Pagination Controls -->
+    <div id="fcPagination" style="margin-top: 30px; display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 20px;">
+        <button id="prevBtn" onclick="prevPage()" class="btn btn-secondary" style="padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.88rem;">Previous</button>
+        <span id="pageInfo" style="font-weight: 600; color: var(--text-muted); font-size: 0.88rem;">Page 1 of 1</span>
+        <button id="nextBtn" onclick="nextPage()" class="btn btn-secondary" style="padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.88rem;">Next</button>
+    </div>
 {% else %}
     <div class="fc-grid">
         <div class="empty-state">
@@ -193,4 +211,113 @@
         </div>
     </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allFCs = [];
+    let filteredFCs = [];
+    const itemsPerPage = 6;
+    let currentPage = 1;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Collect all FC cards
+        const cards = document.querySelectorAll('.fc-card');
+        cards.forEach(card => {
+            allFCs.push({
+                element: card,
+                name: card.querySelector('.fc-name').textContent.toLowerCase(),
+                email: card.querySelector('.fc-email').textContent.toLowerCase(),
+                district: card.querySelector('.fc-district-tag') ? card.querySelector('.fc-district-tag').textContent.toLowerCase() : ''
+            });
+        });
+        filteredFCs = [...allFCs];
+        updateDisplay();
+    });
+
+    function filterFCs() {
+        const query = document.getElementById('fcSearchInput').value.toLowerCase().trim();
+        if (query === '') {
+            filteredFCs = [...allFCs];
+        } else {
+            filteredFCs = allFCs.filter(fc => {
+                return fc.name.includes(query) || fc.email.includes(query) || fc.district.includes(query);
+            });
+        }
+        currentPage = 1;
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        const totalItems = filteredFCs.length;
+        const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+        
+        // Hide all
+        allFCs.forEach(fc => fc.element.style.display = 'none');
+        
+        // Show current page items
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+        
+        for (let i = startIndex; i < endIndex; i++) {
+            filteredFCs[i].element.style.display = 'flex';
+        }
+        
+        // Handle empty search result
+        const emptyState = document.getElementById('fcNoResults');
+        if (totalItems === 0) {
+            if (!emptyState) {
+                const grid = document.querySelector('.fc-grid');
+                const div = document.createElement('div');
+                div.id = 'fcNoResults';
+                div.className = 'empty-state';
+                div.innerHTML = `
+                    <i class="fa-solid fa-magnifying-glass" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 16px; display: block;"></i>
+                    <h3 style="color: var(--text-main); font-weight: 800; margin-bottom: 6px;">No centers match your search</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Try checking spelling or search for another term.</p>
+                `;
+                grid.appendChild(div);
+            } else {
+                emptyState.style.display = 'block';
+            }
+        } else {
+            if (emptyState) emptyState.style.display = 'none';
+        }
+        
+        // Update pagination buttons & text
+        document.getElementById('prevBtn').disabled = (currentPage === 1);
+        document.getElementById('nextBtn').disabled = (currentPage === totalPages);
+        document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+        
+        const countText = document.getElementById('fcCountText');
+        if (totalItems === allFCs.length) {
+            countText.textContent = `Showing all ${totalItems} center${totalItems !== 1 ? 's' : ''}`;
+        } else {
+            countText.textContent = `Found ${totalItems} match${totalItems !== 1 ? 'es' : ''}`;
+        }
+        
+        // Hide/show pagination wrapper if total pages <= 1
+        const paginationWrapper = document.getElementById('fcPagination');
+        if (totalPages <= 1) {
+            paginationWrapper.style.display = 'none';
+        } else {
+            paginationWrapper.style.display = 'flex';
+        }
+    }
+
+    function prevPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            updateDisplay();
+        }
+    }
+
+    function nextPage() {
+        const totalPages = Math.ceil(filteredFCs.length / itemsPerPage);
+        if (currentPage < totalPages) {
+            currentPage++;
+            updateDisplay();
+        }
+    }
+</script>
 {% endblock %}

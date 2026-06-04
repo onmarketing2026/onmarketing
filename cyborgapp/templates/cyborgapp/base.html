@@ -597,7 +597,7 @@
 
             <a href="{% url 'wallet_dashboard' %}" class="menu-item {% if request.resolver_match.url_name == 'wallet_dashboard' %}active{% endif %}">
                 <i class="fa-solid fa-wallet"></i>
-                My Wallet
+                {% if request.user.usertype == 'staff' %}Wallets{% else %}My Wallet{% endif %}
             </a>
 
             {% if request.user.usertype == 'superadmin' %}
