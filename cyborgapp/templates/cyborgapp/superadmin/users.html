@@ -412,7 +412,11 @@
                         </div>
                         <div class="form-group" id="staffFcListGroup" style="display: none;">
                             <label>Select Fecilitation Centers to Assign</label>
-                            <div id="staffFcCheckboxList" style="background: #fff; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; max-height: 180px; overflow-y: auto;">
+                            <div style="position: relative; margin-bottom: 10px;">
+                                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                <input type="text" id="staffFcSearchInput" placeholder="Filter facilitation centers by name..." style="width: 100%; padding: 8px 12px 8px 32px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
+                            </div>
+                            <div id="staffFcCheckboxList" style="background: #fff; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; max-height: 220px; overflow-y: auto;">
                                 <small style="color: var(--text-muted);">Loading...</small>
                             </div>
                             <small style="color: var(--text-muted); margin-top: 5px; display: block;">You can select multiple FCs from different districts. Add from each district separately.</small>
@@ -566,7 +570,8 @@
                                         data-district="${row.assigned_district_id}"
                                         data-mandalam="${row.assigned_mandalam_id}"
                                         data-accessible-districts="${row.accessible_districts}"
-                                        data-assigned-fcs="${row.assigned_facilitation_centers || ''}">
+                                 data-assigned-fcs="${row.assigned_facilitation_centers || ''}"
+                                         data-assigned-fc-names='${JSON.stringify(row.assigned_fc_names || [])}'>
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <form action="/superadmin/users/${row.id}/delete/" method="POST" style="display:inline;" class="delete-form">
@@ -840,25 +845,35 @@
             }
         }
 
+        // Track the staff user ID being edited (to exclude their own FCs from "taken" list)
+        let currentEditingStaffId = '';
+
         if (staffDistrictSelect) {
             staffDistrictSelect.addEventListener('change', function() {
                 const distId = this.value;
+                const searchInput = document.getElementById('staffFcSearchInput');
+                if (searchInput) searchInput.value = '';
+
                 if (!distId) {
                     staffFcListGroup.style.display = 'none';
                     return;
                 }
                 staffFcCheckboxList.innerHTML = '<small style="color: var(--text-muted);">Loading...</small>';
                 staffFcListGroup.style.display = 'block';
-                fetch(`/api/get_mandalams_by_district/?district_id=${distId}`)
+                let apiUrl = `/api/get_mandalams_by_district/?district_id=${distId}`;
+                if (currentEditingStaffId) apiUrl += `&exclude_staff_id=${currentEditingStaffId}`;
+                fetch(apiUrl)
                     .then(r => r.json())
                     .then(data => {
                         if (data.status === 'success' && data.mandalams.length > 0) {
-                            staffFcCheckboxList.innerHTML = data.mandalams.map(m => `
-                                <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; font-weight: normal;">
-                                    <input type="checkbox" class="staff-fc-checkbox" value="${m.id}" data-name="${m.name}" style="width: 16px; height: 16px; accent-color: #6f42c1;" ${selectedFcs[m.id] ? 'checked' : ''}>
-                                    <span>${m.name} <small style="color: var(--text-muted);">(${m.email})</small></span>
-                                </label>
-                            `).join('');
+                            staffFcCheckboxList.innerHTML = data.mandalams.map(m => {
+                                const isTaken = m.already_assigned && !selectedFcs[m.id];
+                                return `
+                                <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: ${isTaken ? 'not-allowed' : 'pointer'}; font-weight: normal; opacity: ${isTaken ? '0.5' : '1'}">
+                                    <input type="checkbox" class="staff-fc-checkbox" value="${m.id}" data-name="${m.name}" style="width: 16px; height: 16px; accent-color: #6f42c1;" ${selectedFcs[m.id] ? 'checked' : ''} ${isTaken ? 'disabled title="Already assigned to another staff member"' : ''}>
+                                    <span>${m.name} <small style="color: var(--text-muted);">(${m.email})</small>${isTaken ? ' <span style="color:#dc3545;font-size:0.75rem;font-weight:700;">Already Assigned</span>' : ''}</span>
+                                </label>`;
+                            }).join('');
                             staffFcCheckboxList.querySelectorAll('.staff-fc-checkbox').forEach(cb => {
                                 cb.addEventListener('change', function() {
                                     if (this.checked) {
@@ -876,6 +891,22 @@
                     .catch(() => {
                         staffFcCheckboxList.innerHTML = '<small style="color: #dc3545;">Error loading data.</small>';
                     });
+            });
+        }
+
+        const staffFcSearchInput = document.getElementById('staffFcSearchInput');
+        if (staffFcSearchInput) {
+            staffFcSearchInput.addEventListener('input', function() {
+                const query = this.value.toLowerCase().trim();
+                const labels = staffFcCheckboxList.querySelectorAll('label');
+                labels.forEach(label => {
+                    const text = label.textContent.toLowerCase();
+                    if (text.includes(query)) {
+                        label.style.setProperty('display', 'flex', 'important');
+                    } else {
+                        label.style.setProperty('display', 'none', 'important');
+                    }
+                });
             });
         }
 
@@ -974,9 +1005,12 @@
             
             // Reset staff FC selection
             selectedFcs = {};
+            currentEditingStaffId = ''; // creating a new user, no exclusion
             renderSelectedFcs();
             if (staffDistrictSelect) staffDistrictSelect.value = '';
             if (staffFcListGroup) staffFcListGroup.style.display = 'none';
+            const staffFcSearchInput = document.getElementById('staffFcSearchInput');
+            if (staffFcSearchInput) staffFcSearchInput.value = '';
 
             toggleHierarchy();
             modal.style.display = "block";
@@ -992,6 +1026,9 @@
             const mandalamId = this.getAttribute('data-mandalam');
             const accessibleDistricts = this.getAttribute('data-accessible-districts');
             const assignedFcsStr = this.getAttribute('data-assigned-fcs') || '';
+
+            // Track which staff is being edited so we exclude their own FCs from "already taken"
+            currentEditingStaffId = (usertype === 'staff') ? id : '';
 
             userForm.reset();
             userForm.action = `/superadmin/users/${id}/edit/`;
@@ -1029,15 +1066,21 @@
 
             toggleHierarchy();
 
-            // Pre-populate staff FC assignments if editing a staff user
+            // Reset staff FC selection and lists
             selectedFcs = {};
+            if (staffDistrictSelect) staffDistrictSelect.value = '';
+            if (staffFcListGroup) staffFcListGroup.style.display = 'none';
+            if (staffFcCheckboxList) staffFcCheckboxList.innerHTML = '';
+            const staffFcSearchInput = document.getElementById('staffFcSearchInput');
+            if (staffFcSearchInput) staffFcSearchInput.value = '';
+            renderSelectedFcs();
+
             if (usertype === 'staff' && assignedFcsStr) {
-                // We only have IDs, need to look up names from any existing tag labels
-                // Store just IDs for now; names will be populated when district is selected
-                // Alternatively, we fetch all assigned FCs and show them as tags
                 const fcIds = assignedFcsStr.split(',').filter(Boolean);
-                fcIds.forEach(fcId => {
-                    selectedFcs[fcId.trim()] = `FC #${fcId.trim()}`; // placeholder, updated when district loaded
+                let fcNames = [];
+                try { fcNames = JSON.parse(this.getAttribute('data-assigned-fc-names') || '[]'); } catch(e) {}
+                fcIds.forEach((fcId, idx) => {
+                    selectedFcs[fcId.trim()] = fcNames[idx] || `FC #${fcId.trim()}`;
                 });
                 renderSelectedFcs();
             }

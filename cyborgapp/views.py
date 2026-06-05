@@ -2932,13 +2932,37 @@ def delete_withdrawal_request(request, request_id):
 
 @login_required(login_url='login')
 def get_mandalams_by_district(request):
-    """AJAX endpoint: returns all mandalam users under a given district (for staff user creation)."""
+    """AJAX endpoint: returns mandalam users under a given district for staff FC assignment.
+    Marks FCs already assigned to another staff so the UI can disable them.
+    Accepts optional exclude_staff_id so the being-edited staff's own FCs remain selectable.
+    """
     if request.user.usertype != 'superadmin':
         return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
     district_id = request.GET.get('district_id')
     if not district_id:
         return JsonResponse({'status': 'error', 'message': 'district_id is required.'}, status=400)
-    mandalams = CustomUser.objects.filter(
+
+    # Optional: when editing an existing staff user, exclude that user's own assignments
+    exclude_staff_id = request.GET.get('exclude_staff_id', '')
+
+    # Collect FC IDs already assigned to ANY staff (excluding the current one being edited)
+    from django.db.models import Q
+    taken_fc_ids = set(
+        CustomUser.objects.filter(usertype='staff')
+        .exclude(id=exclude_staff_id if exclude_staff_id else None)
+        .values_list('assigned_facilitation_centers__id', flat=True)
+    ) - {None}
+
+    mandalams_qs = CustomUser.objects.filter(
         usertype='mandalam', assigned_district_id=district_id, is_active=True
-    ).values('id', 'name', 'email').order_by('name')
-    return JsonResponse({'status': 'success', 'mandalams': list(mandalams)})
+    ).order_by('name')
+
+    mandalams = []
+    for m in mandalams_qs:
+        mandalams.append({
+            'id': m.id,
+            'name': m.name,
+            'email': m.email,
+            'already_assigned': m.id in taken_fc_ids,
+        })
+    return JsonResponse({'status': 'success', 'mandalams': mandalams})
