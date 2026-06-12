@@ -505,6 +505,7 @@
                                     </div>`;
                                 }
                             }
+                            return html || `<span style="color:var(--text-muted);font-size:0.8rem;">—</span>`;
                         } else if (ut === 'staff') {
                             if (row.assigned_fc_names && row.assigned_fc_names.length > 0) {
                                 let html = '<div style="display:flex; flex-wrap:wrap; gap:4px;">';
