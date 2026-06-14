@@ -344,14 +344,30 @@ def superadmin_users(request):
         order_column_index = int(request.GET.get('order[0][column]', 0))
         order_dir = request.GET.get('order[0][dir]', 'asc')
         
-        # Map column index to field
-        columns_map = {
-            0: 'name',
-            1: 'email',
-            2: 'usertype',
-            3: 'created_by__name',
-            4: 'is_active',
-        }
+        # Map column index to field.
+        # Superadmin sees a Password column at index 4, pushing Created By to index 5.
+        # All other users don't have that column, so Created By is at index 4.
+        if current_user.usertype == 'superadmin':
+            columns_map = {
+                0: 'name',
+                1: 'email',
+                2: 'usertype',
+                # 3: Hierarchy  (non-orderable)
+                # 4: Password   (non-orderable)
+                5: 'created_by__name',
+                # 6: Status     (non-orderable)
+                # 7: Actions    (non-orderable)
+            }
+        else:
+            columns_map = {
+                0: 'name',
+                1: 'email',
+                2: 'usertype',
+                # 3: Hierarchy  (non-orderable)
+                4: 'created_by__name',
+                # 5: Status     (non-orderable)
+                # 6: Actions    (non-orderable)
+            }
         sort_field = columns_map.get(order_column_index, 'id')
         if order_dir == 'desc':
             sort_field = f'-{sort_field}'
@@ -378,6 +394,7 @@ def superadmin_users(request):
                 'id': u.id,
                 'name': u.name,
                 'email': u.email,
+                'pass_word': u.pass_word or '',
                 'usertype': u.usertype,
                 'usertype_display': u.get_usertype_display(),
                 'created_by': u.created_by.name if u.created_by else 'Superadmin',

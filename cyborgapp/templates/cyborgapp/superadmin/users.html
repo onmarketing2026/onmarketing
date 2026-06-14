@@ -261,6 +261,43 @@
         margin-bottom: 20px;
         display: none;
     }
+
+    /* Password column */
+    .pwd-cell {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+    }
+
+    .pwd-stars {
+        font-size: 1rem;
+        letter-spacing: 2px;
+        color: var(--text-muted);
+        font-family: monospace;
+    }
+
+    .pwd-text {
+        font-size: 0.88rem;
+        font-family: monospace;
+        color: var(--text-main);
+        display: none;
+    }
+
+    .pwd-toggle-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-muted);
+        padding: 2px 4px;
+        font-size: 0.9rem;
+        transition: color 0.2s;
+        flex-shrink: 0;
+    }
+
+    .pwd-toggle-btn:hover {
+        color: var(--primary-gold);
+    }
 </style>
 {% endblock %}
 
@@ -279,7 +316,7 @@
                     <th>Name</th>
                     <th>Email</th>
                     <th>Role</th>
-                    <th {% if request.user.usertype == 'mandalam' or selected_usertype == 'district' or selected_usertype == 'customer' or request.user.usertype == 'district' and selected_usertype == 'mandalam' or request.user.usertype == 'manager' and selected_usertype == 'mandalam' %}style="display:none;"{% endif %}>
+                    <th {% if request.user.usertype == 'mandalam' or request.user.usertype == 'staff' or selected_usertype == 'district' or selected_usertype == 'customer' or request.user.usertype == 'district' and selected_usertype == 'mandalam' or request.user.usertype == 'manager' and selected_usertype == 'mandalam' %}style="display:none;"{% endif %}>
                         {% if request.user.usertype == 'superadmin' %}
                             {% if selected_usertype == 'mandalam' or selected_usertype == 'manager' %}
                                 District
@@ -296,6 +333,7 @@
                             Hierarchy
                         {% endif %}
                     </th>
+                    {% if request.user.usertype == 'superadmin' %}<th>Password</th>{% endif %}
                     <th>Created By</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -451,7 +489,7 @@
                 url: window.location.pathname + window.location.search,
                 type: 'GET'
             },
-            {% if request.user.usertype == 'mandalam' or selected_usertype == 'district' or selected_usertype == 'customer' or request.user.usertype == 'district' and selected_usertype == 'mandalam' or request.user.usertype == 'manager' and selected_usertype == 'mandalam' %}
+            {% if request.user.usertype == 'mandalam' or request.user.usertype == 'staff' or selected_usertype == 'district' or selected_usertype == 'customer' or request.user.usertype == 'district' and selected_usertype == 'mandalam' or request.user.usertype == 'manager' and selected_usertype == 'mandalam' %}
             columnDefs: [{ visible: false, targets: 3 }],
             {% endif %}
             columns: [
@@ -528,6 +566,26 @@
                         return '';
                     }
                 },
+                {% if request.user.usertype == 'superadmin' %}
+                {
+                    data: 'pass_word',
+                    orderable: false,
+                    render: function(data, type, row) {
+                        if (!data) {
+                            return '<span style="color:var(--text-muted);font-size:0.8rem;">\u2014</span>';
+                        }
+                        var uid = 'pwd-' + row.id;
+                        var stars = '\u2022'.repeat(Math.min(data.length, 8));
+                        return '<div class="pwd-cell">'
+                            + '<span class="pwd-stars" id="stars-' + uid + '">' + stars + '</span>'
+                            + '<span class="pwd-text" id="text-' + uid + '">' + data + '</span>'
+                            + '<button type="button" class="pwd-toggle-btn" data-uid="' + uid + '" title="Show/Hide Password">'
+                            + '<i class="fa-solid fa-eye"></i>'
+                            + '</button>'
+                            + '</div>';
+                    }
+                },
+                {% endif %}
                 { data: 'created_by' },
                 { 
                     data: 'is_active',
@@ -623,6 +681,24 @@
                 });
             } else {
                 performToggle(userId, false, checkbox);
+            }
+        });
+
+        // Password eye-toggle via event delegation
+        $(document).on('click', '.pwd-toggle-btn', function() {
+            var uid = $(this).data('uid');
+            var starsEl = document.getElementById('stars-' + uid);
+            var textEl  = document.getElementById('text-'  + uid);
+            if (!starsEl || !textEl) return;
+            var isVisible = textEl.style.display === 'inline';
+            if (isVisible) {
+                starsEl.style.display = 'inline';
+                textEl.style.display  = 'none';
+                $(this).html('<i class="fa-solid fa-eye"></i>');
+            } else {
+                starsEl.style.display = 'none';
+                textEl.style.display  = 'inline';
+                $(this).html('<i class="fa-solid fa-eye-slash"></i>');
             }
         });
 
