@@ -174,7 +174,12 @@
                     <div class="item-details">
                         <div class="item-header">
                             <span class="item-name">{{ item.name }}</span>
-                            <span class="item-price">₹{{ item.price }}</span>
+                            <span class="item-price">
+                                ₹{{ item.price }}
+                                {% if item.total_mrp and item.total_mrp > item.price %}
+                                    <del style="color: #dc3545; font-size: 0.85em; margin-left: 6px;">₹{{ item.total_mrp }}</del>
+                                {% endif %}
+                            </span>
                         </div>
                         {% if item.description %}
                         <div class="item-description">
@@ -192,18 +197,41 @@
                 </div>
             {% endfor %}
             
-            <div class="total-box">
-                <span>Total Amount Due:</span>
-                <span class="total-amount">₹{{ lead.get_total_amount }}</span>
-            </div>
+            {% if lead.payment_mode == 'part' %}
+                {% if rich_installments %}
+                    {% for inst in rich_installments %}
+                        <div class="total-box">
+                            <span>Next Installment Due (Installment {{ inst.installment_number }}):</span>
+                            <span class="total-amount">₹{{ inst.amount }}</span>
+                        </div>
+                        
+                        <p style="margin-top: 25px;">This lead is configured with installment payments. Please click the secure payment link below to complete the payment for this installment:</p>
+                        
+                        <div class="cta-container">
+                            {% if inst.payment_link %}
+                                <a href="{{ inst.payment_link }}" class="btn-pay" target="_blank">Pay Installment {{ inst.installment_number }}</a>
+                            {% else %}
+                                <span style="font-size: 14px; color: #dc3545; font-weight: 700;">Payment Link Unavailable. Please contact support.</span>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="text-align: center; color: #198754; font-weight: 700; margin-top: 25px; font-size: 16px;">All installments for this lead have been fully paid. Thank you!</p>
+                {% endif %}
+            {% else %}
+                <div class="total-box">
+                    <span>Total Amount Due:</span>
+                    <span class="total-amount">₹{{ lead.get_total_amount }}</span>
+                </div>
+                
+                <p style="margin-top: 25px;">To proceed with confirmation and process your request, please click the secure payment link below to complete the transaction:</p>
+                
+                <div class="cta-container">
+                    <a href="{{ payment_link }}" class="btn-pay" target="_blank">Proceed to Secure Payment</a>
+                </div>
+            {% endif %}
             
-            <p style="margin-top: 25px;">To proceed with confirmation and process your request, please click the secure payment link below to complete the transaction:</p>
-            
-            <div class="cta-container">
-                <a href="{{ payment_link }}" class="btn-pay" target="_blank">Proceed to Secure Payment</a>
-            </div>
-            
-            <p style="font-size: 13px; color: #6c757d; text-align: center;">Secure payment gateway powered by Razorpay. Link is valid for 7 days.</p>
+            <p style="font-size: 13px; color: #6c757d; text-align: center;">Secure payment gateway powered by Razorpay. Links are valid for 7 days.</p>
         </div>
         <div class="footer">
             <p>This is an automated email from On Cyborg Pvt Ltd.</p>

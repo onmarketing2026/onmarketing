@@ -120,6 +120,7 @@ class RequirementItem(models.Model):
     admin_markup = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     other_expenses = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00) # GST percentage
+    mrp = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     image = models.ImageField(upload_to='requirement_items/', null=True, blank=True)
 
@@ -129,6 +130,14 @@ class RequirementItem(models.Model):
         base = self.customer_amount + self.admin_markup + self.other_expenses
         gst_amt = base * (self.gst / Decimal('100.00'))
         return base + gst_amt
+
+    @property
+    def total_mrp(self):
+        from decimal import Decimal
+        if not self.mrp:
+            return Decimal('0.00')
+        gst_amt = self.mrp * (self.gst / Decimal('100.00'))
+        return self.mrp + gst_amt
 
     @property
     def get_sold_count(self):
@@ -225,6 +234,18 @@ class Lead(models.Model):
         return total
 
     @property
+    def installment_pending(self):
+        if hasattr(self, '_installment_pending'):
+            return self._installment_pending
+        if self.payment_mode == 'part':
+            return self.installments.filter(status='pending').exists()
+        return False
+
+    @installment_pending.setter
+    def installment_pending(self, value):
+        self._installment_pending = value
+
+    @property
     def get_req_items_with_fc_limits(self):
         fc = self.marketing_user.assigned_mandalam
         items_data = []
@@ -257,6 +278,12 @@ class LeadItem(models.Model):
 
 class LeadUpdate(models.Model):
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='updates')
+    update_text = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+class LeadAssociateUpdate(models.Model):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='associate_updates')
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     update_text = models.TextField()
     created_at = models.DateTimeField(default=timezone.now)
 

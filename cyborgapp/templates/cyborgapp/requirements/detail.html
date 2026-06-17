@@ -289,23 +289,31 @@
             const base = item.customer_amount + item.admin_markup + item.other_expenses;
             const gstAmt = base * (item.gst / 100);
             if (usertype === 'superadmin') {
+                let mrpHtml = '';
+                if (item.total_mrp && item.total_mrp > item.total_amount) {
+                    mrpHtml = `<span style="text-decoration: line-through; color: #dc3545; font-size: 0.8em; margin-left: 6px;">₹${item.total_mrp.toFixed(2)}</span>`;
+                }
                 priceSection = `
                     <div style="margin-bottom: 12px;">
-                        <span style="font-weight: 700; color: #198754; font-size: 1.1rem;">₹${item.total_amount.toFixed(2)}</span>
+                        <span style="font-weight: 700; color: #198754; font-size: 1.1rem;">₹${item.total_amount.toFixed(2)} ${mrpHtml}</span>
                         <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 4px; line-height: 1.3;">
-                            C: ₹${item.customer_amount.toFixed(2)} | M: ₹${item.admin_markup.toFixed(2)} | E: ₹${item.other_expenses.toFixed(2)} | GST: ${item.gst}% (₹${gstAmt.toFixed(2)})
+                            R: ₹${item.customer_amount.toFixed(2)} | C: ₹${item.admin_markup.toFixed(2)} | E: ₹${item.other_expenses.toFixed(2)} | GST: ${item.gst}% (₹${gstAmt.toFixed(2)})
                         </div>
                     </div>
                 `;
             } else {
                 const finalPrice = (usertype === 'customer') ? item.customer_amount : item.total_amount;
+                let mrpHtml = '';
+                if (usertype !== 'customer' && item.total_mrp && item.total_mrp > item.total_amount) {
+                    mrpHtml = `<span style="text-decoration: line-through; color: #dc3545; font-size: 0.8em; margin-left: 6px;">₹${item.total_mrp.toFixed(2)}</span>`;
+                }
                 let extraInfo = '';
                 if (usertype !== 'customer' && item.gst > 0) {
                     extraInfo = `<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-left: 8px;">(GST: ${item.gst}% | ₹${gstAmt.toFixed(2)})</span>`;
                 }
                 priceSection = `
                     <div style="margin-bottom: 12px;">
-                        <span style="font-weight: 700; color: #198754; font-size: 1.1rem;">₹${finalPrice.toFixed(2)}</span>
+                        <span style="font-weight: 700; color: #198754; font-size: 1.1rem;">₹${finalPrice.toFixed(2)} ${mrpHtml}</span>
                         ${extraInfo}
                     </div>
                 `;
@@ -359,6 +367,9 @@
                     <div class="card-body" style="padding:20px;display:flex;flex-direction:column;">
                         <h5 style="font-weight:700;color:var(--text-main);margin-bottom:10px;">${item.subcategory_name}</h5>
                         ${priceSection}
+                        <div style="font-size: 0.8rem; font-weight: 700; color: #b8912d; margin-bottom: 12px; display: flex; align-items: center; gap: 5px;">
+                            <i class="fa-solid fa-coins"></i> Commission (1 Qty): ₹${item.my_commission.toFixed(2)}
+                        </div>
                         ${countBadge}
                         ${descHtml}
                         <div style="display:flex;gap:10px;margin-top:15px;">${leadBtn}${assignBtn}</div>

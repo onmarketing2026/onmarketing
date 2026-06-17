@@ -587,6 +587,10 @@
                 Leads
             </a>
             {% endif %}
+            <a href="{% url 'confirmed_lead_list' %}" class="menu-item {% if request.resolver_match.url_name == 'confirmed_lead_list' %}active{% endif %}">
+                <i class="fa-solid fa-circle-check"></i>
+                Confirmed Leads
+            </a>
 
             {% if request.user.usertype == 'superadmin' %}
             <a href="{% url 'commission_settings' %}" class="menu-item {% if request.resolver_match.url_name == 'commission_settings' %}active{% endif %}">

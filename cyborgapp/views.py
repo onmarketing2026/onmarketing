@@ -801,8 +801,21 @@ def requirement_detail(request, req_id):
         start = (page - 1) * per_page
         items_slice = items_qs[start:start + per_page]
 
+        from .models import CommissionSetting
+        settings_objs = CommissionSetting.objects.all()
+        settings = {s.usertype: float(s.percentage) for s in settings_objs}
+
         data = []
         for item in items_slice:
+            my_commission = 0.0
+            role = user.usertype
+            if role == 'customer':
+                my_commission = float(item.customer_amount)
+            elif role in ['superadmin', 'marketing', 'mandalam', 'district', 'manager']:
+                pct_role = 'district' if role == 'manager' else role
+                pct = settings.get(pct_role, 0.0)
+                my_commission = float(item.admin_markup) * (pct / 100.0)
+
             item_data = {
                 'id': item.id,
                 'subcategory_id': item.subcategory_id,
@@ -816,6 +829,9 @@ def requirement_detail(request, req_id):
                 'left_count': item.get_left_count,
                 'description': item.description or '',
                 'image_url': item.image.url if item.image else '',
+                'my_commission': my_commission,
+                'mrp': float(item.mrp or 0.00),
+                'total_mrp': float(item.total_mrp or 0.00)
             }
             if user_mandalam:
                 from .models import RequirementAssignment
@@ -991,7 +1007,14 @@ def requirement_list(request):
 
     current_user = target_user
     if current_user.usertype == 'superadmin':
-        requirements = CustomerRequirement.objects.all().order_by('-created_at')
+        from django.db.models import Case, When, Value, IntegerField
+        requirements = CustomerRequirement.objects.all().annotate(
+            is_pending=Case(
+                When(status='pending', then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        ).order_by('is_pending', '-created_at')
     elif current_user.usertype == 'customer':
         requirements = CustomerRequirement.objects.filter(customer=current_user).order_by('-created_at')
     elif current_user.usertype in ['district', 'manager']:
@@ -1101,16 +1124,32 @@ def requirement_list(request):
         if order_dir == 'desc':
             sort_field = f'-{sort_field}'
             
-        requirements = requirements.order_by(sort_field)
+        if current_user.usertype == 'superadmin':
+            requirements = requirements.order_by('is_pending', sort_field)
+        else:
+            requirements = requirements.order_by(sort_field)
         
         # Pagination
         requirements_slice = requirements[start:start+length]
         
+        from .models import CommissionSetting
+        settings_objs = CommissionSetting.objects.all()
+        settings = {s.usertype: float(s.percentage) for s in settings_objs}
+
         # Serialize data
         data = []
         for req in requirements_slice:
             items_data = []
             for item in req.items.all():
+                my_commission = 0.0
+                role = current_user.usertype
+                if role == 'customer':
+                    my_commission = float(item.customer_amount)
+                elif role in ['superadmin', 'marketing', 'mandalam', 'district', 'manager']:
+                    pct_role = 'district' if role == 'manager' else role
+                    pct = settings.get(pct_role, 0.0)
+                    my_commission = float(item.admin_markup) * (pct / 100.0)
+
                 items_data.append({
                     'id': item.id,
                     'subcategory_id': item.subcategory_id,
@@ -1124,7 +1163,10 @@ def requirement_list(request):
                     'sold_count': item.get_sold_count,
                     'left_count': item.get_left_count,
                     'description': item.description or '',
-                    'image_url': item.image.url if item.image else ''
+                    'image_url': item.image.url if item.image else '',
+                    'my_commission': my_commission,
+                    'mrp': float(item.mrp or 0.00),
+                    'total_mrp': float(item.total_mrp or 0.00)
                 })
             
             data.append({
@@ -1234,7 +1276,31 @@ def requirement_edit(request, req_id):
                 
             requirement.save()
             
-            # Update markups, other expenses, and GST for items
+            # Validate first before saving
+            for item in requirement.items.all():
+                sub_id = item.subcategory_id
+                try:
+                    mrp_val = float(request.POST.get(f'mrp_{sub_id}', 0) or 0)
+                except (ValueError, TypeError):
+                    mrp_val = 0.0
+                
+                if mrp_val > 0:
+                    try:
+                        cust_amt = float(item.customer_amount)
+                        markup = float(request.POST.get(f'admin_markup_{sub_id}', 0) or 0)
+                        expenses = float(request.POST.get(f'other_expenses_{sub_id}', 0) or 0)
+                        gst = float(request.POST.get(f'gst_{sub_id}', 0) or 0)
+                    except (ValueError, TypeError):
+                        continue
+                    
+                    base = cust_amt + markup + expenses
+                    total_amount = base + (base * (gst / 100.0))
+                    total_mrp = mrp_val + (mrp_val * (gst / 100.0))
+                    if total_mrp < total_amount:
+                        messages.error(request, f"Total MRP (incl. GST) for {item.subcategory.name} must be greater than or equal to the total amount (₹{total_amount:.2f}).")
+                        return redirect('requirement_list')
+
+            # Update markups, other expenses, GST, and MRP for items
             for item in requirement.items.all():
                 sub_id = item.subcategory_id
                 try:
@@ -1249,6 +1315,10 @@ def requirement_edit(request, req_id):
                     item.gst = float(request.POST.get(f'gst_{sub_id}', 0) or 0)
                 except (ValueError, TypeError):
                     item.gst = 0
+                try:
+                    item.mrp = float(request.POST.get(f'mrp_{sub_id}', 0) or 0)
+                except (ValueError, TypeError):
+                    item.mrp = 0
                 item.save()
         else:
             # Customer updates their details
@@ -1397,35 +1467,63 @@ def razorpay_webhook(request):
                 payment_id = None
                 lead_id = None
                 user_id = None
+                installment_id = None
                 
                 if event == 'payment.captured':
                     payment_entity = payload['payload']['payment']['entity']
                     notes = payment_entity.get('notes', {})
                     lead_id = notes.get('lead_id')
                     user_id = notes.get('user_id')
+                    installment_id = notes.get('installment_id')
                     payment_id = payment_entity.get('id')
                 elif event == 'payment_link.paid':
                     payment_link_entity = payload['payload']['payment_link']['entity']
                     notes = payment_link_entity.get('notes', {})
                     lead_id = notes.get('lead_id')
+                    installment_id = notes.get('installment_id')
                     payment_entity = payload['payload'].get('payment', {}).get('entity', {})
                     payment_id = payment_entity.get('id')
                 
                 if lead_id:
                     lead = Lead.objects.filter(id=lead_id).first()
-                    if lead and lead.status == 'pending':
-                        lead.total_amount = lead.get_total_amount
-                        lead.razorpay_payment_id = payment_id
-                        from .utils import distribute_product_sale_commission
-                        distribute_product_sale_commission(lead)
-                        
-                        lead.status = 'confirmed'
-                        lead.save()
-                        
-                        LeadUpdate.objects.create(
-                            lead=lead, 
-                            update_text=f"Payment confirmed via Webhook ({event}). Payment ID: {payment_id}"
-                        )
+                    if lead:
+                        if installment_id:
+                            from .models import LeadInstallment
+                            installment = LeadInstallment.objects.filter(id=installment_id, lead=lead).first()
+                            if installment and installment.status == 'pending':
+                                installment.status = 'paid'
+                                installment.razorpay_payment_id = payment_id
+                                installment.save()
+                                
+                                LeadUpdate.objects.create(
+                                    lead=lead, 
+                                    update_text=f"Installment {installment.installment_number} of ₹{installment.amount} paid successfully via Webhook ({event}). Payment ID: {payment_id}"
+                                )
+                                
+                                from .utils import distribute_product_sale_commission
+                                distribute_product_sale_commission(lead, installment=installment)
+                                
+                                # If this is the first installment and lead is still pending, confirm the lead
+                                if installment.installment_number == 1 and lead.status == 'pending':
+                                    lead.total_amount = lead.get_total_amount
+                                    lead.razorpay_payment_id = payment_id
+                                    lead.payment_mode = 'part'
+                                    lead.status = 'confirmed'
+                                    lead.save()
+                        else:
+                            if lead.status == 'pending':
+                                lead.total_amount = lead.get_total_amount
+                                lead.razorpay_payment_id = payment_id
+                                from .utils import distribute_product_sale_commission
+                                distribute_product_sale_commission(lead)
+                                
+                                lead.status = 'confirmed'
+                                lead.save()
+                                
+                                LeadUpdate.objects.create(
+                                    lead=lead, 
+                                    update_text=f"Payment confirmed via Webhook ({event}). Payment ID: {payment_id}"
+                                )
                 elif user_id:
                     user = CustomUser.objects.filter(id=user_id).first()
                     if user and not user.is_active and user.usertype == 'marketing':
@@ -2072,19 +2170,31 @@ def lead_list(request):
     # Annotate each lead with whether it has any pending installments
     pending_inst_sq = LeadInstallment.objects.filter(lead=OuterRef('pk'), status='pending')
 
-    # Sort: pending=0, confirmed+part+installment_pending=1, confirmed=2, by created_at desc
-    status_order = Case(
-        When(status='pending', then=Value(0)),
-        When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
-        When(status='confirmed', then=Value(2)),
-        default=Value(2),
-        output_field=IntegerField(),
-    )
+    if user.usertype == 'superadmin':
+        control_cond = Q(status='pending', current_level='superadmin')
+    elif user.usertype == 'marketing':
+        control_cond = Q(status='pending', current_level='marketing', marketing_user=user)
+    elif user.usertype == 'mandalam':
+        control_cond = Q(status='pending', current_level='mandalam', marketing_user__assigned_mandalam=user)
+    elif user.usertype == 'district':
+        control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user)
+    elif user.usertype == 'manager':
+        if user.assigned_district:
+            control_cond = Q(status='pending', current_level='manager', marketing_user__assigned_district=user.assigned_district)
+        else:
+            control_cond = Q(status='pending', current_level='manager', marketing_user__created_by=user)
+    else:
+        control_cond = Q(pk__in=[])
 
     def annotated_leads(qs):
         return qs.annotate(
             installment_pending=Exists(pending_inst_sq)
         ).annotate(
+            is_controlled=Case(
+                When(control_cond, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField()
+            ),
             display_order=Case(
                 When(status='pending', then=Value(0)),
                 When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
@@ -2092,7 +2202,7 @@ def lead_list(request):
                 default=Value(2),
                 output_field=IntegerField()
             )
-        ).order_by('display_order', '-created_at')
+        ).order_by('-is_controlled', 'display_order', '-created_at')
 
     if user.usertype == 'superadmin':
         leads = annotated_leads(Lead.objects.all())
@@ -2160,6 +2270,66 @@ def lead_list(request):
         'leads': leads,
         'approved_requirements': approved_requirements,
         'req_assigned_items_json': json.dumps(req_assigned_items_json),
+    })
+
+@login_required(login_url='login')
+def confirmed_lead_list(request):
+    if request.user.usertype == 'staff':
+        target_user = get_target_user(request)
+        if target_user == request.user:
+            return render_fc_selection(request)
+        user = target_user
+    else:
+        user = request.user
+        
+    from .models import LeadInstallment, Lead
+    from django.db.models import Exists, OuterRef, Case, When, Value, IntegerField, Q
+
+    pending_inst_sq = LeadInstallment.objects.filter(lead=OuterRef('pk'), status='pending')
+
+    def annotated_leads(qs):
+        return qs.annotate(
+            installment_pending=Exists(pending_inst_sq)
+        ).annotate(
+            display_order=Case(
+                When(status='pending', then=Value(0)),
+                When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
+                When(status='confirmed', then=Value(2)),
+                default=Value(2),
+                output_field=IntegerField()
+            )
+        ).order_by('display_order', '-created_at')
+
+    # Filter only status='confirmed' leads, requiring at least first installment paid if it is a part payment
+    base_qs = Lead.objects.filter(status='confirmed').filter(
+        Q(payment_mode='single') | 
+        Q(payment_mode='part', installments__installment_number=1, installments__status='paid')
+    ).distinct()
+
+    if user.usertype == 'superadmin':
+        leads = annotated_leads(base_qs)
+    elif user.usertype == 'marketing':
+        leads = annotated_leads(base_qs.filter(marketing_user=user))
+    elif user.usertype == 'mandalam':
+        leads = annotated_leads(base_qs.filter(marketing_user__assigned_mandalam=user))
+    elif user.usertype == 'district':
+        leads = annotated_leads(base_qs.filter(marketing_user__assigned_district=user))
+    elif user.usertype == 'manager':
+        if user.assigned_district:
+            leads = annotated_leads(base_qs.filter(marketing_user__assigned_district=user.assigned_district))
+        else:
+            leads = annotated_leads(base_qs.filter(marketing_user__created_by=user))
+    elif user.usertype == 'customer':
+        leads = annotated_leads(base_qs.filter(requirement__customer=user))
+    else:
+        leads = Lead.objects.none()
+
+    import json
+    return render(request, 'cyborgapp/leads/list.html', {
+        'leads': leads,
+        'approved_requirements': [],
+        'req_assigned_items_json': json.dumps({}),
+        'is_confirmed_tab': True,
     })
 
 @login_required(login_url='login')
@@ -2308,10 +2478,11 @@ def check_assignment_limits(lead):
 def share_lead_payment(request, lead_id):
     lead = get_object_or_404(Lead, id=lead_id)
     
-    # Check count assignment limits
-    limit_error = check_assignment_limits(lead)
-    if limit_error:
-        return JsonResponse({'status': 'error', 'message': limit_error}, status=400)
+    # Check count assignment limits (only for pending leads)
+    if lead.status == 'pending':
+        limit_error = check_assignment_limits(lead)
+        if limit_error:
+            return JsonResponse({'status': 'error', 'message': limit_error}, status=400)
     
     # 1. Validation: Only the user currently controlling the lead is allowed to share
     effective_user_level = request.user.usertype
@@ -2351,34 +2522,84 @@ def share_lead_payment(request, lead_id):
             if not (8 <= len(phone) <= 14):
                 phone = ""
 
-        # Create Razorpay Payment Link
-        items_desc = ", ".join([f"{item.subcategory.name} (Qty: {item.count})" for item in lead.items.all()])
-        desc = f"Payment for Lead #{lead.id}: {items_desc}"
-        if len(desc) > 200:
-            desc = desc[:197] + "..."
-
-        link_data = {
-            "amount": amount_in_paise,
-            "currency": "INR",
-            "accept_partial": False,
-            "description": desc,
-            "customer": {
-                "name": lead.name,
-                "email": lead.email,
-            },
-            "notify": {
-                "sms": False,
-                "email": False
-            },
-            "notes": {
-                "lead_id": str(lead.id)
+        # Create Razorpay Payment Link(s)
+        short_url = None
+        rich_installments = []
+        
+        if lead.status == 'confirmed' and lead.payment_mode == 'part':
+            next_inst = lead.installments.filter(status='pending').order_by('installment_number').first()
+            if not next_inst:
+                return JsonResponse({'status': 'error', 'message': 'All installments for this lead have already been paid.'}, status=400)
+            
+            payment_link = ""
+            inst_amount_in_paise = int(next_inst.amount * 100)
+            inst_desc = f"Payment for Installment #{next_inst.installment_number} of Lead #{lead.id}"
+            if len(inst_desc) > 200:
+                inst_desc = inst_desc[:197] + "..."
+                
+            inst_link_data = {
+                "amount": inst_amount_in_paise,
+                "currency": "INR",
+                "accept_partial": False,
+                "description": inst_desc,
+                "customer": {
+                    "name": lead.name,
+                    "email": lead.email,
+                },
+                "notify": {
+                    "sms": False,
+                    "email": False
+                },
+                "notes": {
+                    "lead_id": str(lead.id),
+                    "installment_id": str(next_inst.id)
+                }
             }
-        }
-        if phone:
-            link_data["customer"]["contact"] = phone
+            if phone:
+                inst_link_data["customer"]["contact"] = phone
+                
+            try:
+                inst_payment_link = client.payment_link.create(inst_link_data)
+                payment_link = inst_payment_link.get('short_url')
+            except Exception as rzp_err:
+                print(f"Error creating installment payment link: {rzp_err}")
+                payment_link = ""
+            
+            rich_installments.append({
+                'installment_number': next_inst.installment_number,
+                'amount': next_inst.amount,
+                'status': next_inst.status,
+                'payment_link': payment_link,
+                'razorpay_payment_id': next_inst.razorpay_payment_id or ''
+            })
+        else:
+            items_desc = ", ".join([f"{item.subcategory.name} (Qty: {item.count})" for item in lead.items.all()])
+            desc = f"Payment for Lead #{lead.id}: {items_desc}"
+            if len(desc) > 200:
+                desc = desc[:197] + "..."
 
-        payment_link = client.payment_link.create(link_data)
-        short_url = payment_link.get('short_url')
+            link_data = {
+                "amount": amount_in_paise,
+                "currency": "INR",
+                "accept_partial": False,
+                "description": desc,
+                "customer": {
+                    "name": lead.name,
+                    "email": lead.email,
+                },
+                "notify": {
+                    "sms": False,
+                    "email": False
+                },
+                "notes": {
+                    "lead_id": str(lead.id)
+                }
+            }
+            if phone:
+                link_data["customer"]["contact"] = phone
+
+            payment_link = client.payment_link.create(link_data)
+            short_url = payment_link.get('short_url')
         
         # Construct rich subcategory items for the email
         rich_items = []
@@ -2391,7 +2612,8 @@ def share_lead_payment(request, lead_id):
             rich_items.append({
                 'name': item.subcategory.name,
                 'count': item.count,
-                'price': req_item.total_amount if req_item else 0.00,
+                'price': float(req_item.total_amount) if req_item else 0.00,
+                'total_mrp': float(req_item.total_mrp) if req_item else 0.00,
                 'description': req_item.description if req_item else "",
                 'image_url': image_url
             })
@@ -2404,7 +2626,8 @@ def share_lead_payment(request, lead_id):
         html_content = render_to_string('cyborgapp/emails/lead_payment_share.html', {
             'lead': lead,
             'payment_link': short_url,
-            'rich_items': rich_items
+            'rich_items': rich_items,
+            'rich_installments': rich_installments
         })
         
         msg = EmailMultiAlternatives(subject, "", from_email, to_email)
@@ -2427,9 +2650,14 @@ def share_lead_payment(request, lead_id):
             }, status=500)
         
         # Create Lead Update for progress log
+        if lead.payment_mode == 'part':
+            update_msg = f"Shared details and installment payment links to {lead.email}."
+        else:
+            update_msg = f"Shared details and payment link to {lead.email}. Link: {short_url}"
+            
         LeadUpdate.objects.create(
             lead=lead,
-            update_text=f"Shared details and payment link to {lead.email}. Link: {short_url}"
+            update_text=update_msg
         )
         
         return JsonResponse({'status': 'success', 'message': 'Details and payment link shared successfully via email!'})
@@ -2545,6 +2773,134 @@ def lead_add_update(request, lead_id):
                     if abs(total_inst_amount - total_lead_amount) > Decimal('0.01'):
                         return JsonResponse({'status': 'error', 'message': f'The sum of installment amounts (₹{total_inst_amount}) must equal the total lead amount (₹{total_lead_amount}).'}, status=400)
 
+                    share_payment_link = data.get('share_payment_link', False)
+                    if share_payment_link:
+                        # 1. Update Lead models & Installment objects
+                        lead.payment_mode = 'part'
+                        lead.total_amount = lead.get_total_amount
+                        lead.confirmed_by = request.user
+                        lead.status = new_status
+                        lead.save()
+                        
+                        # Delete existing ones just in case we are retrying / re-splitting
+                        lead.installments.all().delete()
+                        for idx, amt in enumerate(parsed_installments, start=1):
+                            LeadInstallment.objects.create(
+                                lead=lead,
+                                installment_number=idx,
+                                amount=amt,
+                                status='pending'
+                            )
+                            
+                        # 2. Generate and share payment link for the first installment via email
+                        if not lead.email:
+                            return JsonResponse({'status': 'error', 'message': 'Lead email is required to share details and payment link.'}, status=400)
+                        
+                        first_inst = lead.installments.first()
+                        if not first_inst:
+                            return JsonResponse({'status': 'error', 'message': 'No installments created.'}, status=400)
+                            
+                        phone = lead.phone.strip() if lead.phone else ""
+                        if phone:
+                            phone = "".join(filter(str.isdigit, phone))
+                            if len(phone) == 10:
+                                phone = f"+91{phone}"
+                            elif len(phone) > 10 and not phone.startswith('+'):
+                                phone = f"+{phone}"
+                            if not (8 <= len(phone) <= 14):
+                                phone = ""
+                                
+                        inst_amount_in_paise = int(first_inst.amount * 100)
+                        inst_desc = f"Payment for Installment #{first_inst.installment_number} of Lead #{lead.id}"
+                        if len(inst_desc) > 200:
+                            inst_desc = inst_desc[:197] + "..."
+                            
+                        inst_link_data = {
+                            "amount": inst_amount_in_paise,
+                            "currency": "INR",
+                            "accept_partial": False,
+                            "description": inst_desc,
+                            "customer": {
+                                "name": lead.name,
+                                "email": lead.email,
+                            },
+                            "notify": {
+                                "sms": False,
+                                "email": False
+                            },
+                            "notes": {
+                                "lead_id": str(lead.id),
+                                "installment_id": str(first_inst.id)
+                            }
+                        }
+                        if phone:
+                            inst_link_data["customer"]["contact"] = phone
+                            
+                        try:
+                            inst_payment_link = client.payment_link.create(inst_link_data)
+                            payment_link_url = inst_payment_link.get('short_url')
+                        except Exception as rzp_err:
+                            print(f"Error creating installment payment link: {rzp_err}")
+                            payment_link_url = ""
+                            
+                        rich_installments = [{
+                            'installment_number': first_inst.installment_number,
+                            'amount': first_inst.amount,
+                            'status': first_inst.status,
+                            'payment_link': payment_link_url,
+                            'razorpay_payment_id': ''
+                        }]
+                        
+                        for inst in lead.installments.exclude(id=first_inst.id).order_by('installment_number'):
+                            rich_installments.append({
+                                'installment_number': inst.installment_number,
+                                'amount': inst.amount,
+                                'status': inst.status,
+                                'payment_link': '',
+                                'razorpay_payment_id': ''
+                            })
+                            
+                        rich_items = []
+                        for item in lead.items.all():
+                            req_item = lead.requirement.items.filter(subcategory=item.subcategory).first()
+                            image_url = None
+                            if req_item and req_item.image:
+                                image_url = request.build_absolute_uri(req_item.image.url)
+                            
+                            rich_items.append({
+                                'name': item.subcategory.name,
+                                'count': item.count,
+                                'price': float(req_item.total_amount) if req_item else 0.00,
+                                'total_mrp': float(req_item.total_mrp) if req_item else 0.00,
+                                'description': req_item.description if req_item else "",
+                                'image_url': image_url
+                            })
+                            
+                        from django.core.mail import EmailMultiAlternatives
+                        from django.template.loader import render_to_string
+                        
+                        subject = f"Product Requirements & Payment Details - Lead #{lead.id}"
+                        from_email = settings.DEFAULT_FROM_EMAIL
+                        to_email = [lead.email]
+                        
+                        html_content = render_to_string('cyborgapp/emails/lead_payment_share.html', {
+                            'lead': lead,
+                            'payment_link': payment_link_url,
+                            'rich_items': rich_items,
+                            'rich_installments': rich_installments
+                        })
+                        
+                        msg = EmailMultiAlternatives(subject, "", from_email, to_email)
+                        msg.attach_alternative(html_content, "text/html")
+                        msg.send(fail_silently=False)
+                        
+                        LeadUpdate.objects.create(
+                            lead=lead,
+                            update_text=f"SYSTEM: Lead confirmed by {request.user.get_usertype_display().upper()}. First installment details and payment link shared with customer."
+                        )
+                        
+                        return JsonResponse({'status': 'success', 'message': 'Installment details and payment link shared with customer successfully.'})
+
                     if not razorpay_payment_id:
                         # Step 1: Initialize installments and first payment
                         lead.payment_mode = 'part'
@@ -2656,7 +3012,11 @@ def lead_add_update(request, lead_id):
                 lead.total_amount = lead.get_total_amount
                 lead.confirmed_by = request.user
                 from .utils import distribute_product_sale_commission
-                distribute_product_sale_commission(lead)
+                if lead.payment_mode == 'part':
+                    first_inst = lead.installments.order_by('installment_number').first()
+                    distribute_product_sale_commission(lead, installment=first_inst)
+                else:
+                    distribute_product_sale_commission(lead)
             
             lead.status = new_status
             lead.save()
@@ -2727,6 +3087,73 @@ def lead_get_updates(request, lead_id):
         'installments': installments_data,
         'confirmed_by_id': lead.confirmed_by_id
     })
+
+@login_required(login_url='login')
+def lead_get_associate_updates(request, lead_id):
+    lead = get_object_or_404(Lead, id=lead_id)
+    from .models import LeadAssociateUpdate
+    updates = []
+    for u in lead.associate_updates.select_related('user').all().order_by('-created_at'):
+        updates.append({
+            'update_text': u.update_text,
+            'username': u.user.username,
+            'user_name': u.user.name or u.user.username,
+            'created_at': u.created_at.strftime('%b %d, %Y %H:%M')
+        })
+        
+    can_add = (request.user.usertype == 'customer' and lead.requirement.customer == request.user)
+    
+    return JsonResponse({
+        'status': 'success',
+        'updates': updates,
+        'can_add': can_add
+    })
+
+@login_required(login_url='login')
+def lead_add_associate_update(request, lead_id):
+    lead = get_object_or_404(Lead, id=lead_id)
+    
+    # Permission check: must be a customer (Associate Company) and the owner of the lead's requirement
+    if request.user.usertype != 'customer' or lead.requirement.customer != request.user:
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+        
+    if request.method == 'POST':
+        import json
+        data = json.loads(request.body)
+        update_text = data.get('update_text')
+        
+        if not update_text:
+            return JsonResponse({'status': 'error', 'message': 'Update text is required.'}, status=400)
+        custom_date = data.get('custom_date')
+        custom_time = data.get('custom_time')
+        created_at = None
+        if custom_date and custom_time:
+            try:
+                from django.utils.timezone import make_aware
+                import datetime
+                dt_str = f"{custom_date} {custom_time}:00"
+                naive_dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                created_at = make_aware(naive_dt)
+            except Exception:
+                pass
+
+        from .models import LeadAssociateUpdate
+        if created_at:
+            LeadAssociateUpdate.objects.create(
+                lead=lead,
+                user=request.user,
+                update_text=update_text,
+                created_at=created_at
+            )
+        else:
+            LeadAssociateUpdate.objects.create(
+                lead=lead,
+                user=request.user,
+                update_text=update_text
+            )
+        return JsonResponse({'status': 'success', 'message': 'Associate update added successfully.'})
+        
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
 
 @login_required(login_url='login')
 def pay_installment(request, installment_id):
@@ -2815,8 +3242,20 @@ def verify_installment_payment(request, installment_id):
         installment.razorpay_payment_id = razorpay_payment_id
         installment.save()
         
+        from .utils import distribute_product_sale_commission
+        distribute_product_sale_commission(installment.lead, installment=installment)
+        
+        # If this is the first installment and lead is still pending, confirm the lead
+        lead = installment.lead
+        if installment.installment_number == 1 and lead.status == 'pending':
+            lead.total_amount = lead.get_total_amount
+            lead.razorpay_payment_id = razorpay_payment_id
+            lead.payment_mode = 'part'
+            lead.status = 'confirmed'
+            lead.save()
+
         LeadUpdate.objects.create(
-            lead=installment.lead,
+            lead=lead,
             update_text=f"Installment {installment.installment_number} of ₹{installment.amount} paid successfully. Payment ID: {razorpay_payment_id}"
         )
         

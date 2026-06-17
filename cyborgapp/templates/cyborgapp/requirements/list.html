@@ -565,20 +565,28 @@
                             const base = item.customer_amount + item.admin_markup + item.other_expenses;
                             const gstAmt = base * (item.gst / 100);
                             if (userUsertype === 'superadmin') {
+                                let mrpHtml = '';
+                                if (item.total_mrp && item.total_mrp > item.total_amount) {
+                                    mrpHtml = `<span style="text-decoration: line-through; color: #dc3545; font-size: 0.8em; margin-left: 6px;">₹${item.total_mrp.toFixed(2)}</span>`;
+                                }
                                 priceSection = `
-                                    <span style="font-weight: 700; color: #198754;">₹${item.total_amount.toFixed(2)}</span>
+                                    <span style="font-weight: 700; color: #198754;">₹${item.total_amount.toFixed(2)} ${mrpHtml}</span>
                                     <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600;">
-                                        C: ₹${item.customer_amount.toFixed(2)} | M: ₹${item.admin_markup.toFixed(2)} | E: ₹${item.other_expenses.toFixed(2)} | GST: ${item.gst}% (₹${gstAmt.toFixed(2)})
+                                        R: ₹${item.customer_amount.toFixed(2)} | C: ₹${item.admin_markup.toFixed(2)} | E: ₹${item.other_expenses.toFixed(2)} | GST: ${item.gst}% (₹${gstAmt.toFixed(2)})
                                     </span>
                                  `;
                             } else {
                                 const finalPrice = (userUsertype === 'customer') ? item.customer_amount : item.total_amount;
+                                let mrpHtml = '';
+                                if (userUsertype !== 'customer' && item.total_mrp && item.total_mrp > item.total_amount) {
+                                    mrpHtml = `<span style="text-decoration: line-through; color: #dc3545; font-size: 0.8em; margin-left: 6px;">₹${item.total_mrp.toFixed(2)}</span>`;
+                                }
                                 let extraInfo = '';
                                 if (userUsertype !== 'customer' && item.gst > 0) {
                                     extraInfo = `<div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">(GST: ${item.gst}% | ₹${gstAmt.toFixed(2)})</div>`;
                                 }
                                 priceSection = `
-                                    <span style="font-weight: 700; color: #198754;">₹${finalPrice.toFixed(2)}</span>
+                                    <span style="font-weight: 700; color: #198754;">₹${finalPrice.toFixed(2)} ${mrpHtml}</span>
                                     ${extraInfo}
                                 `;
                             }
@@ -607,6 +615,9 @@
                                                     ${item.subcategory_name}
                                                 </span>
                                                 ${countSection}
+                                                <span style="font-size: 0.72rem; font-weight: 700; color: #b8912d; margin-top: 2px;">
+                                                    <i class="fa-solid fa-coins"></i> Commission (1 Qty): ₹${item.my_commission.toFixed(2)}
+                                                </span>
                                             </div>
                                         </div>
                                         <div style="display: flex; flex-direction: column; align-items: flex-end;">
@@ -653,7 +664,7 @@
 
                         if (row.status === 'pending') {
                             if (userId == row.customer_id || userUsertype === 'superadmin') {
-                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}:${encodeURIComponent(i.image_url || '')}:${i.other_expenses}:${i.gst}`).join(',');
+                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}:${encodeURIComponent(i.image_url || '')}:${i.other_expenses}:${i.gst}:${i.mrp}`).join(',');
                                 html += `
                                     <button type="button" class="btn-action btn-edit edit-req-btn" 
                                             data-id="${row.id}" 
@@ -744,6 +755,33 @@
         const reqStatus = document.getElementById('reqStatus');
         const isSuperAdmin = {{ request.user.usertype|yesno:"true,false" }} === true && '{{ request.user.usertype }}' === 'superadmin';
 
+        window.updateMRPPreview = function(subId) {
+            const formElement = document.getElementById('requirementForm');
+            if (!formElement) return;
+            
+            const custAmt = parseFloat(formElement.querySelector(`input[name="customer_amount_${subId}"]`)?.value || 0);
+            const markup = parseFloat(formElement.querySelector(`input[name="admin_markup_${subId}"]`)?.value || 0);
+            const expenses = parseFloat(formElement.querySelector(`input[name="other_expenses_${subId}"]`)?.value || 0);
+            const gst = parseFloat(formElement.querySelector(`input[name="gst_${subId}"]`)?.value || 0);
+            const mrp = parseFloat(formElement.querySelector(`input[name="mrp_${subId}"]`)?.value || 0);
+            
+            const base = custAmt + markup + expenses;
+            const currentTotal = base + (base * (gst / 100));
+            const totalMrp = mrp + (mrp * (gst / 100));
+            
+            const currentTotalSpan = document.getElementById(`current_total_amt_${subId}`);
+            const totalMrpSpan = document.getElementById(`total_mrp_val_${subId}`);
+            
+            if (currentTotalSpan) currentTotalSpan.textContent = currentTotal.toFixed(2);
+            if (totalMrpSpan) totalMrpSpan.textContent = totalMrp.toFixed(2);
+            
+            if (mrp > 0 && totalMrp < currentTotal) {
+                if (totalMrpSpan) totalMrpSpan.style.color = '#dc3545';
+            } else {
+                if (totalMrpSpan) totalMrpSpan.style.color = '#28a745';
+            }
+        };
+
         function fetchSubcategories(catId, selectedItems = null) {
             if (!catId) {
                 subcatSection.style.display = 'none';
@@ -755,6 +793,7 @@
                 .then(data => {
                     if (data.status === 'success') {
                         subcatList.innerHTML = '';
+                        subcatSection.setAttribute('data-cat-type', data.cat_type || 'other');
                         data.subcategories.forEach(sub => {
                             const isSelected = selectedItems && selectedItems[sub.id] !== undefined;
                             const countValue = isSelected ? selectedItems[sub.id].count : '';
@@ -762,6 +801,7 @@
                             const markValue = isSelected ? selectedItems[sub.id].markAmt : '';
                             const otherExpValue = isSelected ? (selectedItems[sub.id].otherExpenses || '0') : '';
                             const gstValue = isSelected ? (selectedItems[sub.id].gstPercent || '0') : '';
+                            const mrpValue = isSelected ? (selectedItems[sub.id].mrpVal || '0.00') : '0.00';
 
                             const div = document.createElement('div');
                             div.style.marginBottom = '15px';
@@ -798,19 +838,29 @@
                                         </div>
                                         ${isSuperAdmin ? `
                                             <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 80px;">
-                                                <label style="font-size: 0.7rem; color: #dc3545; font-weight: 700; margin-bottom: 2px;">Markup ₹</label>
-                                                <input type="number" step="0.01" name="admin_markup_${sub.id}" value="${markValue}" placeholder="Markup ₹" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #dc3545; font-size: 0.8rem;">
+                                                <label style="font-size: 0.7rem; color: #dc3545; font-weight: 700; margin-bottom: 2px;">Commission ₹</label>
+                                                <input type="number" step="0.01" name="admin_markup_${sub.id}" value="${markValue}" placeholder="Commission ₹" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #dc3545; font-size: 0.8rem;" oninput="updateMRPPreview(${sub.id})">
                                             </div>
                                             <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 80px;">
                                                 <label style="font-size: 0.7rem; color: #198754; font-weight: 700; margin-bottom: 2px;">Expenses ₹</label>
-                                                <input type="number" step="0.01" name="other_expenses_${sub.id}" value="${otherExpValue}" placeholder="Expenses ₹" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #198754; font-size: 0.8rem;">
+                                                <input type="number" step="0.01" name="other_expenses_${sub.id}" value="${otherExpValue}" placeholder="Expenses ₹" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #198754; font-size: 0.8rem;" oninput="updateMRPPreview(${sub.id})">
                                             </div>
                                             <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 80px;">
                                                 <label style="font-size: 0.7rem; color: #b8912d; font-weight: 700; margin-bottom: 2px;">GST %</label>
-                                                <input type="number" step="0.01" name="gst_${sub.id}" value="${gstValue}" placeholder="GST %" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ffc107; font-size: 0.8rem;">
+                                                <input type="number" step="0.01" name="gst_${sub.id}" value="${gstValue}" placeholder="GST %" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ffc107; font-size: 0.8rem;" oninput="updateMRPPreview(${sub.id})">
+                                            </div>
+                                            <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 80px;">
+                                                <label style="font-size: 0.7rem; color: #6f42c1; font-weight: 700; margin-bottom: 2px;">MRP ₹</label>
+                                                <input type="number" step="0.01" name="mrp_${sub.id}" value="${mrpValue}" placeholder="MRP ₹" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #6f42c1; font-size: 0.8rem;" oninput="updateMRPPreview(${sub.id})">
                                             </div>
                                         ` : ''}
                                     </div>
+                                    ${isSuperAdmin ? `
+                                    <div id="mrp_preview_container_${sub.id}" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; background: #f8f9fa; padding: 6px 10px; border-radius: 5px; border: 1px dashed #e1e8ed;">
+                                        <span>Current Total Amt (incl. GST): ₹<span id="current_total_amt_${sub.id}">0.00</span></span>
+                                        <span>Total MRP (incl. GST): ₹<span id="total_mrp_val_${sub.id}">0.00</span></span>
+                                    </div>
+                                    ` : ''}
                                     <textarea name="description_${sub.id}" placeholder="Item Description / Requirements" style="width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem; min-height: 50px; resize: vertical;" ${isSuperAdmin ? 'readonly' : ''}>${descValue}</textarea>
                                     <div style="display: flex; align-items: center; gap: 10px;">
                                         <img class="subcat-img-preview" src="${subImageUrl}" data-original-src="${subImageUrl}" style="width: 40px; height: 40px; border-radius: 5px; object-fit: cover; cursor: pointer; border: 1px solid var(--border-color); display: ${imgDisplayState}; margin-top: 5px;" title="Current/Selected Image">
@@ -864,6 +914,9 @@
                             }
                             
                             subcatList.appendChild(div);
+                            if (isSuperAdmin) {
+                                updateMRPPreview(sub.id);
+                            }
                         });
                         subcatSection.style.display = 'block';
                     }
@@ -980,7 +1033,8 @@
                             description: parts[4] ? decodeURIComponent(parts[4]) : '',
                             image_url: parts[5] ? decodeURIComponent(parts[5]) : '',
                             otherExpenses: parts[6] || '0.00',
-                            gstPercent: parts[7] || '0.00'
+                            gstPercent: parts[7] || '0.00',
+                            mrpVal: parts[8] || '0.00'
                         };
                     }
                 });
@@ -1018,14 +1072,35 @@
                 return false;
             }
 
+            const catType = document.getElementById('subcategories-section').getAttribute('data-cat-type') || 'other';
+
+            let missingCount = false;
             let missingAmount = false;
             checkedSubcats.forEach(checkbox => {
                 const subId = checkbox.value;
+
+                // Validate count if category is 'count' type
+                if (catType === 'count') {
+                    const countInput = document.getElementById('requirementForm').querySelector(`input[name="count_${subId}"]`);
+                    if (countInput && (!countInput.value || countInput.value.trim() === '' || parseInt(countInput.value) <= 0)) {
+                        missingCount = true;
+                    }
+                }
+
                 const amtInput = document.getElementById('requirementForm').querySelector(`input[name="customer_amount_${subId}"]`);
                 if (amtInput && (!amtInput.value || amtInput.value.trim() === "")) {
                     missingAmount = true;
                 }
             });
+
+            if (missingCount) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Quantity Required',
+                    text: 'Please enter a valid quantity (Qty) for all selected items.'
+                });
+                return false;
+            }
 
             if (missingAmount) {
                 Swal.fire({
@@ -1035,6 +1110,50 @@
                 });
                 return false;
             }
+
+            let mrpInvalid = false;
+            let invalidSubName = "";
+            let requiredMrpMsg = "";
+            if (isSuperAdmin) {
+                checkedSubcats.forEach(checkbox => {
+                    const subId = checkbox.value;
+                    const mrpInput = document.getElementById('requirementForm').querySelector(`input[name="mrp_${subId}"]`);
+                    const custAmtInput = document.getElementById('requirementForm').querySelector(`input[name="customer_amount_${subId}"]`);
+                    const markupInput = document.getElementById('requirementForm').querySelector(`input[name="admin_markup_${subId}"]`);
+                    const expInput = document.getElementById('requirementForm').querySelector(`input[name="other_expenses_${subId}"]`);
+                    const gstInput = document.getElementById('requirementForm').querySelector(`input[name="gst_${subId}"]`);
+
+                    const mrpVal = parseFloat(mrpInput?.value || 0);
+                    if (mrpVal > 0) {
+                        const custVal = parseFloat(custAmtInput?.value || 0);
+                        const markupVal = parseFloat(markupInput?.value || 0);
+                        const expVal = parseFloat(expInput?.value || 0);
+                        const gstVal = parseFloat(gstInput?.value || 0);
+
+                        const base = custVal + markupVal + expVal;
+                        const totalAmt = base + (base * (gstVal / 100));
+                        const totalMrp = mrpVal + (mrpVal * (gstVal / 100));
+
+                        if (totalMrp < totalAmt) {
+                            mrpInvalid = true;
+                            const card = checkbox.closest('div');
+                            const subName = card ? card.querySelector('div[style*="font-weight: 600"]').textContent.trim() : `Item #${subId}`;
+                            invalidSubName = subName;
+                            requiredMrpMsg = `Total MRP (incl. GST) must be greater than or equal to current total amount (₹${totalAmt.toFixed(2)}).`;
+                        }
+                    }
+                });
+            }
+
+            if (mrpInvalid) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Invalid MRP',
+                    text: `For item "${invalidSubName}": ${requiredMrpMsg}`
+                });
+                return false;
+            }
+
             return true;
         }
 

@@ -49,9 +49,12 @@ urlpatterns = [
     path('superadmin/user-wallets/export-csv/', views.export_wallets_csv, name='export_wallets_csv'),
 
     path('leads/', views.lead_list, name='lead_list'),
+    path('leads/confirmed/', views.confirmed_lead_list, name='confirmed_lead_list'),
     path('leads/<int:lead_id>/edit/', views.lead_edit, name='lead_edit'),
     path('leads/<int:lead_id>/update/', views.lead_add_update, name='lead_add_update'),
     path('leads/<int:lead_id>/updates/get/', views.lead_get_updates, name='lead_get_updates'),
+    path('leads/<int:lead_id>/associate-updates/get/', views.lead_get_associate_updates, name='lead_get_associate_updates'),
+    path('leads/<int:lead_id>/associate-updates/add/', views.lead_add_associate_update, name='lead_add_associate_update'),
     path('leads/<int:lead_id>/share/', views.share_lead_payment, name='share_lead_payment'),
     path('installments/<int:installment_id>/pay/', views.pay_installment, name='pay_installment'),
     path('installments/<int:installment_id>/verify/', views.verify_installment_payment, name='verify_installment_payment'),

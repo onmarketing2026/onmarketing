@@ -24,7 +24,7 @@ def add_to_wallet(user, amount, transaction_type, reference_id, description):
             description=description
         )
 
-def distribute_product_sale_commission(lead):
+def distribute_product_sale_commission(lead, installment=None):
     from decimal import Decimal
     # Calculate amounts based on lead's specific items
     total_customer_amount = Decimal('0.00')
@@ -41,6 +41,17 @@ def distribute_product_sale_commission(lead):
                 total_customer_amount += Decimal(str(req_item.customer_amount)) * qty
                 total_markup_pool += Decimal(str(req_item.admin_markup)) * qty
 
+    # Calculate proportional ratio if this is an installment payment
+    ratio = Decimal('1.00')
+    inst_summary = ""
+    if installment:
+        lead_total = Decimal(str(lead.get_total_amount))
+        if lead_total > 0:
+            ratio = Decimal(str(installment.amount)) / lead_total
+        total_customer_amount = total_customer_amount * ratio
+        total_markup_pool = total_markup_pool * ratio
+        inst_summary = f" (Installment {installment.installment_number})"
+
     # Prepare item count summary for description if applicable
     item_summary = ""
     if cat_type == 'count':
@@ -54,7 +65,7 @@ def distribute_product_sale_commission(lead):
             amount=total_customer_amount,
             transaction_type='sale',
             reference_id=str(lead.id),
-            description=f"Payment for project: {lead.requirement.title} (Lead: {lead.name}){item_summary}"
+            description=f"Payment for project: {lead.requirement.title} (Lead: {lead.name}){item_summary}{inst_summary}"
         )
 
     if total_markup_pool <= 0:
@@ -87,7 +98,7 @@ def distribute_product_sale_commission(lead):
                         amount=amount,
                         transaction_type='commission',
                         reference_id=str(lead.id),
-                        description=f"{label} from {lead.requirement.title} (Pool: ₹{total_markup_pool}){item_summary}"
+                        description=f"{label} from {lead.requirement.title} (Pool: ₹{total_markup_pool}){item_summary}{inst_summary}"
                     )
 
 def handle_registration_commission(new_user):

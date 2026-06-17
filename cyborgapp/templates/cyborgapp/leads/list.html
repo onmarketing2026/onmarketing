@@ -1,7 +1,7 @@
 {% extends 'cyborgapp/base.html' %}
 
-{% block title %}Leads Management{% endblock %}
-{% block page_title %}Leads Dashboard{% endblock %}
+{% block title %}{% if is_confirmed_tab %}Confirmed Leads{% else %}Leads Management{% endif %}{% endblock %}
+{% block page_title %}{% if is_confirmed_tab %}Confirmed Leads Dashboard{% else %}Leads Dashboard{% endif %}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -67,8 +67,8 @@
 {% block content %}
     <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
         <div class="table-header">
-            <h3>Leads List</h3>
-            {% if request.user.usertype == 'marketing' %}
+            <h3>{% if is_confirmed_tab %}Confirmed Leads List{% else %}Leads List{% endif %}</h3>
+            {% if request.user.usertype == 'marketing' and not is_confirmed_tab %}
                 <button class="btn-create-premium" id="openAddLeadModal">
                     <i class="fa-solid fa-plus-circle"></i> Add New Lead
                 </button>
@@ -81,7 +81,7 @@
                     <th>Lead Name</th>
                     <th>Contact Info</th>
                     <th>Requirement</th>
-                    {% if request.user.usertype != 'marketing' %}
+                    {% if request.user.usertype != 'marketing' and request.user.usertype != 'customer' %}
                         <th>Digital Franchise</th>
                     {% endif %}
                     {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
@@ -91,16 +91,25 @@
                         <th>District Franchise</th>
                     {% endif %}
                     <th>Date Added</th>
+                    {% if request.user.usertype != 'customer' %}
                     <th>{% if request.user.usertype == 'superadmin' %}Financial Breakdown{% else %}Total Amount{% endif %}</th>
+                    {% endif %}
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for lead in leads %}
-                <tr>
+                <tr {% if lead.is_controlled %}style="background: linear-gradient(90deg, rgba(111, 66, 193, 0.05) 0%, rgba(255, 255, 255, 0) 100%);"{% endif %}>
                     <td>
-                        <div style="font-weight: 700; color: var(--text-main);">{{ lead.name }}</div>
+                        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                            <span style="font-weight: 700; color: var(--text-main);">{{ lead.name }}</span>
+                            {% if lead.is_controlled %}
+                                <span style="background: var(--role-color, #6f42c1); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; display: inline-flex; align-items: center; gap: 3px;" title="You have control to edit or update this lead">
+                                    <i class="fa-solid fa-pen-to-square"></i> Your Action
+                                </span>
+                            {% endif %}
+                        </div>
                         <div style="font-size: 0.8rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis;">{{ lead.address|default:"No address" }}</div>
                     </td>
                     <td>
@@ -120,7 +129,7 @@
                             {% endfor %}
                         </div>
                     </td>
-                    {% if request.user.usertype != 'marketing' %}
+                    {% if request.user.usertype != 'marketing' and request.user.usertype != 'customer' %}
                         <td>
                             <div style="font-weight: 600;">{{ lead.marketing_user.name }}</div>
                             <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lead.marketing_user.email }}</div>
@@ -143,16 +152,18 @@
                     <td data-sort="{{ lead.created_at|date:'YmdHis' }}">
                         {{ lead.created_at|date:"M d, Y" }}
                     </td>
-                    {% if request.user.usertype == 'superadmin' %}
-                    <td style="font-weight: 800; font-size: 0.95rem;">
-                        <div style="color: #198754;" title="Total Sale">₹{{ lead.get_total_amount }}</div>
-                        <div style="color: #0d6efd; font-size: 0.75rem; border-top: 1px solid #eee; margin-top: 4px; padding-top: 4px;" title="To Customer">C: ₹{{ lead.get_customer_amount }}</div>
-                        <div style="color: #6610f2; font-size: 0.75rem;" title="Admin Markup">M: ₹{{ lead.get_markup_amount }}</div>
-                    </td>
-                    {% else %}
-                    <td style="font-weight: 800; color: #198754; font-size: 1rem;">
-                        ₹{{ lead.get_total_amount }}
-                    </td>
+                    {% if request.user.usertype != 'customer' %}
+                        {% if request.user.usertype == 'superadmin' %}
+                        <td style="font-weight: 800; font-size: 0.95rem;">
+                            <div style="color: #198754;" title="Total Sale">₹{{ lead.get_total_amount }}</div>
+                            <div style="color: #0d6efd; font-size: 0.75rem; border-top: 1px solid #eee; margin-top: 4px; padding-top: 4px;" title="To Customer">C: ₹{{ lead.get_customer_amount }}</div>
+                            <div style="color: #6610f2; font-size: 0.75rem;" title="Admin Markup">M: ₹{{ lead.get_markup_amount }}</div>
+                        </td>
+                        {% else %}
+                        <td style="font-weight: 800; color: #198754; font-size: 1rem;">
+                            ₹{{ lead.get_total_amount }}
+                        </td>
+                        {% endif %}
                     {% endif %}
                     <td>
                         {% if lead.status == 'confirmed' and lead.payment_mode == 'part' and lead.installment_pending %}
@@ -165,29 +176,36 @@
                     </td>
                     <td>
                         <div style="display: flex; gap: 10px; justify-content: center;">
-                            {% with effective_level=request.user.usertype %}
-                                <button class="action-btn-circle btn-edit-premium edit-lead-btn" 
-                                        data-id="{{ lead.id }}" 
-                                        data-name="{{ lead.name }}" 
-                                        data-phone="{{ lead.phone }}" 
-                                        data-email="{{ lead.email|default:'' }}" 
-                                        data-address="{{ lead.address|default:'' }}" 
-                                        data-remarks="{{ lead.remarks|default:'' }}"
-                                        data-req-id="{{ lead.requirement_id }}"
-                                        data-status="{{ lead.status }}"
-                                        data-cat-type="{{ lead.requirement.category.cat_type|default:'other' }}"
-                                        data-items="{% for item in lead.items.all %}{{ item.subcategory_id }}:{{ item.count }}{% if not forloop.last %},{% endif %}{% endfor %}"
-                                        data-all-req-items="{{ lead.get_req_items_with_fc_limits }}"
-                                        title="View/Edit Lead Details">
-                                    <i class="fa-solid fa-pen-to-square"></i>
+                            {% if is_confirmed_tab %}
+                                <button class="action-btn-circle btn-history-premium assoc-updates-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" title="Associate Updates">
+                                    <i class="fa-solid fa-comment-dots"></i>
                                 </button>
-                            {% endwith %}
-                            <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-status="{{ lead.status }}" data-level="{{ lead.current_level }}" title="Status & Timeline">
-                                <i class="fa-solid fa-clock-rotate-left"></i>
-                            </button>
-                            <button class="action-btn-circle btn-share-premium share-lead-btn" data-id="{{ lead.id }}" data-email="{{ lead.email|default:'' }}" title="Share Details & Payment Link">
-                                <i class="fa-solid fa-paper-plane"></i>
-                            </button>
+                            {% else %}
+                                {% with effective_level=request.user.usertype %}
+                                    <button class="action-btn-circle btn-edit-premium edit-lead-btn" 
+                                            data-id="{{ lead.id }}" 
+                                            data-name="{{ lead.name }}" 
+                                            data-phone="{{ lead.phone }}" 
+                                            data-email="{{ lead.email|default:'' }}" 
+                                            data-address="{{ lead.address|default:'' }}" 
+                                            data-remarks="{{ lead.remarks|default:'' }}"
+                                            data-req-id="{{ lead.requirement_id }}"
+                                            data-status="{{ lead.status }}"
+                                            data-level="{{ lead.current_level }}"
+                                            data-cat-type="{{ lead.requirement.category.cat_type|default:'other' }}"
+                                            data-items="{% for item in lead.items.all %}{{ item.subcategory_id }}:{{ item.count }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                            data-all-req-items="{{ lead.get_req_items_with_fc_limits }}"
+                                            title="View/Edit Lead Details">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                {% endwith %}
+                                <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-status="{{ lead.status }}" data-level="{{ lead.current_level }}" title="Status & Timeline">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </button>
+                                <button class="action-btn-circle btn-share-premium share-lead-btn" data-id="{{ lead.id }}" data-email="{{ lead.email|default:'' }}" title="Share Details & Payment Link">
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </button>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>
@@ -244,6 +262,9 @@
                     <textarea name="remarks" id="leadRemarks" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 60px;"></textarea>
                 </div>
                 <button type="submit" class="btn-submit" id="leadSubmitBtn" style="width: 100%; background: #0d6efd; color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">Save Lead</button>
+                <button type="button" id="leadViewHistoryBtn" style="display: none; width: 100%; background: var(--role-color); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 10px;">
+                    <i class="fa-solid fa-clock-rotate-left"></i> View Payments & History Timeline
+                </button>
             </form>
         </div>
     </div>
@@ -329,6 +350,11 @@
                 <strong>Lead Confirmed!</strong><br>The conversion is complete.
             </div>
 
+            <div id="paymentPendingMsg" style="display: none; margin-bottom: 30px; padding: 20px; background: rgba(253, 126, 20, 0.08); color: #fd7e14; border-radius: 10px; text-align: center; border: 1px solid rgba(253, 126, 20, 0.2);">
+                <i class="fa-solid fa-credit-card" style="font-size: 1.5rem; margin-bottom: 10px; display: block;"></i>
+                <strong>Payment Pending</strong><br>Lead is confirmed. Please complete the remaining installment payments.
+            </div>
+
             <!-- Installments Display Section -->
             <div id="installmentsSection" style="display: none; margin-bottom: 30px; padding: 20px; border: 1px solid var(--border-color); border-radius: 12px; background: #f8f9fa;">
                 <h4 style="margin-bottom: 15px; font-size: 1.05rem; color: var(--text-main); display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; font-weight: bold;">
@@ -356,6 +382,50 @@
                     </thead>
                     <tbody id="historyList" style="font-size: 0.85rem;">
                         <!-- Updates loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Associate Company Updates Modal -->
+    <div id="associateUpdatesModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+        <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 550px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+            <span class="close-modal" id="closeAssociateUpdatesModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+            <h2 style="margin-bottom: 10px; font-size: 1.5rem;">Lead Updates (Associate Company)</h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted);">Lead updates for <span id="assocUpdatesLeadName" style="font-weight: 700; color: var(--text-main);"></span></p>
+
+            <!-- Add Update Form (only visible if user is the customer/associate company) -->
+            <div id="assocAddUpdateSection" style="display: none; margin-bottom: 30px; padding-bottom: 25px; border-bottom: 1px solid var(--border-color);">
+                <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main); font-weight: bold;">Add Update</h4>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <textarea id="newAssocUpdateText" class="form-control" placeholder="Write your update details here..." style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 100px; font-size: 0.9rem;"></textarea>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Date</label>
+                        <input type="date" id="assocUpdateDate" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Time</label>
+                        <input type="time" id="assocUpdateTime" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                    </div>
+                </div>
+                <button type="button" id="saveAssocUpdateBtn" style="width: 100%; background: var(--role-color); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 0.95rem;">Submit Update</button>
+            </div>
+
+            <!-- Updates List -->
+            <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main); font-weight: bold;">Updates Timeline</h4>
+            <div id="assocUpdatesListContainer" style="margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; background: #fff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                <table id="assocUpdatesTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="text-align: left; padding: 12px 15px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color);">User & Update</th>
+                            <th style="text-align: left; padding: 12px 15px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color); width: 160px;">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assocUpdatesList" style="font-size: 0.85rem;">
+                        <!-- Loaded dynamically -->
                     </tbody>
                 </table>
             </div>
@@ -531,8 +601,10 @@
             openAddLeadBtn.onclick = function() {
                 leadForm.reset();
                 leadModalTitle.textContent = "Add New Lead";
-                document.getElementById('leadSubmitBtn').textContent = "Save Lead";
-                document.getElementById('leadSubmitBtn').style.display = 'block';
+                 document.getElementById('leadSubmitBtn').textContent = "Save Lead";
+                 document.getElementById('leadSubmitBtn').style.display = 'block';
+                 const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
+                 if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
                 leadForm.querySelectorAll('input, textarea, select').forEach(i => i.disabled = false);
                 document.getElementById('reqSelectGroup').style.display = 'block';
                 leadRequirement.required = true;
@@ -624,17 +696,32 @@
                 
                 const submitBtn = document.getElementById('leadSubmitBtn');
                 const inputs = leadForm.querySelectorAll('input, textarea, select');
-                
-                if (status === 'confirmed' || currentUserUsertype === 'staff') {
-                    leadModalTitle.textContent = "View Lead Details";
-                    submitBtn.style.display = 'none';
-                    inputs.forEach(input => input.disabled = true);
-                } else {
-                    leadModalTitle.textContent = "Edit Lead";
-                    submitBtn.style.display = 'block';
-                    submitBtn.textContent = "Update Lead";
-                    inputs.forEach(input => input.disabled = false);
-                }
+                      const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
+                 if (viewHistoryBtn) {
+                     viewHistoryBtn.setAttribute('data-id', id);
+                     viewHistoryBtn.setAttribute('data-name', this.getAttribute('data-name'));
+                     viewHistoryBtn.setAttribute('data-status', status);
+                     viewHistoryBtn.setAttribute('data-level', this.getAttribute('data-level') || '');
+                 }
+
+                 if (status === 'confirmed' || currentUserUsertype === 'staff') {
+                     leadModalTitle.textContent = "View Lead Details";
+                     submitBtn.style.display = 'none';
+                     inputs.forEach(input => input.disabled = true);
+                     if (viewHistoryBtn) {
+                         if (status === 'confirmed') {
+                             viewHistoryBtn.style.display = 'block';
+                         } else {
+                             viewHistoryBtn.style.display = 'none';
+                         }
+                     }
+                 } else {
+                     leadModalTitle.textContent = "Edit Lead";
+                     submitBtn.style.display = 'block';
+                     submitBtn.textContent = "Update Lead";
+                     inputs.forEach(input => input.disabled = false);
+                     if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
+                 }
 
                 document.getElementById('reqSelectGroup').style.display = 'none';
                 leadRequirement.required = false;
@@ -676,6 +763,20 @@
                 leadModal.style.display = "block";
             }
         });
+
+         const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
+         if (viewHistoryBtn) {
+             viewHistoryBtn.onclick = function() {
+                 const leadId = this.getAttribute('data-id');
+                 const leadModal = document.getElementById('leadModal');
+                 if (leadModal) leadModal.style.display = 'none';
+                 
+                 const historyBtn = document.querySelector(`.history-lead-btn[data-id="${leadId}"]`);
+                 if (historyBtn) {
+                     historyBtn.click();
+                 }
+             };
+         }
 
         const historyModal = document.getElementById('historyModal');
         const historyList = document.getElementById('historyList');
@@ -904,6 +1005,7 @@
                     });
 
                     const confirmedMsg = document.getElementById('confirmedMsg');
+                    const paymentPendingMsg = document.getElementById('paymentPendingMsg');
                     const reqRejectedMsg = document.getElementById('reqRejectedMsg');
                     const noPermissionMsg = document.getElementById('noPermissionMsg');
                     const paymentConfigSection = document.getElementById('paymentConfigSection');
@@ -914,6 +1016,7 @@
                     addUpdateSection.style.display = 'none';
                     noPermissionMsg.style.display = 'none';
                     confirmedMsg.style.display = 'none';
+                    paymentPendingMsg.style.display = 'none';
                     reqRejectedMsg.style.display = 'none';
                     if (paymentConfigSection) {
                         paymentConfigSection.style.display = 'none';
@@ -929,7 +1032,7 @@
                     if (instSection && instList) {
                         instSection.style.display = 'none';
                         instList.innerHTML = '';
-                        if (data.installments && data.installments.length > 0) {
+                        if (data.lead_status === 'confirmed' && data.installments && data.installments.length > 0) {
                             instSection.style.display = 'block';
                             let hasPayBtn = false;
                             data.installments.forEach(inst => {
@@ -970,7 +1073,15 @@
 
 
                     if (data.lead_status === 'confirmed') {
-                        confirmedMsg.style.display = 'block';
+                        let hasPendingInst = false;
+                        if (data.installments && data.installments.length > 0) {
+                            hasPendingInst = data.installments.some(inst => inst.status === 'pending');
+                        }
+                        if (data.payment_mode === 'part' && hasPendingInst) {
+                            paymentPendingMsg.style.display = 'block';
+                        } else {
+                            confirmedMsg.style.display = 'block';
+                        }
                     } else if (!data.requirement_approved) {
                         reqRejectedMsg.style.display = 'block';
                     } else if (!data.can_update || currentUserUsertype === 'staff') {
@@ -1074,6 +1185,127 @@
                 custom_time: customTime
             };
 
+            const sendUpdate = (payloadData) => {
+                fetch(`/leads/${currentLeadId}/update/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify(payloadData)
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showSuccess('Updated!', data.message || 'The lead progress has been recorded successfully.');
+                        setTimeout(() => location.reload(), 1500);
+                    } else if (data.status === 'payment_required') {
+                        // Initialize Razorpay checkout
+                        saveUpdateBtn.disabled = false;
+                        saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                        
+                        var options = {
+                            "key": data.key,
+                            "amount": data.amount, 
+                            "currency": "INR",
+                            "name": "OnCyborg",
+                            "description": data.payment_mode === 'part' ? "Lead Installment 1 Payment" : "Lead Confirmation Payment",
+                            "order_id": data.order_id,
+                            "handler": function (response) {
+                                // On successful payment, verify with backend
+                                saveUpdateBtn.disabled = true;
+                                saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment...';
+                                
+                                const verifyPayload = {
+                                    ...payloadData,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_order_id: response.razorpay_order_id,
+                                    razorpay_signature: response.razorpay_signature
+                                };
+                                
+                                fetch(`/leads/${currentLeadId}/update/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': '{{ csrf_token }}'
+                                    },
+                                    body: JSON.stringify(verifyPayload)
+                                })
+                                .then(r => r.json())
+                                .then(verifyData => {
+                                    if (verifyData.status === 'success') {
+                                        showSuccess('Payment Successful!', 'Lead is now confirmed.');
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        Swal.fire('Error', verifyData.message, 'error');
+                                        saveUpdateBtn.disabled = false;
+                                        saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                                    }
+                                });
+                            },
+                            "prefill": {
+                                "name": data.lead_name,
+                                "email": data.lead_email,
+                                "contact": data.lead_phone
+                            },
+                            "theme": {
+                                "color": "#198754"
+                            },
+                            "modal": {
+                                "ondismiss": function() {
+                                    // User closed the modal or payment failed
+                                    fetch(`/leads/${currentLeadId}/update/`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRFToken': '{{ csrf_token }}'
+                                        },
+                                        body: JSON.stringify({ 
+                                            payment_failed: true
+                                        })
+                                    }).then(() => {
+                                        Swal.fire('Payment Cancelled', 'Payment failed or cancelled. Status not confirmed.', 'warning')
+                                        .then(() => location.reload());
+                                    });
+                                }
+                            }
+                        };
+                        var rzp1 = new Razorpay(options);
+                        rzp1.on('payment.failed', function (response){
+                            // Payment officially failed
+                            console.error("RAZORPAY PAYMENT FAILED:", response.error);
+                            
+                            fetch(`/leads/${currentLeadId}/update/`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': '{{ csrf_token }}'
+                                },
+                                body: JSON.stringify({ 
+                                    payment_failed: true
+                                })
+                            }).then(() => {
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Payment Failed', 
+                                    text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error. Check console.'),
+                                });
+                            });
+                        });
+                        rzp1.open();
+                    } else {
+                        saveUpdateBtn.disabled = false;
+                        saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Update Failed',
+                            text: data.message,
+                            confirmButtonColor: '#dc3545'
+                        });
+                    }
+                });
+            };
+
             const leadPaymentMode = document.getElementById('leadPaymentMode');
             if (leadPaymentMode && status === 'confirmed' && ['superadmin', 'district', 'manager'].includes(currentUserUsertype)) {
                 payload.payment_mode = leadPaymentMode.value;
@@ -1090,135 +1322,187 @@
                         return;
                     }
                     payload.installments = Array.from(document.querySelectorAll('.installment-amount-input')).map(i => parseFloat(i.value || 0));
+                    
+                    // Ask user to Share Payment Link or Pay by Yourself
+                    Swal.fire({
+                        title: 'Confirm Part Payment',
+                        text: 'How would you like to handle the first installment payment?',
+                        icon: 'question',
+                        showCancelButton: true,
+                        showDenyButton: true,
+                        confirmButtonText: 'Pay by Yourself',
+                        denyButtonText: 'Share Payment Link',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: 'var(--role-color)',
+                        denyButtonColor: '#198754',
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            payload.share_payment_link = false;
+                            sendUpdate(payload);
+                        } else if (result.isDenied) {
+                            payload.share_payment_link = true;
+                            sendUpdate(payload);
+                        } else {
+                            saveUpdateBtn.disabled = false;
+                            saveUpdateBtn.innerHTML = 'Save & Update Lead';
+                        }
+                    });
+                    return;
                 }
             }
 
-            fetch(`/leads/${currentLeadId}/update/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showSuccess('Updated!', 'The lead progress has been recorded successfully.');
-                    setTimeout(() => location.reload(), 1500);
-                } else if (data.status === 'payment_required') {
-                    // Initialize Razorpay checkout
-                    saveUpdateBtn.disabled = false;
-                    saveUpdateBtn.innerHTML = 'Save & Update Lead';
-                    
-                    var options = {
-                        "key": data.key,
-                        "amount": data.amount, 
-                        "currency": "INR",
-                        "name": "OnCyborg",
-                        "description": data.payment_mode === 'part' ? "Lead Installment 1 Payment" : "Lead Confirmation Payment",
-                        "order_id": data.order_id,
-                        "handler": function (response) {
-                            // On successful payment, verify with backend
-                            saveUpdateBtn.disabled = true;
-                            saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment...';
-                            
-                            const verifyPayload = {
-                                ...payload,
-                                razorpay_payment_id: response.razorpay_payment_id,
-                                razorpay_order_id: response.razorpay_order_id,
-                                razorpay_signature: response.razorpay_signature
-                            };
-                            
-                            fetch(`/leads/${currentLeadId}/update/`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRFToken': '{{ csrf_token }}'
-                                },
-                                body: JSON.stringify(verifyPayload)
-                            })
-                            .then(r => r.json())
-                            .then(verifyData => {
-                                if (verifyData.status === 'success') {
-                                    showSuccess('Payment Successful!', 'Lead is now confirmed.');
-                                    setTimeout(() => location.reload(), 1500);
-                                } else {
-                                    Swal.fire('Error', verifyData.message, 'error');
-                                    saveUpdateBtn.disabled = false;
-                                    saveUpdateBtn.innerHTML = 'Save & Update Lead';
-                                }
-                            });
-                        },
-                        "prefill": {
-                            "name": data.lead_name,
-                            "email": data.lead_email,
-                            "contact": data.lead_phone
-                        },
-                        "theme": {
-                            "color": "#198754"
-                        },
-                        "modal": {
-                            "ondismiss": function() {
-                                // User closed the modal or payment failed
-                                fetch(`/leads/${currentLeadId}/update/`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRFToken': '{{ csrf_token }}'
-                                    },
-                                    body: JSON.stringify({ 
-                                        payment_failed: true
-                                    })
-                                }).then(() => {
-                                    Swal.fire('Payment Cancelled', 'Payment failed or cancelled. Status not confirmed.', 'warning')
-                                    .then(() => location.reload());
-                                });
-                            }
-                        }
-                    };
-                    var rzp1 = new Razorpay(options);
-                    rzp1.on('payment.failed', function (response){
-                        // Payment officially failed
-                        console.error("RAZORPAY PAYMENT FAILED:", response.error);
-                        
-                        fetch(`/leads/${currentLeadId}/update/`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': '{{ csrf_token }}'
-                            },
-                            body: JSON.stringify({ 
-                                payment_failed: true
-                            })
-                        }).then(() => {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Payment Failed', 
-                                text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error. Check console.'),
-                            });
-                            // Temporarily removed location.reload() so you can read the error!
-                        });
-                    });
-                    rzp1.open();
-                } else {
-                    saveUpdateBtn.disabled = false;
-                    saveUpdateBtn.innerHTML = 'Save & Update Lead';
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Update Failed',
-                        text: data.message,
-                        confirmButtonColor: '#dc3545'
-                    });
-                }
-            });
+            sendUpdate(payload);
         };
 
         document.getElementById('closeLeadModal').onclick = () => leadModal.style.display = 'none';
         document.getElementById('closeHistoryModal').onclick = () => historyModal.style.display = 'none';
+        
+        const assocUpdatesModal = document.getElementById('associateUpdatesModal');
+        const closeAssocUpdatesModal = document.getElementById('closeAssociateUpdatesModal');
+        const assocUpdatesList = document.getElementById('assocUpdatesList');
+        const assocUpdatesLeadName = document.getElementById('assocUpdatesLeadName');
+        const assocAddUpdateSection = document.getElementById('assocAddUpdateSection');
+        const saveAssocUpdateBtn = document.getElementById('saveAssocUpdateBtn');
+        const newAssocUpdateText = document.getElementById('newAssocUpdateText');
+        let currentAssocLeadId = null;
+
+        if (closeAssocUpdatesModal) {
+            closeAssocUpdatesModal.onclick = function() {
+                assocUpdatesModal.style.display = 'none';
+            };
+        }
+
+        $(document).on('click', '.assoc-updates-btn', function() {
+            currentAssocLeadId = this.getAttribute('data-id');
+            assocUpdatesLeadName.textContent = this.getAttribute('data-name');
+            newAssocUpdateText.value = '';
+            
+            // Prefill current date and time on load
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('assocUpdateDate').value = `${year}-${month}-${day}`;
+            document.getElementById('assocUpdateTime').value = `${hours}:${minutes}`;
+
+            // Fetch updates
+            fetch(`/leads/${currentAssocLeadId}/associate-updates/get/`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Toggle add update form
+                        if (data.can_add) {
+                            assocAddUpdateSection.style.display = 'block';
+                        } else {
+                            assocAddUpdateSection.style.display = 'none';
+                        }
+
+                        // Populate list
+                        assocUpdatesList.innerHTML = '';
+                        if (data.updates.length === 0) {
+                            assocUpdatesList.innerHTML = `
+                                <tr>
+                                    <td colspan="2" style="padding: 20px; text-align: center; color: var(--text-muted);">No updates added yet.</td>
+                                </tr>
+                            `;
+                        } else {
+                            data.updates.forEach(u => {
+                                const tr = document.createElement('tr');
+                                tr.style.borderBottom = '1px solid var(--border-color)';
+                                tr.innerHTML = `
+                                    <td style="padding: 12px 15px;">
+                                        <div style="font-weight: 700; color: var(--text-main);">${u.user_name}</div>
+                                        <div style="margin-top: 4px; color: var(--text-muted); line-height: 1.4;">${u.update_text}</div>
+                                    </td>
+                                    <td style="padding: 12px 15px; color: var(--text-muted); white-space: nowrap; vertical-align: top;">${u.created_at}</td>
+                                `;
+                                assocUpdatesList.appendChild(tr);
+                            });
+                        }
+                        assocUpdatesModal.style.display = 'block';
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Failed to load associate updates.',
+                            confirmButtonColor: 'var(--role-color)'
+                        });
+                    }
+                });
+        });
+
+        if (saveAssocUpdateBtn) {
+            saveAssocUpdateBtn.onclick = function() {
+                const text = newAssocUpdateText.value.trim();
+                if (!text) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Required',
+                        text: 'Please enter update text.',
+                        confirmButtonColor: 'var(--role-color)'
+                    });
+                    return;
+                }
+
+                const customDate = document.getElementById('assocUpdateDate').value;
+                const customTime = document.getElementById('assocUpdateTime').value;
+
+                saveAssocUpdateBtn.disabled = true;
+                saveAssocUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+
+                fetch(`/leads/${currentAssocLeadId}/associate-updates/add/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ 
+                        update_text: text,
+                        custom_date: customDate,
+                        custom_time: customTime
+                    })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    saveAssocUpdateBtn.disabled = false;
+                    saveAssocUpdateBtn.textContent = 'Submit Update';
+                    if (data.status === 'success') {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: 'Update added successfully!',
+                            confirmButtonColor: 'var(--role-color)'
+                        }).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Failed',
+                            text: data.message || 'Failed to submit update.',
+                            confirmButtonColor: 'var(--role-color)'
+                        });
+                    }
+                })
+                .catch(err => {
+                    saveAssocUpdateBtn.disabled = false;
+                    saveAssocUpdateBtn.textContent = 'Submit Update';
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'An unexpected error occurred.',
+                        confirmButtonColor: 'var(--role-color)'
+                    });
+                });
+            };
+        }
+
         window.onclick = (e) => {
             if (e.target == leadModal) leadModal.style.display = 'none';
             if (e.target == historyModal) historyModal.style.display = 'none';
+            if (e.target == assocUpdatesModal) assocUpdatesModal.style.display = 'none';
         };
     });
 </script>
