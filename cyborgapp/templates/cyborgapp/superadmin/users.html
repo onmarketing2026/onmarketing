@@ -656,31 +656,72 @@
             const userType = this.getAttribute('data-usertype');
             const isChecked = this.checked;
             const checkbox = this;
+            const loggedInUsertype = "{{ request.user.usertype }}";
             
-            if (isChecked && userType !== 'manager' && userType !== 'customer' && userType !== 'staff') {
+            if (isChecked) {
+                if (userType !== 'manager' && userType !== 'customer' && userType !== 'staff') {
+                    e.preventDefault();
+                    checkbox.checked = false; // Revert visually until confirmed
+                    
+                    if (loggedInUsertype === 'mandalam') {
+                        Swal.fire({
+                            title: 'Activate User',
+                            text: "Do you want to process registration payment and activate this user?",
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: 'Yes, with Payment',
+                            cancelButtonText: 'Cancel',
+                            confirmButtonColor: '#198754',
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                performToggle(userId, true, checkbox);
+                            }
+                        });
+                    } else {
+                        Swal.fire({
+                            title: 'Activate User',
+                            text: "Do you want to process registration payment and commissions?",
+                            icon: 'question',
+                            showCancelButton: true,
+                            showDenyButton: true,
+                            confirmButtonText: 'Yes, with Payment',
+                            denyButtonText: 'No, just Activate',
+                            cancelButtonText: 'Cancel',
+                            confirmButtonColor: '#198754',
+                            denyButtonColor: '#0d6efd',
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                performToggle(userId, true, checkbox);
+                            } else if (result.isDenied) {
+                                performToggle(userId, false, checkbox);
+                            }
+                        });
+                    }
+                } else {
+                    performToggle(userId, false, checkbox);
+                }
+            } else {
                 e.preventDefault();
-                checkbox.checked = false; // Revert visually until confirmed
+                checkbox.checked = true; // Revert visually until confirmed
                 
-                Swal.fire({
-                    title: 'Activate User',
-                    text: "Do you want to process registration payment and commissions?",
-                    icon: 'question',
+                let swalOptions = {
+                    title: 'Are you sure to deactivate?',
+                    icon: 'warning',
                     showCancelButton: true,
-                    showDenyButton: true,
-                    confirmButtonText: 'Yes, with Payment',
-                    denyButtonText: 'No, just Activate',
+                    confirmButtonText: 'Yes, Deactivate',
                     cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#198754',
-                    denyButtonColor: '#0d6efd',
-                }).then((result) => {
+                    confirmButtonColor: '#d33',
+                };
+                
+                if (loggedInUsertype === 'mandalam' && userType !== 'manager' && userType !== 'customer' && userType !== 'staff') {
+                    swalOptions.text = "You can again activate only with payment or else need to contact admin.";
+                }
+                
+                Swal.fire(swalOptions).then((result) => {
                     if (result.isConfirmed) {
-                        performToggle(userId, true, checkbox);
-                    } else if (result.isDenied) {
                         performToggle(userId, false, checkbox);
                     }
                 });
-            } else {
-                performToggle(userId, false, checkbox);
             }
         });
 

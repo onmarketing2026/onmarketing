@@ -1,9 +1,13 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>On Cyborg - {% block title %}Dashboard{% endblock %}</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="{% static 'img/logo.jpeg' %}">
+    
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -16,7 +20,6 @@
     <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/responsive/2.4.1/js/dataTables.responsive.min.js"></script>
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    {% load static %}
     <style>
         button:hover, .btn-action:hover, .menu-item:hover {
             cursor: pointer;
@@ -599,10 +602,12 @@
             </a>
             {% endif %}
 
+            {% if request.user.usertype != 'manager' and request.user.usertype != 'staff' %}
             <a href="{% url 'wallet_dashboard' %}" class="menu-item {% if request.resolver_match.url_name == 'wallet_dashboard' %}active{% endif %}">
                 <i class="fa-solid fa-wallet"></i>
-                {% if request.user.usertype == 'staff' %}Wallets{% else %}My Wallet{% endif %}
+                My Wallet
             </a>
+            {% endif %}
 
             {% if request.user.usertype == 'superadmin' %}
             <a href="{% url 'superadmin_user_wallets' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_user_wallets' %}active{% endif %}" style="position: relative;">
@@ -665,7 +670,7 @@
             </div>
             
             <div class="header-actions">
-                {% if request.user.is_authenticated %}
+                {% if request.user.is_authenticated and request.user.usertype != 'manager' and request.user.usertype != 'staff' %}
                 <a href="{% url 'wallet_dashboard' %}" style="text-decoration: none; margin-right: 20px; background: var(--role-bg-light); padding: 8px 15px; border-radius: 10px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(0,0,0,0.05); transition: all 0.2s ease;" class="top-wallet-link">
                     <i class="fa-solid fa-wallet" style="color: var(--role-color);"></i>
                     <span style="font-weight: 800; color: var(--role-color); font-size: 0.9rem;">

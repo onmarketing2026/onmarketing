@@ -52,8 +52,10 @@
             <div>
                 <h2 style="font-weight: 800; margin-bottom: 5px;">{{ requirement.title }}</h2>
                 <p style="opacity: 0.8; margin-bottom: 0;">
-                    <i class="fa-solid fa-folder-open" style="margin-right: 8px;"></i>{{ requirement.category.name|default:"No Category" }} | 
-                    <i class="fa-solid fa-user" style="margin-left: 10px; margin-right: 5px;"></i>{{ requirement.customer.name }}
+                    <i class="fa-solid fa-folder-open" style="margin-right: 8px;"></i>{{ requirement.category.name|default:"No Category" }}
+                    {% if request.user.usertype == 'superadmin' %}
+                    | <i class="fa-solid fa-user" style="margin-left: 10px; margin-right: 5px;"></i>{{ requirement.customer.name }}
+                    {% endif %}
                 </p>
             </div>
             <span class="status-badge status-{{ requirement.status }}" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.4); font-size: 1rem; padding: 8px 15px;">{{ requirement.status }}</span>
