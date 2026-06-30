@@ -45,12 +45,17 @@ def distribute_product_sale_commission(lead, installment=None):
     ratio = Decimal('1.00')
     inst_summary = ""
     if installment:
+        inst_summary = f" (Installment {installment.installment_number})"
+        if CommissionTransaction.objects.filter(reference_id=lead.id, description__contains=inst_summary).exists():
+            return
         lead_total = Decimal(str(lead.get_total_amount))
         if lead_total > 0:
             ratio = Decimal(str(installment.amount)) / lead_total
         total_customer_amount = total_customer_amount * ratio
         total_markup_pool = total_markup_pool * ratio
-        inst_summary = f" (Installment {installment.installment_number})"
+    else:
+        if CommissionTransaction.objects.filter(reference_id=lead.id, transaction_type__in=['sale', 'commission']).exclude(description__contains='Installment').exists():
+            return
 
     # Prepare item count summary for description if applicable
     item_summary = ""

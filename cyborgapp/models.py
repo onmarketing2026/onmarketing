@@ -234,6 +234,29 @@ class Lead(models.Model):
         return total
 
     @property
+    def get_expense_amount(self):
+        total = 0
+        for item in self.items.all():
+            req_item = self.requirement.items.filter(subcategory=item.subcategory).first()
+            if req_item:
+                qty = item.count if self.requirement.category and self.requirement.category.cat_type == 'count' else 1
+                total += req_item.other_expenses * (qty or 1)
+        return total
+
+    @property
+    def get_gst_amount(self):
+        from decimal import Decimal
+        total = 0
+        for item in self.items.all():
+            req_item = self.requirement.items.filter(subcategory=item.subcategory).first()
+            if req_item:
+                qty = item.count if self.requirement.category and self.requirement.category.cat_type == 'count' else 1
+                base = req_item.customer_amount + req_item.admin_markup + req_item.other_expenses
+                gst_amt = base * (req_item.gst / Decimal('100.00'))
+                total += gst_amt * (qty or 1)
+        return total
+
+    @property
     def installment_pending(self):
         if hasattr(self, '_installment_pending'):
             return self._installment_pending
@@ -341,9 +364,15 @@ class WithdrawalRequest(models.Model):
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
     )
+    TYPE_CHOICES = (
+        ('wallet', 'Wallet'),
+        ('gst', 'GST'),
+        ('expense', 'Expense'),
+    )
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='withdrawal_requests')
     amount = models.DecimalField(max_digits=15, decimal_places=2)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    request_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='wallet')
     remarks = models.TextField(null=True, blank=True)
     
     # Bank Details at time of request
@@ -439,6 +468,7 @@ class LeadInstallment(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=20, choices=(('pending', 'Pending'), ('paid', 'Paid')), default='pending')
     razorpay_payment_id = models.CharField(max_length=255, null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

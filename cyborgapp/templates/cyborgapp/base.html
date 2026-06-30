@@ -614,6 +614,14 @@
                 </span>
                 {% endif %}
             </a>
+            <a href="{% url 'superadmin_gst' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_gst' %}active{% endif %}">
+                <i class="fa-solid fa-building-columns"></i>
+                GST
+            </a>
+            <a href="{% url 'superadmin_expenses' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_expenses' %}active{% endif %}">
+                <i class="fa-solid fa-receipt"></i>
+                Expenses
+            </a>
             {% endif %}
 
             {% if request.user.usertype == 'staff' and assigned_fcs %}

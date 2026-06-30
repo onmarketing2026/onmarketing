@@ -69,19 +69,17 @@
                 <div style="font-size: 0.75rem; opacity: 0.8;">Total Earned</div>
                 <div style="font-weight: 700;">₹{{ wallet.total_earned }}</div>
             </div>
-            {% if request.user.usertype != 'superadmin' %}
             <div style="width: 1px; background: rgba(255,255,255,0.2);"></div>
             <div>
                 <div style="font-size: 0.75rem; opacity: 0.8;">Withdrawn</div>
                 <div style="font-weight: 700;">₹{{ wallet.withdrawn_amount }}</div>
             </div>
-            {% endif %}
         </div>
         {% endif %}
         
-        {% if request.user.usertype != 'superadmin' and request.user.usertype != 'customer' and request.user.usertype != 'staff' and wallet.balance > 0 %}
+        {% if request.user.usertype != 'customer' and request.user.usertype != 'staff' and wallet.balance > 0 and not is_viewing_district %}
         <button id="openWithdrawModal" style="margin-top: 15px; background: white; color: var(--role-color); border: none; padding: 12px 25px; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px; width: fit-content;">
-            <i class="fa-solid fa-hand-holding-dollar"></i> Request Withdrawal
+            <i class="fa-solid fa-hand-holding-dollar"></i> {% if request.user.usertype == 'superadmin' %}withdraw money{% else %}Request Withdrawal{% endif %}
         </button>
         {% endif %}
     </div>
@@ -165,9 +163,9 @@
             </div>
         {% endif %}
 
-        {% if request.user.usertype != 'superadmin' and request.user.usertype != 'customer' and request.user.usertype != 'staff' %}
+        {% if request.user.usertype != 'customer' and request.user.usertype != 'staff' and not is_viewing_district %}
         <button id="openManageRequestsModal" class="btn-create" style="border: 2px solid var(--role-color); justify-content: center; cursor: pointer; width: 100%; background: #ffffff; color: var(--role-color); height: 60px; font-size: 1.1rem; border-radius: 15px;">
-            <i class="fa-solid fa-clock-rotate-left"></i> View All Requests
+            <i class="fa-solid fa-clock-rotate-left"></i> {% if request.user.usertype == 'superadmin' %}view all withdrawals{% else %}View All Requests{% endif %}
         </button>
         {% endif %}
     </div>
@@ -259,12 +257,11 @@
     </div>
 </div>
 
-<!-- View Requests Modal (For Users) -->
-{% if request.user.usertype != 'superadmin' %}
+<!-- View Requests Modal (For Users and Superadmin) -->
 <div id="manageRequestsModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 20px 0;">
     <div class="modal-content" style="background: #ffffff; margin: 5% auto; padding: 30px; border-radius: 15px; width: 95%; max-width: 1000px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; max-height: 80vh; overflow-y: auto;">
         <span class="close-modal" id="closeManageRequests" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer;">&times;</span>
-        <h2 style="margin-bottom: 25px;">My Withdrawal Requests</h2>
+        <h2 style="margin-bottom: 25px;">{% if request.user.usertype == 'superadmin' %}Withdrawal Requests{% else %}My Withdrawal Requests{% endif %}</h2>
         
         <table id="requestsTable" class="display" style="width:100%">
             <thead>
@@ -273,8 +270,10 @@
                     <th>Status</th>
                     <th>Date</th>
                     <th>Bank Details</th>
+                    {% if request.user.usertype != 'superadmin' %}
                     <th>Remarks</th>
                     <th>Actions</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -283,7 +282,6 @@
         </table>
     </div>
 </div>
-{% endif %}
 
 {% endblock %}
 
@@ -425,8 +423,9 @@
                                     </div>
                                 `;
                             }
-                        },
-                        {
+                        }
+                        {% if request.user.usertype != 'superadmin' %}
+                        ,{
                             data: 'remarks',
                             render: function(data) {
                                 return `<span style="font-size: 0.85rem; color: var(--text-main);">${data || '-'}</span>`;
@@ -447,6 +446,7 @@
                                 }
                             }
                         }
+                        {% endif %}
                     ],
                     responsive: true,
                     pageLength: 10

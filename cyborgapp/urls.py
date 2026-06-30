@@ -47,6 +47,10 @@ urlpatterns = [
     path('wallet/requests/<int:request_id>/delete/', views.delete_withdrawal_request, name='delete_withdrawal_request'),
     path('wallet/export-commissions-csv/', views.export_commissions_csv, name='export_commissions_csv'),
     path('superadmin/user-wallets/export-csv/', views.export_wallets_csv, name='export_wallets_csv'),
+    path('superadmin/gst/', views.superadmin_gst, name='superadmin_gst'),
+    path('superadmin/expenses/', views.superadmin_expenses, name='superadmin_expenses'),
+    path('superadmin/gst/withdraw/', views.request_gst_withdrawal, name='request_gst_withdrawal'),
+    path('superadmin/expenses/withdraw/', views.request_expense_withdrawal, name='request_expense_withdrawal'),
 
     path('leads/', views.lead_list, name='lead_list'),
     path('leads/confirmed/', views.confirmed_lead_list, name='confirmed_lead_list'),

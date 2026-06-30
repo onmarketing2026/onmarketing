@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from cyborgapp.models import (
     Category, SubCategory, CustomerRequirement, RequirementItem,
     DistrictRequirementAssignment, RequirementAssignment, Lead, LeadItem,
-    LeadInstallment
+    LeadInstallment, WithdrawalRequest
 )
 from decimal import Decimal
 from cyborgapp.views import check_assignment_limits
@@ -343,12 +343,20 @@ class RequirementAssignmentTest(TestCase):
         self.assertEqual(len(res_data['installments']), 0)
 
         # 2. Test Part Payment with mismatched sum (400+400=800 ≠ 1000)
+        from django.utils import timezone
+        import datetime
+        today = timezone.localtime(timezone.now()).date()
+        today_str = today.strftime('%Y-%m-%d')
+        tomorrow_str = (today + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        day_after_str = (today + datetime.timedelta(days=2)).strftime('%Y-%m-%d')
+
         post_data = {
             'update_text': 'Confirming lead with split payment',
             'status': 'confirmed',
             'pass_lead': False,
             'payment_mode': 'part',
-            'installments': [400.00, 400.00]
+            'installments': [400.00, 400.00],
+            'installment_dates': [today_str, tomorrow_str]
         }
         response = client.post(
             f'/leads/{lead.id}/update/',
@@ -358,8 +366,55 @@ class RequirementAssignmentTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('must equal the total lead amount', response.json()['message'])
 
-        # 3. Part Payment with correct sum: [400, 300, 300] = 1000
+        # 2a. Test Part Payment with missing installment_dates
+        invalid_post_data = {
+            'update_text': 'Confirming lead with split payment',
+            'status': 'confirmed',
+            'pass_lead': False,
+            'payment_mode': 'part',
+            'installments': [400.00, 300.00, 300.00]
+        }
+        response = client.post(
+            f'/leads/{lead.id}/update/',
+            data=json.dumps(invalid_post_data),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Installment dates are mandatory', response.json()['message'])
+
+        # 2b. Test Part Payment with mismatched installment_dates length
+        invalid_post_data['installment_dates'] = [today_str, tomorrow_str]
+        response = client.post(
+            f'/leads/{lead.id}/update/',
+            data=json.dumps(invalid_post_data),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Installment dates are mandatory', response.json()['message'])
+
+        # 2c. Test Part Payment with out-of-order installment_dates
+        invalid_post_data['installment_dates'] = [tomorrow_str, today_str, day_after_str]
+        response = client.post(
+            f'/leads/{lead.id}/update/',
+            data=json.dumps(invalid_post_data),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('cannot be earlier than', response.json()['message'])
+
+        # 2d. Test Part Payment where first installment is not today's date
+        invalid_post_data['installment_dates'] = [tomorrow_str, tomorrow_str, day_after_str]
+        response = client.post(
+            f'/leads/{lead.id}/update/',
+            data=json.dumps(invalid_post_data),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("First installment date must be today's date", response.json()['message'])
+
+        # 3. Part Payment with correct sum and dates: [400, 300, 300] = 1000
         post_data['installments'] = [400.00, 300.00, 300.00]
+        post_data['installment_dates'] = [today_str, tomorrow_str, day_after_str]
         response = client.post(
             f'/leads/{lead.id}/update/',
             data=json.dumps(post_data),
@@ -378,6 +433,9 @@ class RequirementAssignmentTest(TestCase):
         self.assertEqual(installments.count(), 3)
         self.assertEqual(installments[0].amount, Decimal('400.00'))
         self.assertEqual(installments[0].status, 'pending')
+        self.assertEqual(str(installments[0].due_date), today_str)
+        self.assertEqual(str(installments[1].due_date), tomorrow_str)
+        self.assertEqual(str(installments[2].due_date), day_after_str)
 
         # 4. Simulate first installment payment verification (mock Razorpay)
         from unittest.mock import patch
@@ -458,6 +516,128 @@ class RequirementAssignmentTest(TestCase):
         inst2.refresh_from_db()
         self.assertEqual(inst2.status, 'paid')
         self.assertEqual(inst2.razorpay_payment_id, 'pay_mock_222')
+
+
+class GSTAndExpensesTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='superadmin@cyborg.com',
+            email='superadmin@cyborg.com',
+            name='Super Admin',
+            usertype='superadmin',
+            password='password123'
+        )
+        self.category = Category.objects.create(name='Test Category', cat_type='fixed')
+        self.subcategory = SubCategory.objects.create(category=self.category, name='Test Sub')
+        self.customer = CustomUser.objects.create_user(
+            username='customer@cyborg.com',
+            email='customer@cyborg.com',
+            name='Customer',
+            usertype='customer',
+            password='password123'
+        )
+        self.marketing_user = CustomUser.objects.create_user(
+            username='marketing@cyborg.com',
+            email='marketing@cyborg.com',
+            name='Marketing User',
+            usertype='marketing',
+            password='password123'
+        )
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.customer,
+            category=self.category,
+            title='Test Req',
+            customer_amount=Decimal('1000.00'),
+            admin_markup=Decimal('200.00'),
+            other_expenses=Decimal('100.00'),
+            gst=Decimal('18.00'),
+            status='approved'
+        )
+        # Create requirement item
+        self.req_item = RequirementItem.objects.create(
+            requirement=self.requirement,
+            subcategory=self.subcategory,
+            customer_amount=Decimal('1000.00'),
+            admin_markup=Decimal('200.00'),
+            other_expenses=Decimal('100.00'),
+            gst=Decimal('18.00')
+        )
+        
+        self.lead = Lead.objects.create(
+            requirement=self.requirement,
+            marketing_user=self.marketing_user,
+            status='confirmed',
+            total_amount=Decimal('1534.00'),
+            payment_mode='full'
+        )
+        self.lead_item = LeadItem.objects.create(
+            lead=self.lead,
+            subcategory=self.subcategory,
+            count=1
+        )
+
+    def test_gst_and_expense_properties(self):
+        # Base = 1000 + 200 + 100 = 1300. GST = 1300 * 0.18 = 234. Total = 1534.
+        self.assertEqual(self.lead.get_expense_amount, Decimal('100.00'))
+        self.assertEqual(self.lead.get_gst_amount, Decimal('234.00'))
+
+    def test_gst_dashboard_access_and_withdrawal(self):
+        client = Client()
+        client.login(username='superadmin@cyborg.com', password='password123')
+        
+        response = client.get('/superadmin/gst/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'GST Balance')
+        self.assertContains(response, '234.00')
+
+        # Request GST withdrawal
+        response = client.post('/superadmin/gst/withdraw/', {
+            'amount': '100.00',
+            'account_number': '1234567890',
+            'ifsc_code': 'ABCD0123456',
+            'account_holder': 'Super Admin',
+            'phone_linked': '9876543210'
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify withdrawal request was created
+        wr = WithdrawalRequest.objects.get(request_type='gst')
+        self.assertEqual(wr.amount, Decimal('100.00'))
+        self.assertEqual(wr.status, 'pending')
+        
+        # Approve withdrawal request
+        import json
+        client.post(f'/wallet/requests/{wr.id}/update/', json.dumps({
+            'status': 'approved',
+            'remarks': 'Approved GST withdrawal'
+        }), content_type='application/json')
+        
+        wr.refresh_from_db()
+        self.assertEqual(wr.status, 'approved')
+
+    def test_expenses_dashboard_access_and_withdrawal(self):
+        client = Client()
+        client.login(username='superadmin@cyborg.com', password='password123')
+        
+        response = client.get('/superadmin/expenses/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Expenses Balance')
+        self.assertContains(response, '100.00')
+
+        # Request Expense withdrawal
+        response = client.post('/superadmin/expenses/withdraw/', {
+            'amount': '50.00',
+            'account_number': '1234567890',
+            'ifsc_code': 'ABCD0123456',
+            'account_holder': 'Super Admin',
+            'phone_linked': '9876543210'
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify withdrawal request was created
+        wr = WithdrawalRequest.objects.get(request_type='expense')
+        self.assertEqual(wr.amount, Decimal('50.00'))
+        self.assertEqual(wr.status, 'pending')
 
 
 

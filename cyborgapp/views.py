@@ -1608,10 +1608,13 @@ def wallet_dashboard(request, user_id=None):
         
         data = []
         for t in txs_slice:
+            desc = t.description
+            if t.transaction_type in ['sale', 'commission'] and t.reference_id:
+                desc = f"[Lead #{t.reference_id}] {desc}"
             data.append({
                 'type': t.get_transaction_type_display(),
                 'amount': float(t.amount),
-                'description': t.description,
+                'description': desc,
                 'date_formatted': t.created_at.strftime('%b %d, %Y %H:%M')
             })
             
@@ -1922,10 +1925,13 @@ def get_user_transactions(request, user_id):
     
     data = []
     for tx in transactions:
+        desc = tx.description
+        if tx.transaction_type in ['sale', 'commission'] and tx.reference_id:
+            desc = f"[Lead #{tx.reference_id}] {desc}"
         data.append({
             'type': tx.get_transaction_type_display(),
             'amount': str(tx.amount),
-            'description': tx.description,
+            'description': desc,
             'date': tx.created_at.strftime('%b %d, %Y %H:%M')
         })
     return JsonResponse({'status': 'success', 'transactions': data, 'user_name': user.name})
@@ -2001,20 +2007,39 @@ def update_withdrawal_status(request, request_id):
              return JsonResponse({'status': 'error', 'message': 'Request already processed'}, status=400)
              
         if new_status == 'approved':
-            wallet = get_or_create_wallet(wr.user)
-            # Ensure balance is Decimal for comparison
-            current_balance = Decimal(str(wallet.balance))
-            if current_balance >= wr.amount:
-                with transaction.atomic():
-                    wallet.balance = current_balance - Decimal(str(wr.amount))
-                    wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) + Decimal(str(wr.amount))
-                    wallet.save()
+            if wr.request_type in ['gst', 'expense']:
+                from .models import Lead
+                if wr.request_type == 'gst':
+                    total_earned_gst = sum(lead.get_gst_amount for lead in Lead.objects.filter(status='confirmed'))
+                    withdrawn_gst = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='gst', status='approved'))
+                    current_balance = total_earned_gst - withdrawn_gst
+                else:
+                    total_earned_expense = sum(lead.get_expense_amount for lead in Lead.objects.filter(status='confirmed'))
+                    withdrawn_expense = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='expense', status='approved'))
+                    current_balance = total_earned_expense - withdrawn_expense
+                
+                if current_balance >= wr.amount:
                     wr.status = 'approved'
                     wr.remarks = remarks
                     wr.save()
-                return JsonResponse({'status': 'success'})
+                    return JsonResponse({'status': 'success'})
+                else:
+                    return JsonResponse({'status': 'error', 'message': 'Insufficient balance in GST/Expense account.'}, status=400)
             else:
-                return JsonResponse({'status': 'error', 'message': 'User has insufficient balance now.'}, status=400)
+                wallet = get_or_create_wallet(wr.user)
+                # Ensure balance is Decimal for comparison
+                current_balance = Decimal(str(wallet.balance))
+                if current_balance >= wr.amount:
+                    with transaction.atomic():
+                        wallet.balance = current_balance - Decimal(str(wr.amount))
+                        wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) + Decimal(str(wr.amount))
+                        wallet.save()
+                        wr.status = 'approved'
+                        wr.remarks = remarks
+                        wr.save()
+                    return JsonResponse({'status': 'success'})
+                else:
+                    return JsonResponse({'status': 'error', 'message': 'User has insufficient balance now.'}, status=400)
         elif new_status == 'rejected':
             wr.status = 'rejected'
             wr.remarks = remarks
@@ -2189,6 +2214,9 @@ def lead_list(request):
     def annotated_leads(qs):
         return qs.annotate(
             installment_pending=Exists(pending_inst_sq)
+        ).exclude(
+            status='confirmed',
+            installment_pending=False
         ).annotate(
             is_controlled=Case(
                 When(control_cond, then=Value(1)),
@@ -2225,14 +2253,16 @@ def lead_list(request):
     req_assigned_items_json = {}   # req.id -> list of item dicts (filtered by FC assignment)
     if user.usertype == 'marketing':
         user_mandalam = user.assigned_mandalam
-        if user.assigned_district:
-            districts = [user.assigned_district]
+        from .models import RequirementAssignment
+        if user_mandalam:
+            req_ids = RequirementAssignment.objects.filter(
+                facilitation_center=user_mandalam
+            ).values_list('requirement_item__requirement_id', flat=True).distinct()
+            approved_requirements = CustomerRequirement.objects.filter(
+                id__in=req_ids, status='approved'
+            ).order_by('-created_at')
         else:
-            districts = []
-        approved_requirements = CustomerRequirement.objects.filter(
-            status='approved',
-            customer__accessible_districts__in=districts
-        ).distinct().order_by('-created_at')
+            approved_requirements = CustomerRequirement.objects.none()
 
         # Build per-requirement item data filtered to only FC-assigned items
         from .models import RequirementAssignment
@@ -2773,6 +2803,31 @@ def lead_add_update(request, lead_id):
                     if abs(total_inst_amount - total_lead_amount) > Decimal('0.01'):
                         return JsonResponse({'status': 'error', 'message': f'The sum of installment amounts (₹{total_inst_amount}) must equal the total lead amount (₹{total_lead_amount}).'}, status=400)
 
+                    # Extract and validate installment dates
+                    installment_dates = data.get('installment_dates', [])
+                    if len(installment_dates) != len(installments_list):
+                        return JsonResponse({'status': 'error', 'message': 'Installment dates are mandatory for every installment.'}, status=400)
+                    
+                    import datetime
+                    parsed_dates = []
+                    for idx, dt_str in enumerate(installment_dates):
+                        if not dt_str:
+                            return JsonResponse({'status': 'error', 'message': f'Due date is mandatory for installment {idx+1}.'}, status=400)
+                        try:
+                            dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d").date()
+                            parsed_dates.append(dt)
+                        except ValueError:
+                            return JsonResponse({'status': 'error', 'message': f'Invalid date format for installment {idx+1}.'}, status=400)
+                    
+                    for i in range(1, len(parsed_dates)):
+                        if parsed_dates[i] < parsed_dates[i-1]:
+                            return JsonResponse({'status': 'error', 'message': f'Installment {i+1} due date cannot be earlier than installment {i} due date.'}, status=400)
+
+                    from django.utils import timezone
+                    today = timezone.localtime(timezone.now()).date()
+                    if parsed_dates[0] != today:
+                        return JsonResponse({'status': 'error', 'message': f"First installment date must be today's date ({today})."}, status=400)
+
                     share_payment_link = data.get('share_payment_link', False)
                     if share_payment_link:
                         # 1. Update Lead models & Installment objects
@@ -2789,7 +2844,8 @@ def lead_add_update(request, lead_id):
                                 lead=lead,
                                 installment_number=idx,
                                 amount=amt,
-                                status='pending'
+                                status='pending',
+                                due_date=parsed_dates[idx-1]
                             )
                             
                         # 2. Generate and share payment link for the first installment via email
@@ -2912,7 +2968,8 @@ def lead_add_update(request, lead_id):
                                 lead=lead,
                                 installment_number=idx,
                                 amount=amt,
-                                status='pending'
+                                status='pending',
+                                due_date=parsed_dates[idx-1]
                             )
 
                         first_inst = lead.installments.first()
@@ -3072,7 +3129,8 @@ def lead_get_updates(request, lead_id):
             'installment_number': inst.installment_number,
             'amount': float(inst.amount),
             'status': inst.status,
-            'razorpay_payment_id': inst.razorpay_payment_id or ''
+            'razorpay_payment_id': inst.razorpay_payment_id or '',
+            'due_date': inst.due_date.strftime('%Y-%m-%d') if inst.due_date else ''
         })
     
     return JsonResponse({
@@ -3160,15 +3218,8 @@ def pay_installment(request, installment_id):
     from .models import LeadInstallment
     installment = get_object_or_404(LeadInstallment, id=installment_id)
 
-    # Only the user who confirmed the lead can pay subsequent installments.
-    # If no user has confirmed the lead (e.g. pre-existing), allow any superadmin, district, or manager to pay and become the confirmed_by user.
-    if installment.lead.confirmed_by_id:
-        if installment.lead.confirmed_by_id != request.user.id:
-            return JsonResponse({'status': 'error', 'message': 'Only the user who confirmed this lead can make installment payments.'}, status=403)
-    else:
-        if request.user.usertype not in ['superadmin', 'district', 'manager']:
-            return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
-        # Assign confirmed_by immediately
+    # Allow any logged-in user to pay installment payments
+    if not installment.lead.confirmed_by_id:
         installment.lead.confirmed_by = request.user
         installment.lead.save()
     
@@ -3215,8 +3266,8 @@ def pay_installment(request, installment_id):
 def verify_installment_payment(request, installment_id):
     from .models import LeadInstallment
     installment = get_object_or_404(LeadInstallment, id=installment_id)
-    if request.user.usertype not in ['superadmin', 'district', 'manager']:
-        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+    if installment.status == 'paid':
+        return JsonResponse({'status': 'success', 'message': 'Installment already marked as paid.'})
         
     if request.method == 'POST':
         import json
@@ -3422,3 +3473,181 @@ def get_mandalams_by_district(request):
             'already_assigned': m.id in taken_fc_ids,
         })
     return JsonResponse({'status': 'success', 'mandalams': mandalams})
+
+
+@login_required(login_url='login')
+def superadmin_gst(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('wallet_dashboard')
+        
+    from .models import Lead, WithdrawalRequest
+    
+    # Calculate total earned gst
+    confirmed_leads = Lead.objects.filter(status='confirmed').order_by('-created_at')
+    total_earned_gst = sum(lead.get_gst_amount for lead in confirmed_leads)
+    
+    # Calculate withdrawn gst
+    withdrawn_gst = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='gst', status='approved'))
+    
+    # Balance
+    balance_gst = total_earned_gst - withdrawn_gst
+    
+    # Withdrawal requests for GST
+    withdrawal_requests = WithdrawalRequest.objects.filter(request_type='gst').order_by('-created_at')
+    
+    # Prepare lead list with their specific GST amount
+    lead_items = []
+    for lead in confirmed_leads:
+        gst_amt = lead.get_gst_amount
+        if gst_amt > 0:
+            lead_items.append({
+                'lead': lead,
+                'amount': gst_amt,
+            })
+            
+    context = {
+        'balance': balance_gst,
+        'total_earned': total_earned_gst,
+        'withdrawn_amount': withdrawn_gst,
+        'withdrawal_requests': withdrawal_requests,
+        'lead_items': lead_items,
+        'page_type': 'GST',
+    }
+    return render(request, 'cyborgapp/superadmin/gst_dashboard.html', context)
+
+
+@login_required(login_url='login')
+def superadmin_expenses(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('wallet_dashboard')
+        
+    from .models import Lead, WithdrawalRequest
+    
+    # Calculate total earned expenses
+    confirmed_leads = Lead.objects.filter(status='confirmed').order_by('-created_at')
+    total_earned_expense = sum(lead.get_expense_amount for lead in confirmed_leads)
+    
+    # Calculate withdrawn expenses
+    withdrawn_expense = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='expense', status='approved'))
+    
+    # Balance
+    balance_expense = total_earned_expense - withdrawn_expense
+    
+    # Withdrawal requests for Expenses
+    withdrawal_requests = WithdrawalRequest.objects.filter(request_type='expense').order_by('-created_at')
+    
+    # Prepare lead list with their specific Expense amount
+    lead_items = []
+    for lead in confirmed_leads:
+        expense_amt = lead.get_expense_amount
+        if expense_amt > 0:
+            lead_items.append({
+                'lead': lead,
+                'amount': expense_amt,
+            })
+            
+    context = {
+        'balance': balance_expense,
+        'total_earned': total_earned_expense,
+        'withdrawn_amount': withdrawn_expense,
+        'withdrawal_requests': withdrawal_requests,
+        'lead_items': lead_items,
+        'page_type': 'Expenses',
+    }
+    return render(request, 'cyborgapp/superadmin/expenses_dashboard.html', context)
+
+
+@login_required(login_url='login')
+def request_gst_withdrawal(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_gst')
+        
+    if request.method == 'POST':
+        amount_str = request.POST.get('amount', '0')
+        acc_num = request.POST.get('account_number')
+        ifsc = request.POST.get('ifsc_code')
+        holder = request.POST.get('account_holder')
+        phone = request.POST.get('phone_linked')
+
+        try:
+            amount = Decimal(amount_str)
+        except:
+            amount = Decimal('0')
+            
+        from .models import Lead, WithdrawalRequest
+        total_earned_gst = sum(lead.get_gst_amount for lead in Lead.objects.filter(status='confirmed'))
+        withdrawn_gst = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='gst', status='approved'))
+        balance_gst = total_earned_gst - withdrawn_gst
+        
+        if amount > balance_gst:
+            messages.error(request, 'Insufficient balance.')
+        elif amount <= 0:
+            messages.error(request, 'Invalid amount.')
+        else:
+            WithdrawalRequest.objects.create(
+                user=request.user,
+                amount=amount,
+                request_type='gst',
+                account_number=acc_num,
+                ifsc_code=ifsc,
+                account_holder=holder,
+                phone_linked=phone
+            )
+            request.user.bank_account_number = acc_num
+            request.user.bank_ifsc = ifsc
+            request.user.bank_account_holder = holder
+            request.user.bank_phone = phone
+            request.user.save()
+            messages.success(request, 'GST withdrawal request submitted successfully.')
+            
+    return redirect('superadmin_gst')
+
+
+@login_required(login_url='login')
+def request_expense_withdrawal(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_expenses')
+        
+    if request.method == 'POST':
+        amount_str = request.POST.get('amount', '0')
+        acc_num = request.POST.get('account_number')
+        ifsc = request.POST.get('ifsc_code')
+        holder = request.POST.get('account_holder')
+        phone = request.POST.get('phone_linked')
+
+        try:
+            amount = Decimal(amount_str)
+        except:
+            amount = Decimal('0')
+            
+        from .models import Lead, WithdrawalRequest
+        total_earned_expense = sum(lead.get_expense_amount for lead in Lead.objects.filter(status='confirmed'))
+        withdrawn_expense = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='expense', status='approved'))
+        balance_expense = total_earned_expense - withdrawn_expense
+        
+        if amount > balance_expense:
+            messages.error(request, 'Insufficient balance.')
+        elif amount <= 0:
+            messages.error(request, 'Invalid amount.')
+        else:
+            WithdrawalRequest.objects.create(
+                user=request.user,
+                amount=amount,
+                request_type='expense',
+                account_number=acc_num,
+                ifsc_code=ifsc,
+                account_holder=holder,
+                phone_linked=phone
+            )
+            request.user.bank_account_number = acc_num
+            request.user.bank_ifsc = ifsc
+            request.user.bank_account_holder = holder
+            request.user.bank_phone = phone
+            request.user.save()
+            messages.success(request, 'Expense withdrawal request submitted successfully.')
+            
+    return redirect('superadmin_expenses')
