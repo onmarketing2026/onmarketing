@@ -66,13 +66,33 @@
 
 {% block content %}
     <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
-        <div class="table-header">
+        <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
             <h3>{% if is_confirmed_tab %}Confirmed Leads List{% else %}Leads List{% endif %}</h3>
-            {% if request.user.usertype == 'marketing' and not is_confirmed_tab %}
-                <button class="btn-create-premium" id="openAddLeadModal">
-                    <i class="fa-solid fa-plus-circle"></i> Add New Lead
-                </button>
-            {% endif %}
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <!-- Date Filters for Export -->
+                <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.02); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Export Range:</label>
+                    <input type="date" id="export_from_date" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                    <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">to</span>
+                    <input type="date" id="export_to_date" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                    <button type="button" id="clear_leads_dates" title="Clear Date Range" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; padding: 0 4px;"><i class="fa-solid fa-circle-xmark"></i></button>
+                </div>
+                
+                {% if is_confirmed_tab %}
+                    <a href="{% url 'superadmin_export_confirmed_leads' %}" id="btnExportLeads" class="btn-create-premium" style="background: linear-gradient(135deg, #198754, #107c41); text-decoration: none;">
+                        <i class="fa-solid fa-file-excel"></i> Export
+                    </a>
+                {% else %}
+                    <a href="{% url 'superadmin_export_leads' %}" id="btnExportLeads" class="btn-create-premium" style="background: linear-gradient(135deg, #198754, #107c41); text-decoration: none;">
+                        <i class="fa-solid fa-file-excel"></i> Export
+                    </a>
+                {% endif %}
+                {% if request.user.usertype == 'marketing' and not is_confirmed_tab %}
+                    <button class="btn-create-premium" id="openAddLeadModal">
+                        <i class="fa-solid fa-plus-circle"></i> Add New Lead
+                    </button>
+                {% endif %}
+            </div>
         </div>
         <div style="padding: 25px;">
             <table id="leadsTable" class="display" style="width:100%">
@@ -199,6 +219,8 @@
                                             data-cat-type="{{ lead.requirement.category.cat_type|default:'other' }}"
                                             data-items="{% for item in lead.items.all %}{{ item.subcategory_id }}:{{ item.count }}{% if not forloop.last %},{% endif %}{% endfor %}"
                                             data-all-req-items="{{ lead.get_req_items_with_fc_limits }}"
+                                            data-is-controlled="{% if lead.is_controlled %}true{% else %}false{% endif %}"
+                                            data-controlled-by="{% if lead.current_level == 'marketing' %}Digital Franchise{% elif lead.current_level == 'mandalam' %}Fecilitation Center{% elif lead.current_level == 'district' %}District Franchise{% elif lead.current_level == 'superadmin' %}Superadmin{% else %}{{ lead.current_level }}{% endif %}"
                                             title="View/Edit Lead Details">
                                         <i class="fa-solid fa-pen-to-square"></i>
                                     </button>
@@ -269,6 +291,9 @@
                 <button type="button" id="leadViewHistoryBtn" style="display: none; width: 100%; background: var(--role-color); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 10px;">
                     <i class="fa-solid fa-clock-rotate-left"></i> View Payments & History Timeline
                 </button>
+                <div id="leadControlledByMsg" style="display: none; margin-top: 15px; padding: 15px; background: rgba(220, 53, 69, 0.08); color: #dc3545; border-radius: 8px; text-align: center; border: 1px solid rgba(220, 53, 69, 0.2); font-weight: 600;">
+                    <i class="fa-solid fa-lock" style="margin-right: 5px;"></i> This lead is currently controlled by <span id="leadControllerUserType"></span>
+                </div>
             </form>
         </div>
     </div>
@@ -614,6 +639,10 @@
                 leadRequirement.required = true;
                 leadForm.action = "/requirements/0/lead/create/";
                 leadItemsSection.style.display = 'none';
+                
+                const controlledByMsg = document.getElementById('leadControlledByMsg');
+                if (controlledByMsg) controlledByMsg.style.display = 'none';
+                
                 leadModal.style.display = "block";
             }
         }
@@ -700,32 +729,47 @@
                 
                 const submitBtn = document.getElementById('leadSubmitBtn');
                 const inputs = leadForm.querySelectorAll('input, textarea, select');
-                      const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
-                 if (viewHistoryBtn) {
-                     viewHistoryBtn.setAttribute('data-id', id);
-                     viewHistoryBtn.setAttribute('data-name', this.getAttribute('data-name'));
-                     viewHistoryBtn.setAttribute('data-status', status);
-                     viewHistoryBtn.setAttribute('data-level', this.getAttribute('data-level') || '');
-                 }
+                const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
+                if (viewHistoryBtn) {
+                    viewHistoryBtn.setAttribute('data-id', id);
+                    viewHistoryBtn.setAttribute('data-name', this.getAttribute('data-name'));
+                    viewHistoryBtn.setAttribute('data-status', status);
+                    viewHistoryBtn.setAttribute('data-level', this.getAttribute('data-level') || '');
+                }
 
-                 if (status === 'confirmed' || currentUserUsertype === 'staff') {
-                     leadModalTitle.textContent = "View Lead Details";
-                     submitBtn.style.display = 'none';
-                     inputs.forEach(input => input.disabled = true);
-                     if (viewHistoryBtn) {
-                         if (status === 'confirmed') {
-                             viewHistoryBtn.style.display = 'block';
-                         } else {
-                             viewHistoryBtn.style.display = 'none';
-                         }
-                     }
-                 } else {
-                     leadModalTitle.textContent = "Edit Lead";
-                     submitBtn.style.display = 'block';
-                     submitBtn.textContent = "Update Lead";
-                     inputs.forEach(input => input.disabled = false);
-                     if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
-                 }
+                const isControlled = this.getAttribute('data-is-controlled') === 'true';
+                const controlledBy = this.getAttribute('data-controlled-by') || '';
+                const controlledByMsg = document.getElementById('leadControlledByMsg');
+
+                if (status === 'confirmed' || currentUserUsertype === 'staff') {
+                    leadModalTitle.textContent = "View Lead Details";
+                    submitBtn.style.display = 'none';
+                    inputs.forEach(input => input.disabled = true);
+                    if (controlledByMsg) controlledByMsg.style.display = 'none';
+                    if (viewHistoryBtn) {
+                        if (status === 'confirmed') {
+                            viewHistoryBtn.style.display = 'block';
+                        } else {
+                            viewHistoryBtn.style.display = 'none';
+                        }
+                    }
+                } else if (!isControlled) {
+                    leadModalTitle.textContent = "View Lead Details";
+                    submitBtn.style.display = 'none';
+                    inputs.forEach(input => input.disabled = true);
+                    if (controlledByMsg) {
+                        document.getElementById('leadControllerUserType').textContent = controlledBy;
+                        controlledByMsg.style.display = 'block';
+                    }
+                    if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
+                } else {
+                    leadModalTitle.textContent = "Edit Lead";
+                    submitBtn.style.display = 'block';
+                    submitBtn.textContent = "Update Lead";
+                    inputs.forEach(input => input.disabled = false);
+                    if (controlledByMsg) controlledByMsg.style.display = 'none';
+                    if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
+                }
 
                 document.getElementById('reqSelectGroup').style.display = 'none';
                 leadRequirement.required = false;
@@ -1564,6 +1608,60 @@
                     });
                 });
             };
+        }
+
+        const exportBtn = document.getElementById('btnExportLeads');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const fromVal = document.getElementById('export_from_date').value;
+                const toVal = document.getElementById('export_to_date').value;
+                let baseUrl = this.getAttribute('href').split('?')[0];
+                const params = [];
+                if (fromVal) params.push(`from_date=${fromVal}`);
+                if (toVal) params.push(`to_date=${toVal}`);
+                
+                let checkUrl = baseUrl + '?check_empty=true';
+                if (params.length > 0) {
+                    checkUrl += '&' + params.join('&');
+                }
+                
+                fetch(checkUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.empty) {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'No Data Found',
+                                text: 'There is no data to export in the selected range.',
+                                confirmButtonColor: 'var(--role-color, #6f42c1)'
+                            });
+                        } else {
+                            let downloadUrl = baseUrl;
+                            if (params.length > 0) {
+                                downloadUrl += '?' + params.join('&');
+                            }
+                            window.location.href = downloadUrl;
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'An error occurred while checking lead data.',
+                            confirmButtonColor: 'var(--role-color, #6f42c1)'
+                        });
+                    });
+            });
+        }
+
+        const clearLeadsDatesBtn = document.getElementById('clear_leads_dates');
+        if (clearLeadsDatesBtn) {
+            clearLeadsDatesBtn.addEventListener('click', function() {
+                document.getElementById('export_from_date').value = '';
+                document.getElementById('export_to_date').value = '';
+            });
         }
 
         window.onclick = (e) => {

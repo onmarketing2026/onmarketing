@@ -71,11 +71,21 @@
 
 <!-- User Wallets Table -->
 <div class="table-container" style="background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
-    <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 25px; border-bottom: 1px solid var(--border-color);">
+    <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 25px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 15px;">
         <h3 style="margin: 0;">User Financial Status</h3>
-        <button type="button" id="btnExportWallets" class="btn-manage" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 700; gap: 6px; height: 36px; border-radius: 6px; background: #ffffff; color: #198754; border: 1.5px solid #ffffff; cursor: pointer;">
-            <i class="fa-solid fa-file-excel"></i> Export CSV
-        </button>
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <!-- Date Filters for Wallets Export -->
+            <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.02); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <label style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Export Range:</label>
+                <input type="date" id="export_wallet_from" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">to</span>
+                <input type="date" id="export_wallet_to" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                <button type="button" id="clear_wallet_dates" title="Clear Date Range" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; padding: 0 4px;"><i class="fa-solid fa-circle-xmark"></i></button>
+            </div>
+            <button type="button" id="btnExportWallets" class="btn-manage" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 700; gap: 6px; height: 36px; border-radius: 6px; background: #ffffff; color: #198754; border: 1.5px solid #ffffff; cursor: pointer; display: flex; align-items: center;">
+                <i class="fa-solid fa-file-excel"></i> Export
+            </button>
+        </div>
     </div>
     <div style="padding: 25px;">
         <table id="userWalletsTable" class="display" style="width:100%">
@@ -101,7 +111,22 @@
 <div id="manageRequestsModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px);">
     <div class="modal-content" style="background: #ffffff; margin: 5% auto; padding: 30px; border-radius: 15px; width: 95%; max-width: 1000px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; max-height: 80vh; overflow-y: auto;">
         <span class="close-modal" id="closeManageRequests" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer;">&times;</span>
-        <h2 style="margin-bottom: 25px;">Manage Withdrawal Requests</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-right: 40px; flex-wrap: wrap; gap: 15px;">
+            <h2 style="margin: 0;">Manage Withdrawal Requests</h2>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <!-- Date Filters for Withdrawal Requests Export -->
+                <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.02); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <label style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Export Range:</label>
+                    <input type="date" id="export_req_from" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                    <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">to</span>
+                    <input type="date" id="export_req_to" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                    <button type="button" id="clear_req_dates" title="Clear Date Range" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; padding: 0 4px;"><i class="fa-solid fa-circle-xmark"></i></button>
+                </div>
+                <button type="button" id="btnExportRequests" class="btn-manage" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 700; gap: 6px; height: 36px; border-radius: 6px; background: #198754; color: #ffffff; border: none; cursor: pointer; display: flex; align-items: center;">
+                    <i class="fa-solid fa-file-excel"></i> Export
+                </button>
+            </div>
+        </div>
         
         <table id="requestsTable" class="display" style="width:100%">
             <thead>
@@ -146,7 +171,7 @@
             </div>
             <div>
                 <button type="button" id="btnExportHistory" class="btn-manage" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 700; gap: 6px; height: 36px; border-radius: 6px; background: #ffffff; color: #198754; border: 1.5px solid #ffffff;">
-                    <i class="fa-solid fa-file-excel"></i> Export CSV
+                    <i class="fa-solid fa-file-excel"></i> Export
                 </button>
             </div>
         </div>
@@ -416,7 +441,36 @@
             if (activeHistoryUserId) {
                 const fromDate = document.getElementById('historyFromDate').value;
                 const toDate = document.getElementById('historyToDate').value;
-                window.location.href = `/wallet/export-commissions-csv/?user_id=${activeHistoryUserId}&from_date=${fromDate}&to_date=${toDate}`;
+                let checkUrl = `/wallet/export-commissions-csv/?user_id=${activeHistoryUserId}&check_empty=true`;
+                if (fromDate) checkUrl += `&from_date=${fromDate}`;
+                if (toDate) checkUrl += `&to_date=${toDate}`;
+                
+                fetch(checkUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.empty) {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'No Data Found',
+                                text: 'There is no data to export in the selected range.',
+                                confirmButtonColor: 'var(--role-color, #6f42c1)'
+                            });
+                        } else {
+                            let downloadUrl = `/wallet/export-commissions-csv/?user_id=${activeHistoryUserId}`;
+                            if (fromDate) downloadUrl += `&from_date=${fromDate}`;
+                            if (toDate) downloadUrl += `&to_date=${toDate}`;
+                            window.location.href = downloadUrl;
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'An error occurred while checking transaction data.',
+                            confirmButtonColor: 'var(--role-color, #6f42c1)'
+                        });
+                    });
             }
         });
 
@@ -464,7 +518,107 @@
         const btnExportWallets = document.getElementById('btnExportWallets');
         if (btnExportWallets) {
             btnExportWallets.addEventListener('click', function() {
-                window.location.href = '/superadmin/user-wallets/export-csv/';
+                const fromVal = document.getElementById('export_wallet_from').value;
+                const toVal = document.getElementById('export_wallet_to').value;
+                let baseUrl = '/superadmin/user-wallets/export-csv/';
+                const params = [];
+                if (fromVal) params.push(`from_date=${fromVal}`);
+                if (toVal) params.push(`to_date=${toVal}`);
+                
+                let checkUrl = baseUrl + '?check_empty=true';
+                if (params.length > 0) {
+                    checkUrl += '&' + params.join('&');
+                }
+                
+                fetch(checkUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.empty) {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'No Data Found',
+                                text: 'There is no data to export in the selected range.',
+                                confirmButtonColor: 'var(--role-color, #6f42c1)'
+                            });
+                        } else {
+                            let downloadUrl = baseUrl;
+                            if (params.length > 0) {
+                                downloadUrl += '?' + params.join('&');
+                            }
+                            window.location.href = downloadUrl;
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'An error occurred while checking wallet data.',
+                            confirmButtonColor: 'var(--role-color, #6f42c1)'
+                        });
+                    });
+            });
+        }
+
+        // Export Withdrawal Requests CSV
+        const btnExportRequests = document.getElementById('btnExportRequests');
+        if (btnExportRequests) {
+            btnExportRequests.addEventListener('click', function() {
+                const fromVal = document.getElementById('export_req_from').value;
+                const toVal = document.getElementById('export_req_to').value;
+                let baseUrl = '/superadmin/withdrawal-requests/export-csv/';
+                const params = [];
+                if (fromVal) params.push(`from_date=${fromVal}`);
+                if (toVal) params.push(`to_date=${toVal}`);
+                
+                let checkUrl = baseUrl + '?check_empty=true';
+                if (params.length > 0) {
+                    checkUrl += '&' + params.join('&');
+                }
+                
+                fetch(checkUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.empty) {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'No Data Found',
+                                text: 'There is no data to export in the selected range.',
+                                confirmButtonColor: 'var(--role-color, #6f42c1)'
+                            });
+                        } else {
+                            let downloadUrl = baseUrl;
+                            if (params.length > 0) {
+                                downloadUrl += '?' + params.join('&');
+                            }
+                            window.location.href = downloadUrl;
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'An error occurred while checking requests data.',
+                            confirmButtonColor: 'var(--role-color, #6f42c1)'
+                        });
+                    });
+            });
+        }
+
+        const clearWalletDatesBtn = document.getElementById('clear_wallet_dates');
+        if (clearWalletDatesBtn) {
+            clearWalletDatesBtn.addEventListener('click', function() {
+                document.getElementById('export_wallet_from').value = '';
+                document.getElementById('export_wallet_to').value = '';
+            });
+        }
+
+        const clearReqDatesBtn = document.getElementById('clear_req_dates');
+        if (clearReqDatesBtn) {
+            clearReqDatesBtn.addEventListener('click', function() {
+                document.getElementById('export_req_from').value = '';
+                document.getElementById('export_req_to').value = '';
             });
         }
 

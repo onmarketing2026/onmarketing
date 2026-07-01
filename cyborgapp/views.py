@@ -1407,6 +1407,9 @@ def export_commissions_csv(request):
             
     txs = txs.order_by('-created_at')
     
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not txs.exists()})
+        
     # Use database iterator with chunk size to keep memory extremely low (0 extra RAM overhead)
     queryset = txs.iterator(chunk_size=2000)
     
@@ -1725,8 +1728,27 @@ def export_wallets_csv(request):
     if request.user.usertype != 'superadmin':
         return HttpResponse("Forbidden", status=403)
         
-    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager']).order_by('name')
+    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager'])
     
+    # Apply date filtration
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    if from_date:
+        try:
+            users = users.filter(date_joined__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            users = users.filter(date_joined__date__lte=to_date)
+        except Exception:
+            pass
+            
+    users = users.order_by('name')
+    
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not users.exists()})
+        
     # Keeping memory usage low for lakhs of users by streaming and chunking database calls
     queryset = users.iterator(chunk_size=2000)
     
@@ -3651,3 +3673,441 @@ def request_expense_withdrawal(request):
             messages.success(request, 'Expense withdrawal request submitted successfully.')
             
     return redirect('superadmin_expenses')
+
+
+@login_required(login_url='login')
+def superadmin_leaderboard(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('login')
+        
+    from datetime import datetime
+    from django.db.models import Sum, Count, Q
+    from .models import Lead, LeadInstallment, CustomUser
+    
+    # Get current date info
+    now = datetime.now()
+    current_year = now.year
+    current_month = now.month
+    
+    # Get filters
+    year_param = request.GET.get('year', str(current_year))
+    month_param = request.GET.get('month', str(current_month))
+    day_param = request.GET.get('day', 'all')
+    metric = request.GET.get('metric', 'amount') # 'amount' or 'count'
+    
+    # Convert year
+    try:
+        year = int(year_param)
+    except ValueError:
+        year = current_year
+        
+    # Convert month
+    if month_param == 'all':
+        month = 'all'
+    else:
+        try:
+            month = int(month_param)
+        except ValueError:
+            month = current_month
+            
+    # Convert day
+    if day_param == 'all':
+        day = 'all'
+    else:
+        try:
+            day = int(day_param)
+        except ValueError:
+            day = 'all'
+            
+    # Generate list of years
+    years = list(range(2024, current_year + 2))
+    
+    # Generate months list
+    months = [
+        (1, 'January'), (2, 'February'), (3, 'March'), (4, 'April'),
+        (5, 'May'), (6, 'June'), (7, 'July'), (8, 'August'),
+        (9, 'September'), (10, 'October'), (11, 'November'), (12, 'December')
+    ]
+    
+    # Generate days list
+    days = list(range(1, 32))
+    
+    # Fetch qualified leads
+    leads_qs = Lead.objects.filter(status='confirmed').filter(
+        Q(payment_mode='single') |
+        Q(payment_mode='part', installments__status='paid')
+    ).distinct()
+    
+    # Apply date filters
+    if year:
+        leads_qs = leads_qs.filter(created_at__year=year)
+    if month != 'all':
+        leads_qs = leads_qs.filter(created_at__month=month)
+    if day != 'all':
+        leads_qs = leads_qs.filter(created_at__day=day)
+        
+    # Fetch all relevant users
+    users = CustomUser.objects.filter(usertype__in=['district', 'mandalam', 'marketing'])
+    
+    # Pre-fetch stats
+    marketing_stats = leads_qs.values('marketing_user_id').annotate(
+        lead_count=Count('id'),
+        sales_sum=Sum('total_amount')
+    )
+    m_stats_map = {item['marketing_user_id']: item for item in marketing_stats if item['marketing_user_id']}
+    
+    mandalam_stats = leads_qs.values('marketing_user__assigned_mandalam_id').annotate(
+        lead_count=Count('id'),
+        sales_sum=Sum('total_amount')
+    )
+    man_stats_map = {item['marketing_user__assigned_mandalam_id']: item for item in mandalam_stats if item['marketing_user__assigned_mandalam_id']}
+    
+    district_stats = leads_qs.values('marketing_user__assigned_district_id').annotate(
+        lead_count=Count('id'),
+        sales_sum=Sum('total_amount')
+    )
+    d_stats_map = {item['marketing_user__assigned_district_id']: item for item in district_stats if item['marketing_user__assigned_district_id']}
+    
+    # Build list of users with stats
+    user_data_list = []
+    for u in users:
+        lead_count = 0
+        sales_sum = 0
+        if u.usertype == 'marketing':
+            stats = m_stats_map.get(u.id)
+            if stats:
+                lead_count = stats['lead_count']
+                sales_sum = stats['sales_sum']
+        elif u.usertype == 'mandalam':
+            stats = man_stats_map.get(u.id)
+            if stats:
+                lead_count = stats['lead_count']
+                sales_sum = stats['sales_sum']
+        elif u.usertype == 'district':
+            stats = d_stats_map.get(u.id)
+            if stats:
+                lead_count = stats['lead_count']
+                sales_sum = stats['sales_sum']
+                
+        user_data_list.append({
+            'id': u.id,
+            'name': u.name or u.username,
+            'usertype': u.usertype,
+            'usertype_display': u.get_usertype_display(),
+            'lead_count': lead_count,
+            'total_sales': float(sales_sum or 0),
+        })
+        
+    # Get top performers per category
+    if metric == 'count':
+        sort_key = lambda x: (x['lead_count'], x['total_sales'])
+    else:
+        sort_key = lambda x: (x['total_sales'], x['lead_count'])
+        
+    top_district = None
+    top_fc = None
+    top_df = None
+    
+    districts_list = [u for u in user_data_list if u['usertype'] == 'district']
+    fc_list = [u for u in user_data_list if u['usertype'] == 'mandalam']
+    df_list = [u for u in user_data_list if u['usertype'] == 'marketing']
+    
+    if districts_list:
+        best_d = max(districts_list, key=sort_key)
+        if metric == 'count' and best_d['lead_count'] > 0:
+            top_district = best_d
+        elif metric == 'amount' and best_d['total_sales'] > 0:
+            top_district = best_d
+            
+    if fc_list:
+        best_fc = max(fc_list, key=sort_key)
+        if metric == 'count' and best_fc['lead_count'] > 0:
+            top_fc = best_fc
+        elif metric == 'amount' and best_fc['total_sales'] > 0:
+            top_fc = best_fc
+            
+    if df_list:
+        best_df = max(df_list, key=sort_key)
+        if metric == 'count' and best_df['lead_count'] > 0:
+            top_df = best_df
+        elif metric == 'amount' and best_df['total_sales'] > 0:
+            top_df = best_df
+            
+    context = {
+        'user_data_list': user_data_list,
+        'top_district': top_district,
+        'top_fc': top_fc,
+        'top_df': top_df,
+        'years': years,
+        'months': months,
+        'days': days,
+        'selected_year': str(year),
+        'selected_month': str(month_param),
+        'selected_day': str(day_param),
+        'selected_metric': metric,
+    }
+    
+    return render(request, 'cyborgapp/superadmin/leaderboards.html', context)
+
+
+@login_required(login_url='login')
+def superadmin_export_leads(request):
+    if request.user.usertype == 'staff':
+        target_user = get_target_user(request)
+        user = target_user
+    else:
+        user = request.user
+        
+    from django.db.models import Exists, OuterRef, Case, When, Value, IntegerField, Q
+    from .models import Lead, LeadInstallment
+    import csv
+    
+    pending_inst_sq = LeadInstallment.objects.filter(lead=OuterRef('pk'), status='pending')
+    
+    base_qs = Lead.objects.all().annotate(
+        installment_pending=Exists(pending_inst_sq)
+    ).exclude(
+        status='confirmed',
+        installment_pending=False
+    )
+    
+    # Filter by user role (scoping leads to what the logged-in user is allowed to see)
+    if user.usertype == 'superadmin':
+        leads = base_qs
+    elif user.usertype == 'marketing':
+        leads = base_qs.filter(marketing_user=user)
+    elif user.usertype == 'mandalam':
+        leads = base_qs.filter(marketing_user__assigned_mandalam=user)
+    elif user.usertype == 'district':
+        leads = base_qs.filter(marketing_user__assigned_district=user)
+    elif user.usertype == 'manager':
+        if user.assigned_district:
+            leads = base_qs.filter(marketing_user__assigned_district=user.assigned_district)
+        else:
+            leads = base_qs.filter(marketing_user__created_by=user)
+    elif user.usertype == 'customer':
+        leads = base_qs.filter(requirement__customer=user)
+    else:
+        leads = Lead.objects.none()
+
+    # Apply date filtration:
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    if from_date:
+        try:
+            leads = leads.filter(created_at__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            leads = leads.filter(created_at__date__lte=to_date)
+        except Exception:
+            pass
+
+    leads = leads.order_by('-created_at')
+    
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not leads.exists()})
+        
+    queryset = leads.iterator(chunk_size=2000)
+    
+    def csv_generator():
+        echo_buffer = Echo()
+        writer = csv.writer(echo_buffer)
+        
+        yield writer.writerow([
+            'Lead ID', 'Lead Name', 'Phone', 'Email', 'Address', 'Remarks',
+            'Requirement', 'Category', 'Digital Franchise', 'Facilitation Center',
+            'District Franchise', 'Status', 'Current Level', 'Total Amount (Rs)', 'Payment Mode', 'Created At'
+        ])
+        
+        for lead in queryset:
+            fc = lead.marketing_user.assigned_mandalam.name if (lead.marketing_user and lead.marketing_user.assigned_mandalam) else 'N/A'
+            df = lead.marketing_user.assigned_district.name if (lead.marketing_user and lead.marketing_user.assigned_district) else 'N/A'
+            
+            yield writer.writerow([
+                lead.id,
+                lead.name,
+                lead.phone,
+                lead.email or '',
+                lead.address or '',
+                lead.remarks or '',
+                f"{lead.requirement.title} (By {lead.requirement.customer.name})" if (lead.requirement and lead.requirement.customer) else (lead.requirement.title if lead.requirement else 'N/A'),
+                lead.requirement.category.name if (lead.requirement and lead.requirement.category) else 'N/A',
+                lead.marketing_user.name or lead.marketing_user.username if lead.marketing_user else 'N/A',
+                fc,
+                df,
+                'Payment Pending' if (lead.status == 'confirmed' and lead.payment_mode == 'part' and lead.installment_pending) else lead.get_status_display(),
+                lead.get_current_level_display(),
+                float(lead.get_total_amount),
+                lead.get_payment_mode_display(),
+                lead.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            ])
+            
+    response = StreamingHttpResponse(csv_generator(), content_type="text/csv")
+    response['Content-Disposition'] = 'attachment; filename="leads_export.csv"'
+    return response
+
+
+@login_required(login_url='login')
+def superadmin_export_confirmed_leads(request):
+    if request.user.usertype == 'staff':
+        target_user = get_target_user(request)
+        user = target_user
+    else:
+        user = request.user
+        
+    from django.db.models import Exists, OuterRef, Case, When, Value, IntegerField, Q
+    from .models import Lead, LeadInstallment
+    import csv
+    
+    pending_inst_sq = LeadInstallment.objects.filter(lead=OuterRef('pk'), status='pending')
+    
+    base_qs = Lead.objects.filter(status='confirmed').filter(
+        Q(payment_mode='single') | 
+        Q(payment_mode='part', installments__installment_number=1, installments__status='paid')
+    ).distinct().annotate(
+        installment_pending=Exists(pending_inst_sq)
+    )
+    
+    # Filter by user role (scoping leads to what the logged-in user is allowed to see)
+    if user.usertype == 'superadmin':
+        leads = base_qs
+    elif user.usertype == 'marketing':
+        leads = base_qs.filter(marketing_user=user)
+    elif user.usertype == 'mandalam':
+        leads = base_qs.filter(marketing_user__assigned_mandalam=user)
+    elif user.usertype == 'district':
+        leads = base_qs.filter(marketing_user__assigned_district=user)
+    elif user.usertype == 'manager':
+        if user.assigned_district:
+            leads = base_qs.filter(marketing_user__assigned_district=user.assigned_district)
+        else:
+            leads = base_qs.filter(marketing_user__created_by=user)
+    elif user.usertype == 'customer':
+        leads = base_qs.filter(requirement__customer=user)
+    else:
+        leads = Lead.objects.none()
+
+    # Apply date filtration:
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    if from_date:
+        try:
+            leads = leads.filter(created_at__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            leads = leads.filter(created_at__date__lte=to_date)
+        except Exception:
+            pass
+
+    leads = leads.order_by('-created_at')
+    
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not leads.exists()})
+        
+    queryset = leads.iterator(chunk_size=2000)
+    
+    def csv_generator():
+        echo_buffer = Echo()
+        writer = csv.writer(echo_buffer)
+        
+        yield writer.writerow([
+            'Lead ID', 'Lead Name', 'Phone', 'Email', 'Address', 'Remarks',
+            'Requirement', 'Category', 'Digital Franchise', 'Facilitation Center',
+            'District Franchise', 'Status', 'Payment Mode', 'Pending Installments', 'Total Amount (Rs)', 'Created At'
+        ])
+        
+        for lead in queryset:
+            fc = lead.marketing_user.assigned_mandalam.name if (lead.marketing_user and lead.marketing_user.assigned_mandalam) else 'N/A'
+            df = lead.marketing_user.assigned_district.name if (lead.marketing_user and lead.marketing_user.assigned_district) else 'N/A'
+            
+            yield writer.writerow([
+                lead.id,
+                lead.name,
+                lead.phone,
+                lead.email or '',
+                lead.address or '',
+                lead.remarks or '',
+                f"{lead.requirement.title} (By {lead.requirement.customer.name})" if (lead.requirement and lead.requirement.customer) else (lead.requirement.title if lead.requirement else 'N/A'),
+                lead.requirement.category.name if (lead.requirement and lead.requirement.category) else 'N/A',
+                lead.marketing_user.name or lead.marketing_user.username if lead.marketing_user else 'N/A',
+                fc,
+                df,
+                'Payment Pending' if (lead.payment_mode == 'part' and lead.installment_pending) else 'Confirmed',
+                lead.get_payment_mode_display(),
+                'Yes' if lead.installment_pending else 'No',
+                float(lead.get_total_amount),
+                lead.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            ])
+            
+    response = StreamingHttpResponse(csv_generator(), content_type="text/csv")
+    response['Content-Disposition'] = 'attachment; filename="confirmed_leads_export.csv"'
+    return response
+
+
+@login_required(login_url='login')
+def export_withdrawal_requests_csv(request):
+    if request.user.usertype != 'superadmin':
+        return HttpResponse("Forbidden", status=403)
+        
+    from .models import WithdrawalRequest
+    import csv
+    
+    reqs = WithdrawalRequest.objects.all()
+    
+    # Apply date filtration
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    if from_date:
+        try:
+            reqs = reqs.filter(created_at__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            reqs = reqs.filter(created_at__date__lte=to_date)
+        except Exception:
+            pass
+            
+    reqs = reqs.order_by('-created_at')
+    
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not reqs.exists()})
+    
+    # keeping memory usage low for lakhs of requests by streaming and chunking database calls
+    queryset = reqs.iterator(chunk_size=2000)
+    
+    def csv_generator():
+        echo_buffer = Echo()
+        writer = csv.writer(echo_buffer)
+        
+        # Write CSV Header
+        yield writer.writerow([
+            'Request ID', 'User Name', 'User Role', 'Amount (Rs)', 'Status', 'Request Type',
+            'Date Created', 'Account Number', 'IFSC Code', 'Account Holder', 'Phone Linked', 'Remarks'
+        ])
+        
+        for r in queryset:
+            yield writer.writerow([
+                r.id,
+                r.user.name if r.user else 'N/A',
+                r.user.get_usertype_display() if r.user else 'N/A',
+                float(r.amount),
+                r.status,
+                r.get_request_type_display() if hasattr(r, 'get_request_type_display') else r.request_type,
+                r.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                r.account_number or 'N/A',
+                r.ifsc_code or 'N/A',
+                r.account_holder or 'N/A',
+                r.phone_linked or 'N/A',
+                r.remarks or ''
+            ])
+            
+    response = StreamingHttpResponse(csv_generator(), content_type="text/csv")
+    response['Content-Disposition'] = 'attachment; filename="withdrawal_requests.csv"'
+    return response
+

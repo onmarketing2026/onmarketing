@@ -640,4 +640,80 @@ class GSTAndExpensesTestCase(TestCase):
         self.assertEqual(wr.status, 'pending')
 
 
+class SuperadminLeaderboardsTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='superadmin_lb@cyborg.com',
+            email='superadmin_lb@cyborg.com',
+            name='Super Admin Leaderboard',
+            usertype='superadmin',
+            password='password123'
+        )
+        self.marketing_user = CustomUser.objects.create_user(
+            username='m_lb@cyborg.com',
+            email='m_lb@cyborg.com',
+            name='Marketing User LB',
+            usertype='marketing',
+            password='password123'
+        )
+        self.category = Category.objects.create(name='Test Category LB', cat_type='fixed')
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.superadmin,
+            category=self.category,
+            title='LB Req',
+            customer_amount=Decimal('1000.00'),
+            admin_markup=Decimal('200.00'),
+            other_expenses=Decimal('100.00'),
+            gst=Decimal('18.00'),
+            status='approved'
+        )
+        self.lead = Lead.objects.create(
+            requirement=self.requirement,
+            marketing_user=self.marketing_user,
+            status='confirmed',
+            total_amount=Decimal('1534.00'),
+            payment_mode='single'
+        )
+
+    def test_leaderboard_access_and_filtering(self):
+        client = Client()
+        client.login(username='superadmin_lb@cyborg.com', password='password123')
+        
+        response = client.get('/superadmin/leaderboards/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Marketing User LB')
+        self.assertContains(response, '1534.00')
+
+        # Test filtering
+        response = client.get('/superadmin/leaderboards/?metric=count')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Marketing User LB')
+
+    def test_leads_and_confirmed_leads_export(self):
+        client = Client()
+        client.login(username='superadmin_lb@cyborg.com', password='password123')
+        
+        # Test active leads export
+        response = client.get('/superadmin/leads/export/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv')
+        self.assertTrue('attachment' in response['Content-Disposition'])
+        
+        # Test confirmed leads export
+        response = client.get('/superadmin/confirmed-leads/export/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv')
+        self.assertTrue('attachment' in response['Content-Disposition'])
+
+    def test_withdrawal_requests_export(self):
+        client = Client()
+        client.login(username='superadmin_lb@cyborg.com', password='password123')
+        
+        response = client.get('/superadmin/withdrawal-requests/export-csv/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv')
+        self.assertTrue('attachment' in response['Content-Disposition'])
+
+
+
 
