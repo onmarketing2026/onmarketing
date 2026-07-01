@@ -76,4 +76,6 @@ urlpatterns = [
     path('superadmin/categories/<int:cat_id>/delete/', views.category_delete, name='category_delete'),
     path('api/get_subcategories/<int:cat_id>/', views.get_subcategories, name='get_subcategories'),
     path('api/get_mandalams_by_district/', views.get_mandalams_by_district, name='get_mandalams_by_district'),
+    path('api/notifications/', views.get_notifications, name='get_notifications'),
+    path('api/notifications/mark-read/', views.mark_notifications_read, name='mark_notifications_read'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

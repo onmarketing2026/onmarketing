@@ -5,7 +5,53 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.db import IntegrityError, models
-from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting
+from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification
+
+def create_lead_notification(actor, lead, verb):
+    if lead:
+        verb = f"[Lead #{lead.id}] {verb}"
+    recipients = set()
+    
+    # 1. Superadmins
+    superadmins = CustomUser.objects.filter(usertype='superadmin')
+    for sa in superadmins:
+        recipients.add(sa)
+        
+    # 2. Marketing user who owns the lead (if the actor is not that marketing user)
+    m_user = lead.marketing_user
+    if m_user:
+        if m_user != actor:
+            recipients.add(m_user)
+            
+        # 3. District franchise assigned to the marketing user
+        if m_user.assigned_district:
+            recipients.add(m_user.assigned_district)
+            
+        # 4. Mandalam franchise (facilitation center) assigned to the marketing user
+        if m_user.assigned_mandalam:
+            recipients.add(m_user.assigned_mandalam)
+            
+        # 5. Creator of the marketing user
+        if m_user.created_by:
+            recipients.add(m_user.created_by)
+
+    # 6. Managers assigned to the same district
+    if m_user and m_user.assigned_district:
+        managers = CustomUser.objects.filter(usertype='manager', assigned_district=m_user.assigned_district)
+        for mgr in managers:
+            recipients.add(mgr)
+
+    # Remove the actor themselves from recipients
+    recipients.discard(actor)
+    
+    # Create notification objects
+    for recipient in recipients:
+        Notification.objects.create(
+            recipient=recipient,
+            actor=actor,
+            verb=verb,
+            lead=lead
+        )
 
 @login_required(login_url='login')
 def commission_settings(request):
@@ -2188,6 +2234,9 @@ def lead_create(request, req_id):
             
         messages.success(request, 'Lead added successfully!')
         
+        # Trigger Notification
+        create_lead_notification(request.user, lead, f"added a new lead '{lead.name}' for '{requirement.title}'")
+        
         # Smart redirection based on where the user came from
         referer = request.META.get('HTTP_REFERER', '')
         if 'leads' in referer:
@@ -2478,6 +2527,10 @@ def lead_edit(request, lead_id):
             )
             
         messages.success(request, 'Lead updated successfully!')
+        
+        # Trigger Notification
+        create_lead_notification(request.user, lead, f"updated lead '{lead.name}' details")
+        
         return redirect('lead_list')
     return redirect('lead_list')
 
@@ -3123,6 +3176,19 @@ def lead_add_update(request, lead_id):
             except ValueError:
                 pass
                 
+        # Trigger Notification
+        notification_actions = []
+        if update_text:
+            notification_actions.append("added an update")
+        if new_status == 'confirmed':
+            notification_actions.append("confirmed the lead")
+        elif pass_lead:
+            notification_actions.append("escalated the lead")
+            
+        if notification_actions:
+            action_desc = " & ".join(notification_actions)
+            create_lead_notification(request.user, lead, f"{action_desc} for '{lead.name}'")
+
         lead.save()
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
@@ -3231,6 +3297,9 @@ def lead_add_associate_update(request, lead_id):
                 user=request.user,
                 update_text=update_text
             )
+        # Trigger Notification
+        create_lead_notification(request.user, lead, f"added an associate update for '{lead.name}'")
+
         return JsonResponse({'status': 'success', 'message': 'Associate update added successfully.'})
         
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
@@ -4110,4 +4179,50 @@ def export_withdrawal_requests_csv(request):
     response = StreamingHttpResponse(csv_generator(), content_type="text/csv")
     response['Content-Disposition'] = 'attachment; filename="withdrawal_requests.csv"'
     return response
+
+
+@login_required(login_url='login')
+def get_notifications(request):
+    from .models import Notification
+    notes = Notification.objects.filter(recipient=request.user)[:15]
+    unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    
+    data = []
+    for note in notes:
+        actor_name = note.actor.name or note.actor.username if note.actor else "System"
+        data.append({
+            'id': note.id,
+            'actor': actor_name,
+            'verb': note.verb,
+            'is_read': note.is_read,
+            'created_at': note.created_at.strftime('%b %d, %Y %I:%M %p'),
+            'lead_id': note.lead.id if note.lead else None
+        })
+        
+    return JsonResponse({
+        'status': 'success',
+        'notifications': data,
+        'unread_count': unread_count
+    })
+
+
+@login_required(login_url='login')
+def mark_notifications_read(request):
+    from .models import Notification
+    if request.method == 'POST':
+        import json
+        try:
+            body = json.loads(request.body)
+            note_id = body.get('notification_id')
+        except Exception:
+            note_id = None
+            
+        if note_id:
+            Notification.objects.filter(recipient=request.user, id=note_id).update(is_read=True)
+        else:
+            Notification.objects.filter(recipient=request.user).update(is_read=True)
+            
+        return JsonResponse({'status': 'success'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
+
 
