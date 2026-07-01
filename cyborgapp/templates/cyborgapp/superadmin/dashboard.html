@@ -175,4 +175,181 @@
         </div>
         {% endif %}
     </div>
+
+    {% if request.user.usertype == 'superadmin' %}
+    <!-- Performance Chart Card -->
+    <div class="card" style="background: var(--card-bg); border-radius: 12px; padding: 25px; border: 1px solid var(--border-color); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02); margin-top: 10px;">
+
+        <!-- Row 1: Title + Period tabs -->
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; margin: 0;">
+                <i class="fa-solid fa-chart-column" style="color: var(--role-color);"></i>
+                <span id="chartTitle">Performance Overview</span>
+            </h3>
+            <div style="display: flex; gap: 6px;">
+                <button class="cpb" id="btn-day" data-period="day"
+                    style="padding: 6px 16px; border-radius: 8px; border: 1.5px solid var(--border-color); background: transparent; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family:'Outfit',sans-serif;">Day</button>
+                <button class="cpb" id="btn-month" data-period="month"
+                    style="padding: 6px 16px; border-radius: 8px; border: 1.5px solid var(--role-color); background: var(--role-bg-light); color: var(--role-color); font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family:'Outfit',sans-serif;">Month</button>
+                <button class="cpb" id="btn-year" data-period="year"
+                    style="padding: 6px 16px; border-radius: 8px; border: 1.5px solid var(--border-color); background: transparent; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family:'Outfit',sans-serif;">Year</button>
+            </div>
+        </div>
+
+        <!-- Row 2: Dynamic picker inputs -->
+        <div id="pickerArea" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 22px;">
+
+            <!-- DAY picker (hidden by default) -->
+            <div id="picker-day" style="display:none; align-items:center; gap:8px;">
+                <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Date</label>
+                <input type="date" id="inp-date"
+                    style="padding:6px 12px; border-radius:8px; border:1.5px solid var(--border-color); font-family:'Outfit',sans-serif; font-size:0.85rem; outline:none; color:var(--text-main); background:var(--card-bg);">
+                <button onclick="fetchChart()" id="go-day"
+                    style="padding:6px 14px; border-radius:8px; background:var(--role-color); color:#fff; border:none; font-weight:700; font-size:0.8rem; cursor:pointer; font-family:'Outfit',sans-serif;">Go</button>
+            </div>
+
+            <!-- MONTH picker (shown by default) -->
+            <div id="picker-month" style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Month</label>
+                <select id="inp-month"
+                    style="padding:6px 12px; border-radius:8px; border:1.5px solid var(--border-color); font-family:'Outfit',sans-serif; font-size:0.85rem; outline:none; color:var(--text-main); background:var(--card-bg);">
+                    <option value="1">January</option><option value="2">February</option>
+                    <option value="3">March</option><option value="4">April</option>
+                    <option value="5">May</option><option value="6">June</option>
+                    <option value="7">July</option><option value="8">August</option>
+                    <option value="9">September</option><option value="10">October</option>
+                    <option value="11">November</option><option value="12">December</option>
+                </select>
+                <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Year</label>
+                <input type="number" id="inp-month-year" min="2020" max="2099"
+                    style="width:90px; padding:6px 10px; border-radius:8px; border:1.5px solid var(--border-color); font-family:'Outfit',sans-serif; font-size:0.85rem; outline:none; color:var(--text-main); background:var(--card-bg);">
+                <button onclick="fetchChart()" id="go-month"
+                    style="padding:6px 14px; border-radius:8px; background:var(--role-color); color:#fff; border:none; font-weight:700; font-size:0.8rem; cursor:pointer; font-family:'Outfit',sans-serif;">Go</button>
+            </div>
+
+            <!-- YEAR picker (hidden by default) -->
+            <div id="picker-year" style="display:none; align-items:center; gap:8px;">
+                <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Year</label>
+                <input type="number" id="inp-year" min="2020" max="2099"
+                    style="width:100px; padding:6px 10px; border-radius:8px; border:1.5px solid var(--border-color); font-family:'Outfit',sans-serif; font-size:0.85rem; outline:none; color:var(--text-main); background:var(--card-bg);">
+                <button onclick="fetchChart()" id="go-year"
+                    style="padding:6px 14px; border-radius:8px; background:var(--role-color); color:#fff; border:none; font-weight:700; font-size:0.8rem; cursor:pointer; font-family:'Outfit',sans-serif;">Go</button>
+            </div>
+
+        </div>
+
+        <!-- Chart canvas -->
+        <div style="position: relative; height: 350px; width: 100%;">
+            <canvas id="perfChart"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    (function() {
+        const CHART_API = "{% url 'superadmin_dashboard_chart_data' %}";
+        const now = new Date();
+
+        // Set default values for inputs
+        document.getElementById('inp-date').value       = now.toISOString().slice(0,10);
+        document.getElementById('inp-month').value      = now.getMonth() + 1;
+        document.getElementById('inp-month-year').value = now.getFullYear();
+        document.getElementById('inp-year').value       = now.getFullYear();
+
+        let activePeriod = 'month';
+
+        // Build Chart.js instance
+        const ctx = document.getElementById('perfChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Total Sales', 'Total Commissions', 'Commissions Settled'],
+                datasets: [{
+                    label: 'Amount (₹)',
+                    data: [0, 0, 0],
+                    backgroundColor: ['rgba(13,110,253,0.15)','rgba(253,126,20,0.15)','rgba(25,135,84,0.15)'],
+                    borderColor:     ['#0d6efd','#fd7e14','#198754'],
+                    borderWidth: 2, borderRadius: 8, borderSkipped: false, barThickness: 55
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                animation: { duration: 550, easing: 'easeInOutQuart' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: c => '  ' + new Intl.NumberFormat('en-IN', {
+                                style:'currency', currency:'INR'
+                            }).format(c.parsed.y)
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        ticks: { callback: v => '₹' + v.toLocaleString('en-IN'), font: { family:'Outfit', size:11 } }
+                    },
+                    x: { grid: { display:false }, ticks: { font:{ family:'Outfit', size:12, weight:'600' } } }
+                }
+            }
+        });
+
+        // Exposed globally so onclick="fetchChart()" works
+        window.fetchChart = function() {
+            let url = CHART_API + '?period=' + activePeriod;
+            if (activePeriod === 'day') {
+                url += '&date=' + document.getElementById('inp-date').value;
+            } else if (activePeriod === 'month') {
+                url += '&month=' + document.getElementById('inp-month').value;
+                url += '&year='  + document.getElementById('inp-month-year').value;
+            } else {
+                url += '&year=' + document.getElementById('inp-year').value;
+            }
+
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status !== 'success') return;
+                    chart.data.datasets[0].data = [data.total_sales, data.total_commissions, data.total_settled];
+                    chart.update();
+                    document.getElementById('chartTitle').textContent = data.label + ' – Performance Overview';
+                })
+                .catch(err => console.error('Chart error:', err));
+        };
+
+        // Period tab switching
+        document.querySelectorAll('.cpb').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                activePeriod = this.dataset.period;
+
+                // Reset all tabs
+                document.querySelectorAll('.cpb').forEach(function(b) {
+                    b.style.border     = '1.5px solid var(--border-color)';
+                    b.style.background = 'transparent';
+                    b.style.color      = 'inherit';
+                });
+                // Activate clicked tab
+                this.style.border     = '1.5px solid var(--role-color)';
+                this.style.background = 'var(--role-bg-light)';
+                this.style.color      = 'var(--role-color)';
+
+                // Show/hide appropriate picker
+                document.getElementById('picker-day').style.display   = activePeriod === 'day'   ? 'flex' : 'none';
+                document.getElementById('picker-month').style.display = activePeriod === 'month' ? 'flex' : 'none';
+                document.getElementById('picker-year').style.display  = activePeriod === 'year'  ? 'flex' : 'none';
+
+                // Auto-fetch with current picker value on tab switch
+                window.fetchChart();
+            });
+        });
+
+        // Initial load — Month, current month/year
+        window.fetchChart();
+    })();
+    </script>
+    {% endif %}
 {% endblock %}
+
+

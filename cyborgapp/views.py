@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.db import IntegrityError, models
-from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification
+from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification, CommissionTransaction, WithdrawalRequest
 
 def create_lead_notification(actor, lead, verb):
     if lead:
@@ -201,6 +201,32 @@ def superadmin_dashboard(request):
         # Total Franchise: Total Active Marketing users
         stats['total_franchise'] = CustomUser.objects.filter(usertype='marketing', is_active=True).count()
         
+        # Month-specific calculations for Superadmin Graph
+        from django.utils import timezone
+        today_date = timezone.localtime(timezone.now())
+        current_year = today_date.year
+        current_month = today_date.month
+        
+        stats['monthly_sales'] = Lead.objects.filter(
+            status='confirmed',
+            created_at__year=current_year,
+            created_at__month=current_month
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+        
+        stats['monthly_commissions'] = CommissionTransaction.objects.exclude(
+            user__usertype__in=['superadmin', 'customer']
+        ).filter(
+            created_at__year=current_year,
+            created_at__month=current_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        stats['monthly_settled'] = WithdrawalRequest.objects.filter(
+            status='approved',
+            request_type='wallet',
+            updated_at__year=current_year,
+            updated_at__month=current_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
     elif user.usertype in ['district', 'manager']:
         target_district = user if user.usertype == 'district' else user.assigned_district
         # Total Sales: Leads added by users in this district (marketers, mandalams, or district himself)
@@ -243,6 +269,86 @@ def superadmin_dashboard(request):
         stats['assigned_fcs_count'] = user.assigned_facilitation_centers.count()
 
     return render(request, 'cyborgapp/superadmin/dashboard.html', {'stats': stats})
+
+
+@login_required(login_url='login')
+def superadmin_dashboard_chart_data(request):
+    if request.user.usertype != 'superadmin':
+        return JsonResponse({'status': 'error', 'message': 'Forbidden'}, status=403)
+
+    import datetime
+    from django.utils import timezone
+
+    period = request.GET.get('period', 'month')   # day | month | year
+    today  = timezone.localtime(timezone.now())
+
+    try:
+        if period == 'day':
+            # Accept ?date=YYYY-MM-DD, default to today
+            raw_date = request.GET.get('date', today.strftime('%Y-%m-%d'))
+            filter_date = datetime.datetime.strptime(raw_date, '%Y-%m-%d').date()
+
+            leads_qs   = Lead.objects.filter(status='confirmed', created_at__date=filter_date)
+            comm_qs    = CommissionTransaction.objects.exclude(
+                             user__usertype__in=['superadmin', 'customer']
+                         ).filter(created_at__date=filter_date)
+            settled_qs = WithdrawalRequest.objects.filter(
+                             status='approved', request_type='wallet',
+                             updated_at__date=filter_date
+                         )
+            label = filter_date.strftime('%d %b %Y')
+
+        elif period == 'year':
+            # Accept ?year=YYYY, default to current year
+            filter_year = int(request.GET.get('year', today.year))
+
+            leads_qs   = Lead.objects.filter(status='confirmed', created_at__year=filter_year)
+            comm_qs    = CommissionTransaction.objects.exclude(
+                             user__usertype__in=['superadmin', 'customer']
+                         ).filter(created_at__year=filter_year)
+            settled_qs = WithdrawalRequest.objects.filter(
+                             status='approved', request_type='wallet',
+                             updated_at__year=filter_year
+                         )
+            label = str(filter_year)
+
+        else:  # month
+            # Accept ?month=MM&year=YYYY, default to current month/year
+            filter_month = int(request.GET.get('month', today.month))
+            filter_year  = int(request.GET.get('year',  today.year))
+
+            leads_qs   = Lead.objects.filter(
+                             status='confirmed',
+                             created_at__year=filter_year,
+                             created_at__month=filter_month
+                         )
+            comm_qs    = CommissionTransaction.objects.exclude(
+                             user__usertype__in=['superadmin', 'customer']
+                         ).filter(created_at__year=filter_year, created_at__month=filter_month)
+            settled_qs = WithdrawalRequest.objects.filter(
+                             status='approved', request_type='wallet',
+                             updated_at__year=filter_year,
+                             updated_at__month=filter_month
+                         )
+            month_name = datetime.date(filter_year, filter_month, 1).strftime('%B')
+            label = f"{month_name} {filter_year}"
+
+    except (ValueError, TypeError):
+        return JsonResponse({'status': 'error', 'message': 'Invalid date parameters.'}, status=400)
+
+    total_sales       = float(leads_qs.aggregate(t=Sum('total_amount'))['t'] or 0)
+    total_commissions = float(comm_qs.aggregate(t=Sum('amount'))['t'] or 0)
+    total_settled     = float(settled_qs.aggregate(t=Sum('amount'))['t'] or 0)
+
+    return JsonResponse({
+        'status': 'success',
+        'period': period,
+        'label': label,
+        'total_sales': total_sales,
+        'total_commissions': total_commissions,
+        'total_settled': total_settled,
+    })
+
 
 from django.contrib.auth.forms import PasswordResetForm
 

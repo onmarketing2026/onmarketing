@@ -18,6 +18,7 @@ urlpatterns = [
     path('password-reset-complete/', auth_views.PasswordResetCompleteView.as_view(template_name='cyborgapp/registration/password_reset_complete.html'), name='password_reset_complete'),
     
     path('superadmin/dashboard/', views.superadmin_dashboard, name='superadmin_dashboard'),
+    path('superadmin/dashboard/chart-data/', views.superadmin_dashboard_chart_data, name='superadmin_dashboard_chart_data'),
     path('superadmin/leaderboards/', views.superadmin_leaderboard, name='superadmin_leaderboard'),
     path('profile/', views.profile_view, name='profile'),
     path('profile/bank-details/update/', views.update_bank_details, name='update_bank_details'),
