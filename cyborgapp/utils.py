@@ -103,7 +103,7 @@ def distribute_product_sale_commission(lead, installment=None):
                         amount=amount,
                         transaction_type='commission',
                         reference_id=str(lead.id),
-                        description=f"{label} from {lead.requirement.title} (Pool: ₹{total_markup_pool}){item_summary}{inst_summary}"
+                        description=f"{label} from {lead.requirement.title}{item_summary}{inst_summary}"
                     )
 
 def handle_registration_commission(new_user):

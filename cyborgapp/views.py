@@ -1999,7 +1999,7 @@ def superadmin_user_wallets(request):
         length = int(request.GET.get('length', 10))
         search_value = request.GET.get('search[value]', '')
         
-        users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager'])
+        users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff'])
         records_total = users.count()
         
         if search_value:
@@ -2052,7 +2052,7 @@ def superadmin_user_wallets(request):
             'data': data
         })
         
-    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager']).order_by('name')
+    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff']).order_by('name')
     user_data = []
     
     for user in users:
