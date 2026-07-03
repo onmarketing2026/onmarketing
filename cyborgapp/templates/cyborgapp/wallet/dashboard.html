@@ -51,11 +51,27 @@
         justify-content: center;
         font-size: 1.5rem;
     }
+
+    /* ── Mobile: stack wallet card + stats vertically ── */
+    @media (max-width: 640px) {
+        .wallet-top-grid {
+            grid-template-columns: 1fr !important;
+        }
+        .wallet-card {
+            padding: 22px;
+        }
+        .wallet-card > div[style*="font-size: 3rem"] {
+            font-size: 2.2rem !important;
+        }
+        .stat-box {
+            flex: unset;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 25px; margin-bottom: 30px;">
+<div class="wallet-top-grid" style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 25px; margin-bottom: 30px;">
     <!-- Left: Wallet Overview -->
     <div class="wallet-card">
         <div style="font-size: 0.9rem; font-weight: 600; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px;">

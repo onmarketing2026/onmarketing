@@ -121,7 +121,7 @@
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; border-bottom: 1px solid #f0f0f0; padding-bottom: 15px;">
                     <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #6f42c1; font-size: 0.9rem;">Fecilitation Center Registration</div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
                     <div class="form-group">
                         <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Total Registration Amount (₹)</label>
                         <input type="number" step="0.01" name="reg_total_mandalam" value="{{ mandalam_reg.total_amount|default:'0.00' }}" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; font-weight: 700;">
@@ -142,7 +142,7 @@
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; border-bottom: 1px solid #f0f0f0; padding-bottom: 15px;">
                     <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #6f42c1; font-size: 0.9rem;">Digital Franchise Registration</div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
                     <div class="form-group">
                         <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Total Registration Amount (₹)</label>
                         <input type="number" step="0.01" name="reg_total_marketing" value="{{ marketing_reg.total_amount|default:'0.00' }}" class="form-control" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; font-weight: 700;">
@@ -183,6 +183,19 @@
     .form-control:focus {
         border-color: #6f42c1 !important;
         box-shadow: 0 0 0 4px rgba(111, 66, 193, 0.1);
+    }
+    @media (max-width: 600px) {
+        .comm-tier {
+            flex-direction: column;
+            align-items: flex-start !important;
+            gap: 15px;
+        }
+        .comm-tier > div:last-child {
+            width: 100%;
+        }
+        .comm-tier > div:last-child input {
+            width: 100% !important;
+        }
     }
 </style>
 {% endblock %}

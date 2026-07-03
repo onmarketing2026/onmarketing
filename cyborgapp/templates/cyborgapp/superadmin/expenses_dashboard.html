@@ -51,11 +51,20 @@
         justify-content: center;
         font-size: 1.5rem;
     }
+
+    @media (max-width: 640px) {
+        .wallet-top-grid {
+            grid-template-columns: 1fr !important;
+        }
+        .wallet-card {
+            padding: 22px;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 25px; margin-bottom: 30px;">
+<div class="wallet-top-grid" style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 25px; margin-bottom: 30px;">
     <!-- Left: Expenses Wallet Overview -->
     <div class="wallet-card">
         <div style="font-size: 0.9rem; font-weight: 600; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px;">

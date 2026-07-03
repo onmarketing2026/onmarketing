@@ -520,11 +520,14 @@ def superadmin_users(request):
                 # 5: Status     (non-orderable)
                 # 6: Actions    (non-orderable)
             }
-        sort_field = columns_map.get(order_column_index, 'id')
-        if order_dir == 'desc':
+        sort_field = columns_map.get(order_column_index, '-id')
+        if sort_field != '-id' and order_dir == 'desc':
             sort_field = f'-{sort_field}'
             
-        users = users.order_by(sort_field)
+        if sort_field == '-id':
+            users = users.order_by('-id')
+        else:
+            users = users.order_by(sort_field)
         
         # Pagination
         users_slice = users[start:start+length]
