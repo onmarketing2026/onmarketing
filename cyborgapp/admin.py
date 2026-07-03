@@ -1,9 +1,9 @@
 from django.contrib import admin
 from .models import (
-    CustomUser, Category, SubCategory, CustomerRequirement, 
-    RequirementItem, Lead, LeadItem, LeadUpdate, CommissionSetting,
-    RegistrationCommission, Wallet, CommissionTransaction, WithdrawalRequest,
-    RequirementAssignment, LeadInstallment
+    CustomUser, Category, SubCategory, CustomerRequirement,
+    RequirementItem, Lead, LeadItem, LeadUpdate, LeadAssociateUpdate,
+    CommissionSetting, RegistrationCommission, Wallet, CommissionTransaction,
+    WithdrawalRequest, RequirementAssignment, LeadInstallment
 )
 
 @admin.register(CustomUser)
@@ -54,8 +54,8 @@ class LeadUpdateInline(admin.TabularInline):
 
 @admin.register(Lead)
 class LeadAdmin(admin.ModelAdmin):
-    list_display = ('name', 'requirement', 'status', 'current_level', 'created_at')
-    list_filter = ('status', 'current_level')
+    list_display = ('name', 'requirement', 'status', 'current_level', 'invoice_sent', 'created_at')
+    list_filter = ('status', 'current_level', 'invoice_sent')
     search_fields = ('name', 'phone', 'requirement__title')
     inlines = [LeadItemInline, LeadUpdateInline]
 
@@ -102,6 +102,12 @@ class RequirementAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(LeadInstallment)
 class LeadInstallmentAdmin(admin.ModelAdmin):
-    list_display = ('lead', 'installment_number', 'amount', 'status', 'razorpay_payment_id', 'created_at')
-    list_filter = ('status',)
+    list_display = ('lead', 'installment_number', 'amount', 'status', 'invoice_sent', 'razorpay_payment_id', 'created_at')
+    list_filter = ('status', 'invoice_sent')
     search_fields = ('lead__name', 'razorpay_payment_id')
+
+@admin.register(LeadAssociateUpdate)
+class LeadAssociateUpdateAdmin(admin.ModelAdmin):
+    list_display = ('lead', 'user', 'created_at')
+    search_fields = ('lead__name', 'user__name', 'update_text')
+    list_filter = ('user__usertype',)

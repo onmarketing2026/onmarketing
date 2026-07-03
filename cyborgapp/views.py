@@ -984,6 +984,7 @@ def requirement_detail(request, req_id):
                 'left_count': item.get_left_count,
                 'description': item.description or '',
                 'image_url': item.image.url if item.image else '',
+                'youtube_link': item.youtube_link or '',
                 'my_commission': my_commission,
                 'mrp': float(item.mrp or 0.00),
                 'total_mrp': float(item.total_mrp or 0.00)
@@ -1319,6 +1320,7 @@ def requirement_list(request):
                     'left_count': item.get_left_count,
                     'description': item.description or '',
                     'image_url': item.image.url if item.image else '',
+                    'youtube_link': item.youtube_link or '',
                     'my_commission': my_commission,
                     'mrp': float(item.mrp or 0.00),
                     'total_mrp': float(item.total_mrp or 0.00)
@@ -1382,18 +1384,20 @@ def requirement_create(request):
             count = request.POST.get(f'count_{sub_id}')
             cust_amt = request.POST.get(f'customer_amount_{sub_id}')
             desc = request.POST.get(f'description_{sub_id}', '')
-            
+            yt_link = request.POST.get(f'youtube_link_{sub_id}', '').strip()
+
             # Ensure we have valid decimal/int values or default to 0
             clean_count = int(count) if count and count.strip() else 0
             clean_amt = float(cust_amt) if cust_amt and cust_amt.strip() else 0.00
-            
+
             RequirementItem.objects.create(
                 requirement=requirement,
                 subcategory_id=sub_id,
                 count=clean_count,
                 customer_amount=clean_amt,
                 description=desc.strip(),
-                image=request.FILES.get(f'image_{sub_id}')
+                image=request.FILES.get(f'image_{sub_id}'),
+                youtube_link=yt_link or None
             )
         
         messages.success(request, 'Requirement created successfully!')
@@ -1485,21 +1489,26 @@ def requirement_edit(request, req_id):
                 requirement.image = request.FILES.get('image')
             requirement.save()
             
-            old_items = {item.subcategory_id: item.image for item in requirement.items.all()}
+            old_items = {item.subcategory_id: item for item in requirement.items.all()}
             requirement.items.all().delete()
             subcat_ids = request.POST.getlist('subcategories')
             for sub_id in subcat_ids:
                 count = request.POST.get(f'count_{sub_id}')
                 cust_amt = request.POST.get(f'customer_amount_{sub_id}')
                 desc = request.POST.get(f'description_{sub_id}', '')
-                
+                yt_link = request.POST.get(f'youtube_link_{sub_id}', '').strip()
+
                 clean_count = int(count) if count and count.strip() else 0
                 clean_amt = float(cust_amt) if cust_amt and cust_amt.strip() else 0.00
-                
+
+                old_item = old_items.get(int(sub_id))
                 image = request.FILES.get(f'image_{sub_id}')
-                if not image and int(sub_id) in old_items:
-                    image = old_items[int(sub_id)]
-                
+                if not image and old_item:
+                    image = old_item.image
+                # Keep existing youtube_link if user left the field blank
+                if not yt_link and old_item and old_item.youtube_link:
+                    yt_link = old_item.youtube_link
+
                 RequirementItem.objects.create(
                     requirement=requirement,
                     subcategory_id=sub_id,
@@ -1507,7 +1516,8 @@ def requirement_edit(request, req_id):
                     customer_amount=clean_amt,
                     description=desc.strip(),
                     admin_markup=0, # Markup stays 0 until admin sets it
-                    image=image
+                    image=image,
+                    youtube_link=yt_link or None
                 )
         
         messages.success(request, 'Requirement updated successfully!')
@@ -1660,7 +1670,11 @@ def razorpay_webhook(request):
                                 
                                 from .utils import distribute_product_sale_commission
                                 distribute_product_sale_commission(lead, installment=installment)
-                                
+
+                                # Send invoice email for this installment
+                                from .invoice_utils import send_invoice_email
+                                send_invoice_email(lead, installment=installment)
+
                                 # If this is the first installment and lead is still pending, confirm the lead
                                 if installment.installment_number == 1 and lead.status == 'pending':
                                     lead.total_amount = lead.get_total_amount
@@ -1677,9 +1691,13 @@ def razorpay_webhook(request):
                                 
                                 lead.status = 'confirmed'
                                 lead.save()
-                                
+
+                                # Send invoice email for full payment
+                                from .invoice_utils import send_invoice_email
+                                send_invoice_email(lead)
+
                                 LeadUpdate.objects.create(
-                                    lead=lead, 
+                                    lead=lead,
                                     update_text=f"Payment confirmed via Webhook ({event}). Payment ID: {payment_id}"
                                 )
                 elif user_id:
@@ -3200,8 +3218,12 @@ def lead_add_update(request, lead_id):
                             first_inst.razorpay_payment_id = razorpay_payment_id
                             first_inst.save()
 
+                            # Send invoice email for first installment
+                            from .invoice_utils import send_invoice_email
+                            send_invoice_email(lead, installment=first_inst)
+
                         LeadUpdate.objects.create(
-                            lead=lead, 
+                            lead=lead,
                             update_text=f"First installment of ₹{first_inst.amount} paid successfully. Payment ID: {razorpay_payment_id}"
                         )
                         lead.razorpay_payment_id = razorpay_payment_id
@@ -3243,10 +3265,14 @@ def lead_add_update(request, lead_id):
                             return JsonResponse({'status': 'error', 'message': 'Payment verification failed.'}, status=400)
                         
                         LeadUpdate.objects.create(
-                            lead=lead, 
+                            lead=lead,
                             update_text=f"Payment verified successfully. Payment ID: {razorpay_payment_id}"
                         )
                         lead.razorpay_payment_id = razorpay_payment_id
+
+                        # Send full payment invoice email
+                        from .invoice_utils import send_invoice_email
+                        send_invoice_email(lead)
 
                 # Save static total amount and distribute commission (only once upon confirmation)
                 lead.payment_mode = payment_mode
@@ -3492,10 +3518,14 @@ def verify_installment_payment(request, installment_id):
         installment.status = 'paid'
         installment.razorpay_payment_id = razorpay_payment_id
         installment.save()
-        
+
         from .utils import distribute_product_sale_commission
         distribute_product_sale_commission(installment.lead, installment=installment)
-        
+
+        # Send invoice email for this installment
+        from .invoice_utils import send_invoice_email
+        send_invoice_email(installment.lead, installment=installment)
+
         # If this is the first installment and lead is still pending, confirm the lead
         lead = installment.lead
         if installment.installment_number == 1 and lead.status == 'pending':
@@ -3509,7 +3539,7 @@ def verify_installment_payment(request, installment_id):
             lead=lead,
             update_text=f"Installment {installment.installment_number} of ₹{installment.amount} paid successfully. Payment ID: {razorpay_payment_id}"
         )
-        
+
         return JsonResponse({'status': 'success', 'message': 'Installment paid successfully.'})
     return JsonResponse({'status': 'error'}, status=400)
 
@@ -4335,3 +4365,76 @@ def mark_notifications_read(request):
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
 
 
+@login_required(login_url='login')
+def download_invoice(request, lead_id):
+    """
+    Generate and stream a consolidated PDF invoice for a lead.
+    - For single-payment leads: one complete invoice.
+    - For part-payment leads: one invoice listing ALL installments with their status.
+
+    Access: superadmin, the marketing user who owns the lead,
+            or the customer whose requirement the lead belongs to.
+    """
+    lead = get_object_or_404(Lead, id=lead_id)
+
+    # ── permission check ──────────────────────────────────────────────
+    user = request.user
+    allowed = (
+        user.usertype == 'superadmin'
+        or lead.marketing_user == user
+        or lead.requirement.customer == user
+        or user.usertype in ['district', 'manager', 'mandalam']
+    )
+    if not allowed:
+        messages.error(request, 'Permission denied.')
+        return redirect('leads_list')
+
+    # ── only issue invoices for confirmed (paid) leads with at least one payment ──
+    if lead.status != 'confirmed' or not lead.has_any_payment:
+        messages.error(request, 'Invoice is only available for confirmed leads with at least one payment.')
+        return redirect('leads_list')
+
+    from .invoice_utils import build_invoice_pdf
+
+    pdf_bytes = build_invoice_pdf(lead)   # consolidated — no specific installment
+    filename = f'Invoice_Lead{lead.id}.pdf'
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required(login_url='login')
+def send_invoice_email_view(request, lead_id):
+    """POST endpoint — sends the consolidated invoice PDF to the lead's email."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method.'}, status=405)
+
+    lead = get_object_or_404(Lead, id=lead_id)
+
+    user = request.user
+    allowed = (
+        user.usertype == 'superadmin'
+        or lead.marketing_user == user
+        or lead.requirement.customer == user
+        or user.usertype in ['district', 'manager', 'mandalam']
+    )
+    if not allowed:
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+
+    if lead.status != 'confirmed' or not lead.has_any_payment:
+        return JsonResponse({'status': 'error', 'message': 'Invoice only available for confirmed leads with at least one payment.'}, status=400)
+
+    if not lead.email:
+        return JsonResponse({'status': 'error', 'message': 'This lead has no email address on record.'}, status=400)
+
+    from .invoice_utils import send_invoice_email
+    try:
+        # Reset the guard flag so this intentional manual resend is always allowed
+        # regardless of whether an automatic invoice was already sent after payment.
+        Lead.objects.filter(id=lead.id).update(invoice_sent=False)
+        lead.invoice_sent = False
+        send_invoice_email(lead)
+        return JsonResponse({'status': 'success', 'message': f'Invoice sent to {lead.email}.'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Failed to send email: {str(e)}'}, status=500)

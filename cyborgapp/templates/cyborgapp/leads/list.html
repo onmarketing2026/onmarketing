@@ -60,6 +60,9 @@
     .btn-share-premium { background: rgba(25, 135, 84, 0.1); color: #198754; }
     .btn-share-premium:hover { background: #198754; color: white; transform: scale(1.1); }
 
+    .btn-invoice-premium { background: rgba(13, 202, 240, 0.1); color: #0dcaf0; }
+    .btn-invoice-premium:hover { background: #0dcaf0; color: white; transform: scale(1.1); }
+
     .update-item {
 </style>
 {% endblock %}
@@ -204,6 +207,15 @@
                                 <button class="action-btn-circle btn-history-premium assoc-updates-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" title="Associate Updates">
                                     <i class="fa-solid fa-comment-dots"></i>
                                 </button>
+                                {% if lead.has_any_payment %}
+                                <button class="action-btn-circle btn-invoice-premium invoice-action-btn"
+                                        data-lead-id="{{ lead.id }}"
+                                        data-lead-email="{{ lead.email|default:'' }}"
+                                        data-lead-name="{{ lead.name|escapejs }}"
+                                        title="Invoice">
+                                    <i class="fa-solid fa-file-invoice"></i>
+                                </button>
+                                {% endif %}
                             {% else %}
                                 {% with effective_level=request.user.usertype %}
                                     <button class="action-btn-circle btn-edit-premium edit-lead-btn" 
@@ -231,6 +243,15 @@
                                 <button class="action-btn-circle btn-share-premium share-lead-btn" data-id="{{ lead.id }}" data-email="{{ lead.email|default:'' }}" title="Share Details & Payment Link">
                                     <i class="fa-solid fa-paper-plane"></i>
                                 </button>
+                                {% if lead.status == 'confirmed' and lead.has_any_payment %}
+                                <button class="action-btn-circle btn-invoice-premium invoice-action-btn"
+                                        data-lead-id="{{ lead.id }}"
+                                        data-lead-email="{{ lead.email|default:'' }}"
+                                        data-lead-name="{{ lead.name|escapejs }}"
+                                        title="Invoice">
+                                    <i class="fa-solid fa-file-invoice"></i>
+                                </button>
+                                {% endif %}
                             {% endif %}
                         </div>
                     </td>
@@ -1669,6 +1690,101 @@
             if (e.target == historyModal) historyModal.style.display = 'none';
             if (e.target == assocUpdatesModal) assocUpdatesModal.style.display = 'none';
         };
+
+        /* ── Invoice action handler ── */
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.invoice-action-btn');
+            if (!btn) return;
+
+            const leadId    = btn.dataset.leadId;
+            const leadEmail = btn.dataset.leadEmail;
+            const leadName  = btn.dataset.leadName;
+            const downloadUrl = `/leads/${leadId}/invoice/download/`;
+            const emailUrl    = `/leads/${leadId}/invoice/send-email/`;
+
+            Swal.fire({
+                title: `<span style="font-size:1.1rem;font-weight:700;">Invoice — ${leadName}</span>`,
+                html: leadEmail
+                    ? `<p style="margin:0;color:#6c757d;font-size:0.9rem;">Choose an action for this lead's invoice.</p>
+                       <p style="margin:6px 0 0;font-size:0.82rem;color:#0dcaf0;"><i class="fa-solid fa-envelope" style="margin-right:4px;"></i>${leadEmail}</p>`
+                    : `<p style="margin:0;color:#6c757d;font-size:0.9rem;">Choose an action for this lead's invoice.</p>
+                       <p style="margin:6px 0 0;font-size:0.82rem;color:#dc3545;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>No email address on record — mail option unavailable.</p>`,
+                icon: 'question',
+                showConfirmButton: true,
+                showDenyButton: true,
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-download" style="margin-right:5px;"></i> Download',
+                denyButtonText:    '<i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i> Send to Mail',
+                cancelButtonText:  'Cancel',
+                confirmButtonColor: '#0dcaf0',
+                denyButtonColor:    '#198754',
+                cancelButtonColor:  '#6c757d',
+                reverseButtons: false,
+                customClass: { popup: 'invoice-swal-popup' }
+            }).then(result => {
+                if (result.isConfirmed) {
+                    // Download
+                    window.open(downloadUrl, '_blank');
+
+                } else if (result.isDenied) {
+                    // Send to mail
+                    if (!leadEmail) {
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'No Email',
+                            text: 'This lead has no email address on record.',
+                            confirmButtonColor: '#6c757d'
+                        });
+                        return;
+                    }
+
+                    Swal.fire({
+                        title: 'Sending…',
+                        html: `<p style="color:#6c757d;font-size:0.9rem;">Generating invoice and sending to<br><b>${leadEmail}</b></p>`,
+                        allowOutsideClick: false,
+                        didOpen: () => Swal.showLoading()
+                    });
+
+                    const csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+                    fetch(emailUrl, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrf ? csrf.value : '',
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Invoice Sent!',
+                                text: data.message,
+                                confirmButtonColor: '#198754',
+                                timer: 3000,
+                                timerProgressBar: true
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Failed',
+                                text: data.message || 'Could not send invoice email.',
+                                confirmButtonColor: '#dc3545'
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Something went wrong while sending the email.',
+                            confirmButtonColor: '#dc3545'
+                        });
+                    });
+                }
+            });
+        });
+
     });
 </script>
 {% endblock %}

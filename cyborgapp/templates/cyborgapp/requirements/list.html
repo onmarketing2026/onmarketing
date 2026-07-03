@@ -605,6 +605,16 @@
                                 imageSection = `<img src="${item.image_url}" onclick="showImage('${item.image_url}')" style="width: 30px; height: 30px; border-radius: 4px; object-fit: cover; cursor: pointer; border: 1px solid var(--border-color);" title="Click to view large">`;
                             }
 
+                            let ytSection = '';
+                            if (item.youtube_link) {
+                                ytSection = `
+                                    <a href="${item.youtube_link}" target="_blank" rel="noopener noreferrer"
+                                       style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.7rem; font-weight: 700; color: #ff0000; text-decoration: none; background: #fff5f5; padding: 4px 8px; border-radius: 4px; border: 1px solid #ffcccc; margin-top: 2px;">
+                                        <i class="fa-brands fa-youtube" style="font-size: 0.85rem;"></i> Watch Video
+                                    </a>
+                                `;
+                            }
+
                             html += `
                                 <div style="display: flex; flex-direction: column; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.75rem; gap: 6px;">
                                     <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -625,6 +635,7 @@
                                         </div>
                                     </div>
                                     ${descSection}
+                                    ${ytSection}
                                 </div>
                             `;
                         });
@@ -664,7 +675,7 @@
 
                         if (row.status === 'pending') {
                             if (userId == row.customer_id || userUsertype === 'superadmin') {
-                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}:${encodeURIComponent(i.image_url || '')}:${i.other_expenses}:${i.gst}:${i.mrp}`).join(',');
+                                const itemsRaw = row.items.map(i => `${i.subcategory_id}:${i.count}:${i.customer_amount}:${i.admin_markup}:${encodeURIComponent(i.description)}:${encodeURIComponent(i.image_url || '')}:${i.other_expenses}:${i.gst}:${i.mrp}:${encodeURIComponent(i.youtube_link || '')}`).join(',');
                                 html += `
                                     <button type="button" class="btn-action btn-edit edit-req-btn" 
                                             data-id="${row.id}" 
@@ -823,6 +834,7 @@
                             }
 
                             const descValue = isSelected ? (selectedItems[sub.id].description || '') : '';
+                            const ytValue = isSelected ? (selectedItems[sub.id].youtube_link || '') : '';
                             const subImageUrl = isSelected ? (selectedItems[sub.id].image_url || '') : '';
                             let imgDisplayState = subImageUrl ? 'block' : 'none';
 
@@ -862,6 +874,11 @@
                                     </div>
                                     ` : ''}
                                     <textarea name="description_${sub.id}" placeholder="Item Description / Requirements" style="width: 100%; padding: 6px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem; min-height: 50px; resize: vertical;" ${isSuperAdmin ? 'readonly' : ''}>${descValue}</textarea>
+                                    ${!isSuperAdmin ? `
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+                                        <i class="fa-brands fa-youtube" style="color: #ff0000; font-size: 1rem; flex-shrink: 0;"></i>
+                                        <input type="url" name="youtube_link_${sub.id}" value="${ytValue}" placeholder="YouTube link (optional)" style="flex: 1; padding: 6px 10px; border-radius: 5px; border: 1px solid #ff000040; font-size: 0.8rem; background: #fff8f8;">
+                                    </div>` : ''}
                                     <div style="display: flex; align-items: center; gap: 10px;">
                                         <img class="subcat-img-preview" src="${subImageUrl}" data-original-src="${subImageUrl}" style="width: 40px; height: 40px; border-radius: 5px; object-fit: cover; cursor: pointer; border: 1px solid var(--border-color); display: ${imgDisplayState}; margin-top: 5px;" title="Current/Selected Image">
                                         ${!isSuperAdmin ? `<input type="file" name="image_${sub.id}" class="form-control subcat-file-input" accept="image/*" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 0.8rem; margin-top: 5px;">` : ''}
@@ -1026,7 +1043,7 @@
                 itemsRaw.split(',').forEach(itemStr => {
                     const parts = itemStr.split(':');
                     if (parts.length >= 4) {
-                        selectedItems[parts[0]] = {
+                    selectedItems[parts[0]] = {
                             count: parts[1],
                             custAmt: parts[2],
                             markAmt: parts[3],
@@ -1034,7 +1051,8 @@
                             image_url: parts[5] ? decodeURIComponent(parts[5]) : '',
                             otherExpenses: parts[6] || '0.00',
                             gstPercent: parts[7] || '0.00',
-                            mrpVal: parts[8] || '0.00'
+                            mrpVal: parts[8] || '0.00',
+                            youtube_link: parts[9] ? decodeURIComponent(parts[9]) : ''
                         };
                     }
                 });

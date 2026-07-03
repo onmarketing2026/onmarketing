@@ -79,4 +79,8 @@ urlpatterns = [
     path('api/get_mandalams_by_district/', views.get_mandalams_by_district, name='get_mandalams_by_district'),
     path('api/notifications/', views.get_notifications, name='get_notifications'),
     path('api/notifications/mark-read/', views.mark_notifications_read, name='mark_notifications_read'),
+
+    # Invoice download & email
+    path('leads/<int:lead_id>/invoice/download/', views.download_invoice, name='download_invoice'),
+    path('leads/<int:lead_id>/invoice/send-email/', views.send_invoice_email_view, name='send_invoice_email'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

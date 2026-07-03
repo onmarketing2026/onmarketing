@@ -123,6 +123,7 @@ class RequirementItem(models.Model):
     mrp = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     image = models.ImageField(upload_to='requirement_items/', null=True, blank=True)
+    youtube_link = models.URLField(max_length=500, null=True, blank=True)
 
     @property
     def total_amount(self):
@@ -196,6 +197,7 @@ class Lead(models.Model):
         null=True, blank=True,
         related_name='confirmed_leads'
     )
+    invoice_sent = models.BooleanField(default=False)  # Guard: prevent duplicate invoice emails
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -267,6 +269,14 @@ class Lead(models.Model):
     @installment_pending.setter
     def installment_pending(self, value):
         self._installment_pending = value
+
+    @property
+    def has_any_payment(self):
+        if self.payment_mode == 'single':
+            return self.status == 'confirmed'
+        elif self.payment_mode == 'part':
+            return self.installments.filter(status='paid').exists()
+        return False
 
     @property
     def get_req_items_with_fc_limits(self):
@@ -469,6 +479,7 @@ class LeadInstallment(models.Model):
     status = models.CharField(max_length=20, choices=(('pending', 'Pending'), ('paid', 'Paid')), default='pending')
     razorpay_payment_id = models.CharField(max_length=255, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
+    invoice_sent = models.BooleanField(default=False)  # Guard: prevent duplicate invoice emails
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
