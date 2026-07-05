@@ -916,6 +916,12 @@ def requirement_detail(request, req_id):
             messages.error(request, 'You do not have permission to view this requirement.')
             return redirect('requirement_list')
 
+    # If the requirement is not approved, non-superadmin and non-customer users should be redirected
+    if user.usertype != 'superadmin' and requirement.customer != user:
+        if requirement.status != 'approved':
+            messages.error(request, 'This requirement is not active or has been rejected.')
+            return redirect('requirement_list')
+
     # Mandalam/marketing: verify they have an assignment for this requirement
     if user.usertype in ['mandalam', 'marketing']:
         from .models import RequirementAssignment
@@ -1038,6 +1044,18 @@ def assign_mandalams(request, item_id):
     if request.method == 'POST':
         checked_mandalam_ids = [int(x) for x in request.POST.getlist('mandalams')]
 
+        # Check target achievement if it is NOT the mandatory target subcategory
+        is_mandatory_item = item.subcategory.is_mandatory_target
+        if not is_mandatory_item:
+            from .utils import has_fc_achieved_mandatory_target
+            for m_id in checked_mandalam_ids:
+                fc = CustomUser.objects.filter(id=m_id).first()
+                if fc and not has_fc_achieved_mandatory_target(fc):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f"Cannot assign requirement to {fc.name or fc.username} because they have not achieved 20 confirmed leads for the mandatory target subcategory."
+                    }, status=400)
+
         # Always parse count input for every mandalam regardless of cat_type
         total_new = 0
         assignments_to_save = []
@@ -1134,13 +1152,15 @@ def assign_mandalams(request, item_id):
     # Available for this district to assign = item_count - total_already_assigned
     district_available = max(0, item_count - total_already_assigned) if item_count else None
 
+    from .utils import has_fc_achieved_mandatory_target
     mand_list = []
     for mand in mandalams:
         mand_list.append({
             'id': mand.id,
             'name': mand.name or mand.username,
             'checked': mand.id in current_assignments,
-            'assigned_count': current_assignments.get(mand.id, 0)
+            'assigned_count': current_assignments.get(mand.id, 0),
+            'target_achieved': has_fc_achieved_mandatory_target(mand)
         })
 
     return JsonResponse({
@@ -1149,6 +1169,8 @@ def assign_mandalams(request, item_id):
         'subcategory_name': item.subcategory.name,
         'item_count': item_count,
         'district_available': district_available,
+        'is_mandatory_item': item.subcategory.is_mandatory_target,
+        'has_mandatory_target_in_system': SubCategory.objects.filter(is_mandatory_target=True).exists(),
         'mandalams': mand_list
     })
 
@@ -3559,7 +3581,13 @@ def category_list(request):
         else:
             cat.is_readonly_for_user = False
         
-    return render(request, 'cyborgapp/categories/list.html', {'categories': categories})
+    mandatory_sub = SubCategory.objects.filter(is_mandatory_target=True).first()
+    mandatory_category_id = mandatory_sub.category_id if mandatory_sub else None
+        
+    return render(request, 'cyborgapp/categories/list.html', {
+        'categories': categories,
+        'mandatory_category_id': mandatory_category_id
+    })
 
 @login_required(login_url='login')
 def category_create(request):
@@ -3567,16 +3595,36 @@ def category_create(request):
         return JsonResponse({'status': 'error', 'message': 'Permission denied'}, status=403)
         
     if request.method == 'POST':
+        from django.core.exceptions import ValidationError
         name = request.POST.get('name')
         cat_type = request.POST.get('cat_type')
         subcategories = request.POST.getlist('subcategories')
         
+        mandatory_sub_index = request.POST.get('mandatory_sub_index')
+        try:
+            mandatory_sub_index = int(mandatory_sub_index)
+        except (ValueError, TypeError):
+            mandatory_sub_index = -1
+
         category = Category.objects.create(name=name, cat_type=cat_type, created_by=request.user)
-        for sub_name in subcategories:
+        error_msg = None
+        for idx, sub_name in enumerate(subcategories):
             if sub_name.strip():
-                SubCategory.objects.create(category=category, name=sub_name.strip(), created_by=request.user)
+                is_mandatory = (request.user.usertype == 'superadmin' and idx == mandatory_sub_index)
+                try:
+                    SubCategory.objects.create(
+                        category=category, 
+                        name=sub_name.strip(), 
+                        created_by=request.user, 
+                        is_mandatory_target=is_mandatory
+                    )
+                except ValidationError as e:
+                    error_msg = e.messages[0] if hasattr(e, 'messages') else str(e)
                 
-        messages.success(request, 'Category created successfully!')
+        if error_msg:
+            messages.warning(request, f"Category created, but mandatory target setting failed: {error_msg}")
+        else:
+            messages.success(request, 'Category created successfully!')
         return redirect('category_list')
     return redirect('category_list')
 
@@ -3590,6 +3638,7 @@ def category_edit(request, cat_id):
     is_readonly_for_user = request.user.usertype == 'customer' and category.created_by != request.user
     
     if request.method == 'POST':
+        from django.core.exceptions import ValidationError
         if not category_is_used and not is_readonly_for_user:
             category.name = request.POST.get('name')
             category.cat_type = request.POST.get('cat_type')
@@ -3598,6 +3647,12 @@ def category_edit(request, cat_id):
         submitted_subs = request.POST.getlist('subcategories')
         submitted_subs_clean = [s.strip() for s in submitted_subs if s.strip()]
         
+        mandatory_sub_index = request.POST.get('mandatory_sub_index')
+        try:
+            mandatory_sub_index = int(mandatory_sub_index)
+        except (ValueError, TypeError):
+            mandatory_sub_index = -1
+
         for existing_sub in category.subcategories.all():
             if existing_sub.name not in submitted_subs_clean:
                 sub_is_used = existing_sub.requirementitem_set.exists()
@@ -3613,11 +3668,31 @@ def category_edit(request, cat_id):
                     if can_delete:
                         existing_sub.delete()
         
-        for sub_name in submitted_subs_clean:
-            if not SubCategory.objects.filter(category=category, name=sub_name).exists():
-                SubCategory.objects.create(category=category, name=sub_name, created_by=request.user)
+        error_msg = None
+        for idx, sub_name in enumerate(submitted_subs_clean):
+            is_mandatory = (request.user.usertype == 'superadmin' and idx == mandatory_sub_index)
+            sub_obj = SubCategory.objects.filter(category=category, name=sub_name).first()
+            if sub_obj:
+                sub_obj.is_mandatory_target = is_mandatory
+                try:
+                    sub_obj.save()
+                except ValidationError as e:
+                    error_msg = e.messages[0] if hasattr(e, 'messages') else str(e)
+            else:
+                try:
+                    SubCategory.objects.create(
+                        category=category, 
+                        name=sub_name, 
+                        created_by=request.user,
+                        is_mandatory_target=is_mandatory
+                    )
+                except ValidationError as e:
+                    error_msg = e.messages[0] if hasattr(e, 'messages') else str(e)
                     
-        messages.success(request, 'Category updated successfully!')
+        if error_msg:
+            messages.warning(request, f"Category updated, but mandatory target setting failed: {error_msg}")
+        else:
+            messages.success(request, 'Category updated successfully!')
         return redirect('category_list')
     return redirect('category_list')
 

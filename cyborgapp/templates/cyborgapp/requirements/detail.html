@@ -238,6 +238,8 @@
                         <!-- Dynamic checklist here -->
                     </tbody>
                 </table>
+            <div id="mandatoryTargetWarning" style="display: none; background: rgba(220, 53, 69, 0.1); color: #dc3545; border: 1px solid rgba(220, 53, 69, 0.2); padding: 12px; border-radius: 8px; font-weight: 700; margin-bottom: 20px; text-align: center; font-size: 0.9rem;">
+                <i class="fa-solid fa-circle-exclamation" style="margin-right: 6px;"></i> Target subcategories are not assigned, contact admin.
             </div>
             <button type="submit" class="btn-submit" style="width: 100%; background: #0d6efd; color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">Save Assignments</button>
         </form>
@@ -542,27 +544,44 @@
                 mandModalLimitsSection.innerHTML = `<i class="fa-solid fa-circle-info" style="margin-right:6px;color:var(--role-color);"></i>${limitLabel}`;
                 mandModalLimitsSection.style.display = 'block';
 
+                // Toggle target warning message
+                const warningDiv = document.getElementById('mandatoryTargetWarning');
+                if (warningDiv) {
+                    if (data.has_mandatory_target_in_system === false) {
+                        warningDiv.style.display = 'block';
+                    } else {
+                        warningDiv.style.display = 'none';
+                    }
+                }
+
                 if (!data.mandalams || data.mandalams.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px;">No facilitation centers found under your district.</td></tr>';
                     return;
                 }
                 
-                tbody.innerHTML = data.mandalams.map(m => `
-                    <tr>
-                        <td style="text-align: center; vertical-align: middle;">
-                            <input type="checkbox" name="mandalams" value="${m.id}" id="mand_${m.id}" ${m.checked ? 'checked' : ''}
-                                style="width:16px;height:16px;cursor:pointer;" onchange="toggleMandCountInput(${m.id}, this.checked)">
-                        </td>
-                        <td style="vertical-align: middle;">
-                            <label for="mand_${m.id}" style="font-weight:600;margin:0;cursor:pointer;display:block;width:100%;">${m.name}</label>
-                        </td>
-                        <td style="text-align: center; vertical-align: middle;">
-                            <input type="number" name="count_${m.id}" id="mand_count_${m.id}" min="0" value="${m.assigned_count || 0}"
-                                placeholder="Count" ${m.checked ? '' : 'disabled'}
-                                style="width:90px;padding:6px;border-radius:6px;border:1px solid var(--border-color);font-size:0.85rem;${m.checked ? '' : 'opacity:0.4;'}">
-                        </td>
-                    </tr>
-                `).join('');
+                tbody.innerHTML = data.mandalams.map(m => {
+                    const canAssign = data.has_mandatory_target_in_system !== false && (data.is_mandatory_item || m.target_achieved);
+                    return `
+                        <tr>
+                            <td style="text-align: center; vertical-align: middle;">
+                                <input type="checkbox" name="mandalams" value="${m.id}" id="mand_${m.id}" ${m.checked ? 'checked' : ''}
+                                    ${canAssign ? '' : 'disabled'}
+                                    style="width:16px;height:16px;cursor:pointer;" onchange="toggleMandCountInput(${m.id}, this.checked)">
+                            </td>
+                            <td style="vertical-align: middle;">
+                                <label for="mand_${m.id}" style="font-weight:600;margin:0;cursor:pointer;display:block;width:100%;">
+                                    ${m.name}
+                                    ${canAssign ? '' : '<span style="margin-left:8px;font-size:0.75rem;padding:4px 8px;border-radius:4px;color:#dc3545;background:rgba(220, 53, 69, 0.1);border:1px solid rgba(220, 53, 69, 0.2);display:inline-block;font-weight:700;">Target Pending</span>'}
+                                </label>
+                            </td>
+                            <td style="text-align: center; vertical-align: middle;">
+                                <input type="number" name="count_${m.id}" id="mand_count_${m.id}" min="0" value="${m.assigned_count || 0}"
+                                    placeholder="Count" ${m.checked && canAssign ? '' : 'disabled'}
+                                    style="width:90px;padding:6px;border-radius:6px;border:1px solid var(--border-color);font-size:0.85rem;${m.checked && canAssign ? '' : 'opacity:0.4;'}">
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
 
                 // Initialize DataTable
                 mandalamDataTable = $('#mandalamAssignTable').DataTable({

@@ -29,8 +29,8 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(SubCategory)
 class SubCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category')
-    list_filter = ('category',)
+    list_display = ('name', 'category', 'is_mandatory_target')
+    list_filter = ('category', 'is_mandatory_target')
     search_fields = ('name',)
 
 class RequirementItemInline(admin.TabularInline):

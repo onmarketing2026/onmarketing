@@ -81,30 +81,51 @@ def distribute_product_sale_commission(lead, installment=None):
     settings = {s.usertype: s.percentage for s in settings_objs}
     
     marketing_user = lead.marketing_user
+    fc_user = None
+    if marketing_user:
+        if marketing_user.usertype == 'mandalam':
+            fc_user = marketing_user
+        elif marketing_user.usertype == 'marketing':
+            fc_user = marketing_user.assigned_mandalam
+
     mandalam_user = marketing_user.assigned_mandalam if marketing_user else None
     district_user = marketing_user.assigned_district if marketing_user else None
     superadmin = CustomUser.objects.filter(usertype='superadmin').first()
 
-    payouts = [
-        ('marketing', marketing_user, "Marketing Commission"),
-        ('mandalam', mandalam_user, "Mandalam Commission"),
-        ('district', district_user, "District Commission"),
-        ('superadmin', superadmin, "Superadmin Share")
+    # Determine if target is achieved by the associated FC
+    target_achieved = True
+    if fc_user and not has_fc_achieved_mandatory_target(fc_user, exclude_lead=lead):
+        target_achieved = False
+
+    pct_marketing = settings.get('marketing', Decimal('0.00'))
+    pct_mandalam = settings.get('mandalam', Decimal('0.00'))
+    pct_district = settings.get('district', Decimal('0.00'))
+    pct_superadmin = settings.get('superadmin', Decimal('0.00'))
+
+    if not target_achieved:
+        # Divert marketing and mandalam shares to superadmin
+        pct_superadmin += pct_marketing + pct_mandalam
+        pct_marketing = Decimal('0.00')
+        pct_mandalam = Decimal('0.00')
+
+    payout_configs = [
+        ('marketing', marketing_user, pct_marketing, "Marketing Commission"),
+        ('mandalam', mandalam_user, pct_mandalam, "Mandalam Commission"),
+        ('district', district_user, pct_district, "District Commission"),
+        ('superadmin', superadmin, pct_superadmin, "Superadmin Share")
     ]
 
-    for role, user, label in payouts:
-        if user:
-            percentage = settings.get(role, Decimal('0.00'))
-            if percentage > 0:
-                amount = (total_markup_pool * Decimal(str(percentage))) / Decimal('100')
-                if amount > 0:
-                    add_to_wallet(
-                        user=user,
-                        amount=amount,
-                        transaction_type='commission',
-                        reference_id=str(lead.id),
-                        description=f"{label} from {lead.requirement.title}{item_summary}{inst_summary}"
-                    )
+    for role, user, percentage, label in payout_configs:
+        if user and percentage > 0:
+            amount = (total_markup_pool * Decimal(str(percentage))) / Decimal('100')
+            if amount > 0:
+                add_to_wallet(
+                    user=user,
+                    amount=amount,
+                    transaction_type='commission',
+                    reference_id=str(lead.id),
+                    description=f"{label} from {lead.requirement.title}{item_summary}{inst_summary}"
+                )
 
 def handle_registration_commission(new_user):
     from .models import RegistrationCommission
@@ -134,9 +155,60 @@ def handle_registration_commission(new_user):
         mandalam = new_user.assigned_mandalam
         district = new_user.assigned_district
         
-        if mandalam and config.mandalam_amount > 0:
-            add_to_wallet(mandalam, config.mandalam_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration: {new_user.name}")
+        # Check target achievement for the associated mandalam
+        target_achieved = True
+        if mandalam and not has_fc_achieved_mandatory_target(mandalam):
+            target_achieved = False
+            
+        if target_achieved:
+            if mandalam and config.mandalam_amount > 0:
+                add_to_wallet(mandalam, config.mandalam_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration: {new_user.name}")
+            if superadmin and config.superadmin_amount > 0:
+                add_to_wallet(superadmin, config.superadmin_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration: {new_user.name}")
+        else:
+            # If target not achieved, mandalam share goes to superadmin
+            total_superadmin_amount = config.superadmin_amount + config.mandalam_amount
+            if superadmin and total_superadmin_amount > 0:
+                add_to_wallet(superadmin, total_superadmin_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration (Redirected): {new_user.name}")
+                
         if district and config.district_amount > 0:
             add_to_wallet(district, config.district_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration: {new_user.name}")
-        if superadmin and config.superadmin_amount > 0:
-            add_to_wallet(superadmin, config.superadmin_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration: {new_user.name}")
+
+def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
+    """
+    Checks if a facilitation center (mandalam user) has achieved at least 20 confirmed leads
+    for the specific subcategory marked as `is_mandatory_target=True`.
+    """
+    if not fc_user or fc_user.usertype != 'mandalam':
+        return True
+    
+    from .models import SubCategory
+    mandatory_sub = SubCategory.objects.filter(is_mandatory_target=True).first()
+    if not mandatory_sub:
+        # If no mandatory subcategory has been designated yet, do not block commissions or assignments.
+        return True
+        
+    from .models import Lead
+    from django.db.models import Q
+    
+    # We count leads associated with this facilitation center (fc_user):
+    # either created by the fc_user themselves, or created by marketing users under them.
+    leads_qs = Lead.objects.filter(
+        status='confirmed'
+    ).filter(
+        Q(marketing_user=fc_user) | Q(marketing_user__assigned_mandalam=fc_user)
+    ).filter(
+        items__subcategory=mandatory_sub
+    )
+    
+    if exclude_lead:
+        leads_qs = leads_qs.exclude(id=exclude_lead.id)
+    
+    # Exclude leads in "payment pending" status (part-payment mode where any installment is still pending)
+    leads_qs = leads_qs.exclude(
+        payment_mode='part',
+        installments__status='pending'
+    ).distinct()
+    
+    count = leads_qs.count()
+    return count >= 20

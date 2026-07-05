@@ -111,7 +111,12 @@
                     <td><span class="role-badge">{{ cat.get_cat_type_display }}</span></td>
                     <td>
                         {% for sub in cat.subcategories.all %}
-                            <span class="subcat-tag">{{ sub.name }}</span>
+                            <span class="subcat-tag" {% if sub.is_mandatory_target %}style="background: rgba(220, 53, 69, 0.15); color: #dc3545; border: 1px solid rgba(220, 53, 69, 0.3);" title="Mandatory Target Subcategory"{% endif %}>
+                                {{ sub.name }}
+                                {% if sub.is_mandatory_target %}
+                                    <i class="fa-solid fa-star" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                                {% endif %}
+                            </span>
                         {% endfor %}
                     </td>
                     <td>
@@ -122,7 +127,7 @@
                                     data-type="{{ cat.cat_type }}"
                                     data-used="{{ cat.is_used|yesno:'true,false' }}"
                                     data-readonly="{{ cat.is_readonly_for_user|yesno:'true,false' }}"
-                                    data-subcategories="{% for s in cat.subcategories.all %}{{ s.name }}|{% if request.user.usertype == 'superadmin' or request.user == cat.created_by or request.user == s.created_by %}1{% else %}0{% endif %}|{% if s.requirementitem_set.exists %}1{% else %}0{% endif %}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                    data-subcategories="{% for s in cat.subcategories.all %}{{ s.name }}|{% if request.user.usertype == 'superadmin' or request.user == cat.created_by or request.user == s.created_by %}1{% else %}0{% endif %}|{% if s.requirementitem_set.exists %}1{% else %}0{% endif %}|{{ s.is_mandatory_target|yesno:'1,0' }}|{{ s.is_assigned_to_fc|yesno:'1,0' }}{% if not forloop.last %},{% endif %}{% endfor %}"
                                     title="Edit Category">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
@@ -207,20 +212,41 @@
         const editableFields = document.getElementById('editable-fields');
         const usedNotice = document.getElementById('used-notice');
 
-        function addSubInput(value = '', isReadonly = false, isUsed = false) {
+        const isSuperadmin = {% if request.user.usertype == 'superadmin' %}true{% else %}false{% endif %};
+        const mandatoryCategoryId = {{ mandatory_category_id|default:"null" }};
+        let currentEditingCategoryId = null;
+
+        function addSubInput(value = '', isReadonly = false, isUsed = false, isMandatory = false, isAssigned = false) {
             const div = document.createElement('div');
             div.className = 'sub-input-group';
+            div.style.alignItems = 'center';
+            
+            const showMandatory = isSuperadmin && (mandatoryCategoryId === null || mandatoryCategoryId === currentEditingCategoryId);
+            
+            let checkboxHtml = '';
+            if (showMandatory) {
+                const disableCheckbox = isMandatory && isAssigned;
+                checkboxHtml = `
+                    <div style="display: flex; align-items: center; gap: 6px; margin-right: 15px; min-width: 110px;" title="${disableCheckbox ? 'Cannot unset because this mandatory target is already assigned to facilitation centers' : 'Mark as Mandatory'}">
+                        <input type="checkbox" class="mandatory-chk" ${isMandatory ? 'checked' : ''} ${disableCheckbox ? 'disabled style="cursor: not-allowed; opacity: 0.6;"' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--role-color);">
+                        <label style="margin: 0; font-size: 0.8rem; font-weight: 700; cursor: ${disableCheckbox ? 'not-allowed' : 'pointer'}; color: var(--role-color); white-space: nowrap; ${disableCheckbox ? 'opacity: 0.6;' : ''}">Mandatory</label>
+                    </div>
+                `;
+            }
+
             if (isReadonly) {
                 div.innerHTML = `
+                    ${checkboxHtml}
                     <input type="text" name="subcategories" value="${value}" class="form-control" readonly style="flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background-color: #e9ecef; pointer-events: none;">
                 `;
             } else {
                 div.innerHTML = `
+                    ${checkboxHtml}
                     <div style="flex: 1;">
                         <input type="text" name="subcategories" value="${value}" class="form-control" placeholder="Subcategory name" required style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px;" ${isUsed ? 'readonly style="background-color: #f8f9fa;" title="Cannot edit name because it is in use"' : ''}>
                         ${isUsed ? '<div style="font-size: 0.75rem; color: #dc3545; font-weight: 700; margin-top: 4px; margin-left: 5px;">Cannot be edited</div>' : ''}
                     </div>
-                    <button type="button" class="btn-remove-sub" style="height: 42px;"><i class="fa-solid fa-trash"></i></button>
+                    <button type="button" class="btn-remove-sub" style="height: 42px; margin-left: 10px;"><i class="fa-solid fa-trash"></i></button>
                 `;
                 div.querySelector('.btn-remove-sub').onclick = function() {
                     if (isUsed) {
@@ -235,10 +261,41 @@
                     div.remove();
                 };
             }
+
+            if (showMandatory) {
+                const chk = div.querySelector('.mandatory-chk');
+                if (chk) {
+                    chk.onchange = function() {
+                        if (this.checked) {
+                            let hasDisabledChecked = false;
+                            subContainer.querySelectorAll('.mandatory-chk').forEach(c => {
+                                if (c !== this && c.checked && c.disabled) {
+                                    hasDisabledChecked = true;
+                                }
+                            });
+                            if (hasDisabledChecked) {
+                                this.checked = false;
+                                Swal.fire({
+                                    icon: 'warning',
+                                    title: 'Action Blocked',
+                                    text: 'The mandatory subcategory is already assigned to facilitation centers and cannot be changed.',
+                                    confirmButtonColor: 'var(--role-color)'
+                                });
+                                return;
+                            }
+                            subContainer.querySelectorAll('.mandatory-chk').forEach(c => {
+                                if (c !== this) c.checked = false;
+                            });
+                        }
+                    };
+                }
+            }
+
             subContainer.appendChild(div);
         }
 
         openBtn.onclick = function() {
+            currentEditingCategoryId = null;
             form.reset();
             form.action = "{% url 'category_create' %}";
             document.getElementById('modalTitle').textContent = "Add Category";
@@ -253,6 +310,7 @@
         document.querySelectorAll('.edit-cat-btn').forEach(btn => {
             btn.onclick = function() {
                 const id = this.getAttribute('data-id');
+                currentEditingCategoryId = parseInt(id);
                 const name = this.getAttribute('data-name');
                 const type = this.getAttribute('data-type');
                 const used = this.getAttribute('data-used') === 'true';
@@ -271,7 +329,9 @@
                         const sName = parts[0];
                         const canDelete = parts[1] === '1';
                         const isUsed = parts[2] === '1';
-                        addSubInput(sName, !canDelete, isUsed);
+                        const isMandatory = parts[3] === '1';
+                        const isAssigned = parts[4] === '1';
+                        addSubInput(sName, !canDelete, isUsed, isMandatory, isAssigned);
                     }
                 });
                 if(subs.length === 0 || (subs.length === 1 && subs[0] === '')) addSubInput();
@@ -294,6 +354,27 @@
                 modal.style.display = 'block';
             };
         });
+
+        form.onsubmit = function(e) {
+            if (isSuperadmin) {
+                const chks = subContainer.querySelectorAll('.mandatory-chk');
+                let checkedIndex = -1;
+                chks.forEach((chk, idx) => {
+                    if (chk.checked) {
+                        checkedIndex = idx;
+                    }
+                });
+                
+                let hiddenInput = form.querySelector('input[name="mandatory_sub_index"]');
+                if (!hiddenInput) {
+                    hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = 'mandatory_sub_index';
+                    form.appendChild(hiddenInput);
+                }
+                hiddenInput.value = checkedIndex;
+            }
+        };
 
         addSubBtn.onclick = () => addSubInput();
 

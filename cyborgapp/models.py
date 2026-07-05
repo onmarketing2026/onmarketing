@@ -52,10 +52,49 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+from django.core.exceptions import ValidationError
+
 class SubCategory(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='subcategories')
     name = models.CharField(max_length=100)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    is_mandatory_target = models.BooleanField(default=False, verbose_name="Is Mandatory Target")
+
+    def clean(self):
+        super().clean()
+        from django.apps import apps
+        RequirementAssignment = apps.get_model('cyborgapp', 'RequirementAssignment')
+
+        if self.pk:
+            old_sub = SubCategory.objects.get(pk=self.pk)
+            if old_sub.is_mandatory_target != self.is_mandatory_target:
+                if RequirementAssignment.objects.filter(requirement_item__subcategory=self).exists():
+                    raise ValidationError(
+                        "The mandatory status of this subcategory cannot be changed "
+                        "because its requirements have already been assigned to facilitation centers."
+                    )
+
+        if self.is_mandatory_target:
+            other_mandatories = SubCategory.objects.filter(is_mandatory_target=True)
+            if self.pk:
+                other_mandatories = other_mandatories.exclude(pk=self.pk)
+            for other in other_mandatories:
+                if RequirementAssignment.objects.filter(requirement_item__subcategory=other).exists():
+                    raise ValidationError(
+                        f"Cannot mark this subcategory as mandatory because '{other.name}' "
+                        "is currently the mandatory target and has requirements assigned to facilitation centers."
+                    )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        if self.is_mandatory_target:
+            SubCategory.objects.filter(is_mandatory_target=True).exclude(pk=self.pk).update(is_mandatory_target=False)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_assigned_to_fc(self):
+        from .models import RequirementAssignment
+        return RequirementAssignment.objects.filter(requirement_item__subcategory=self).exists()
 
     def __str__(self):
         return f"{self.category.name} - {self.name}"
