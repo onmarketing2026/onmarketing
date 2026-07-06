@@ -493,7 +493,35 @@
             columnDefs: [{ visible: false, targets: 3 }],
             {% endif %}
             columns: [
-                { data: 'name' },
+                { 
+                    data: 'name',
+                    render: function(data, type, row) {
+                        let html = `<span style="font-weight:600; color: var(--text-main);">${data}</span>`;
+                        if (row.usertype === 'mandalam' && row.target_status) {
+                            let badgeColor = '';
+                            let badgeBg = '';
+                            let badgeBorder = '';
+                            if (row.target_status === 'Target Achieved') {
+                                badgeColor = '#198754';
+                                badgeBg = 'rgba(25, 135, 84, 0.1)';
+                                badgeBorder = 'rgba(25, 135, 84, 0.2)';
+                            } else if (row.target_status === 'Target Pending') {
+                                badgeColor = '#dc3545';
+                                badgeBg = 'rgba(220, 53, 69, 0.1)';
+                                badgeBorder = 'rgba(220, 53, 69, 0.2)';
+                            } else {
+                                // Target Not Assigned
+                                badgeColor = '#6c757d';
+                                badgeBg = 'rgba(108, 117, 125, 0.1)';
+                                badgeBorder = 'rgba(108, 117, 125, 0.2)';
+                            }
+                            html += `<div style="margin-top: 4px;">
+                                <span class="status-badge" style="font-size:0.75rem; padding: 2px 8px; border-radius: 4px; color:${badgeColor}; background:${badgeBg}; border:1px solid ${badgeBorder}; display:inline-block; font-weight:700;">${row.target_status}</span>
+                            </div>`;
+                        }
+                        return html;
+                    }
+                },
                 { data: 'email' },
                 { 
                     data: 'usertype_display',

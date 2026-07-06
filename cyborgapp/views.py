@@ -545,6 +545,27 @@ def superadmin_users(request):
                 mandalam_district_name = u.assigned_mandalam.assigned_district.name
             assigned_fcs = ",".join([str(fc.id) for fc in u.assigned_facilitation_centers.all()]) if u.usertype == 'staff' else ''
             assigned_fc_names = [fc.name for fc in u.assigned_facilitation_centers.all()] if u.usertype == 'staff' else []
+            
+            target_status = None
+            if u.usertype == 'mandalam':
+                from .models import SubCategory, RequirementAssignment
+                mandatory_sub = SubCategory.objects.filter(is_mandatory_target=True).first()
+                if not mandatory_sub:
+                    target_status = 'Target Not Assigned'
+                else:
+                    is_assigned = RequirementAssignment.objects.filter(
+                        requirement_item__subcategory=mandatory_sub,
+                        facilitation_center=u
+                    ).exists()
+                    if not is_assigned:
+                        target_status = 'Target Not Assigned'
+                    else:
+                        from .utils import has_fc_achieved_mandatory_target
+                        if has_fc_achieved_mandatory_target(u):
+                            target_status = 'Target Achieved'
+                        else:
+                            target_status = 'Target Pending'
+            
             data.append({
                 'id': u.id,
                 'name': u.name,
@@ -561,7 +582,8 @@ def superadmin_users(request):
                 'mandalam_district_name': mandalam_district_name,
                 'accessible_districts': acc_dists,
                 'assigned_facilitation_centers': assigned_fcs,
-                'assigned_fc_names': assigned_fc_names
+                'assigned_fc_names': assigned_fc_names,
+                'target_status': target_status
             })
             
         return JsonResponse({
