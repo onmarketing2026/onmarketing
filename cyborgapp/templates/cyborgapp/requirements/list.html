@@ -940,8 +940,11 @@
                 });
         }
 
+        let isSettingCategoryProgrammatically = false;
         reqCategory.onchange = function() {
-            fetchSubcategories(this.value);
+            if (!isSettingCategoryProgrammatically) {
+                fetchSubcategories(this.value);
+            }
         };
 
         // Main Image Preview Listener
@@ -980,6 +983,11 @@
                 document.getElementById('reqImage').required = true;
                 subcatSection.style.display = 'none';
                 statusGroup.style.display = 'none';
+                
+                isSettingCategoryProgrammatically = true;
+                $(reqCategory).val('').trigger('change');
+                isSettingCategoryProgrammatically = false;
+                
                 modal.style.display = "block";
             }
         }
@@ -1015,7 +1023,10 @@
             
             reqTitle.value = title;
             reqDescription.value = description;
-            reqCategory.value = categoryId;
+            
+            isSettingCategoryProgrammatically = true;
+            $(reqCategory).val(categoryId).trigger('change');
+            isSettingCategoryProgrammatically = false;
             
             if (isSuperAdmin) {
                 reqTitle.readOnly = true;
