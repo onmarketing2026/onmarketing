@@ -74,21 +74,8 @@ class SubCategory(models.Model):
                         "because its requirements have already been assigned to facilitation centers."
                     )
 
-        if self.is_mandatory_target:
-            other_mandatories = SubCategory.objects.filter(is_mandatory_target=True)
-            if self.pk:
-                other_mandatories = other_mandatories.exclude(pk=self.pk)
-            for other in other_mandatories:
-                if RequirementAssignment.objects.filter(requirement_item__subcategory=other).exists():
-                    raise ValidationError(
-                        f"Cannot mark this subcategory as mandatory because '{other.name}' "
-                        "is currently the mandatory target and has requirements assigned to facilitation centers."
-                    )
-
     def save(self, *args, **kwargs):
         self.clean()
-        if self.is_mandatory_target:
-            SubCategory.objects.filter(is_mandatory_target=True).exclude(pk=self.pk).update(is_mandatory_target=False)
         super().save(*args, **kwargs)
 
     @property
@@ -396,6 +383,7 @@ class CommissionTransaction(models.Model):
         ('district_reg', 'District Registration'),
         ('mandalam_reg', 'Mandalam Registration'),
         ('marketer_reg', 'Marketer Registration'),
+        ('incentive', 'Incentive'),
     )
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='commissions')
     amount = models.DecimalField(max_digits=15, decimal_places=2)
@@ -406,6 +394,16 @@ class CommissionTransaction(models.Model):
 
     def __str__(self):
         return f"{self.user.name} - {self.amount} ({self.get_transaction_type_display()})"
+
+class Incentive(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='incentives')
+    purpose = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_incentives')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Incentive for {self.user.name or self.user.username} - {self.amount} ({self.purpose})"
 
 class WithdrawalRequest(models.Model):
     STATUS_CHOICES = (
@@ -542,5 +540,96 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.recipient.username}: {self.verb}"
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Lead)
+def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
+    if instance.status != 'confirmed':
+        return
+
+    # Check if this lead was confirmed. Let's find the subcategory for the lead.
+    lead_items = instance.items.all()
+    if not lead_items.exists():
+        return
+
+    for item in lead_items:
+        sub = item.subcategory
+        if not sub.is_mandatory_target:
+            continue
+
+        # Find the FC associated with this lead.
+        m_user = instance.marketing_user
+        if not m_user:
+            continue
+
+        fc = None
+        if m_user.usertype == 'mandalam':
+            fc = m_user
+        elif m_user.assigned_mandalam:
+            fc = m_user.assigned_mandalam
+
+        if not fc:
+            continue
+
+        # Count confirmed leads for this subcategory for this FC
+        from django.db.models import Q
+        leads_qs = Lead.objects.filter(
+            status='confirmed'
+        ).filter(
+            Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
+        ).filter(
+            items__subcategory=sub
+        ).distinct()
+
+        if leads_qs.count() == 20:
+            # Check if this is the first time the FC achieved any mandatory target
+            mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
+            other_achieved = False
+            for other_sub in mandatory_subs:
+                if other_sub != sub:
+                    other_cnt = Lead.objects.filter(
+                        status='confirmed'
+                    ).filter(
+                        Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
+                    ).filter(
+                        items__subcategory=other_sub
+                    ).distinct().count()
+                    if other_cnt >= 20:
+                        other_achieved = True
+                        break
+
+            if not other_achieved:
+                # FC has reached their 20th confirmed lead milestone!
+                recipients = set()
+
+                # Superadmins
+                superadmins = CustomUser.objects.filter(usertype='superadmin')
+                for sa in superadmins:
+                    recipients.add(sa)
+
+                # District Franchise
+                if fc.assigned_district:
+                    recipients.add(fc.assigned_district)
+
+                # Managers corresponding to the FC's district
+                if fc.assigned_district:
+                    managers = CustomUser.objects.filter(usertype='manager', assigned_district=fc.assigned_district)
+                    for mgr in managers:
+                        recipients.add(mgr)
+
+                # Send notifications
+                verb = f"Facilitation Center {fc.name or fc.username} has achieved their 20-lead milestone on mandatory target: {sub.name}!"
+                
+                for recipient in recipients:
+                    if not Notification.objects.filter(recipient=recipient, verb=verb).exists():
+                        Notification.objects.create(
+                            recipient=recipient,
+                            actor=fc,
+                            verb=verb,
+                            lead=instance
+                        )
 
 

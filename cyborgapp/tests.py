@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from cyborgapp.models import (
     Category, SubCategory, CustomerRequirement, RequirementItem,
     DistrictRequirementAssignment, RequirementAssignment, Lead, LeadItem,
-    LeadInstallment, WithdrawalRequest
+    LeadInstallment, WithdrawalRequest, Notification
 )
 from decimal import Decimal
 from cyborgapp.views import check_assignment_limits
@@ -713,6 +713,196 @@ class SuperadminLeaderboardsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/csv')
         self.assertTrue('attachment' in response['Content-Disposition'])
+
+
+class MultipleMandatoryMilestoneTest(TestCase):
+    def setUp(self):
+        # Create users
+        self.superadmin = CustomUser.objects.create_superuser(
+            username='admin_mult', email='admin_mult@test.com', password='password123', usertype='superadmin'
+        )
+        self.customer = CustomUser.objects.create_user(
+            username='cust_mult', email='cust_mult@test.com', password='password123', usertype='customer'
+        )
+        self.district = CustomUser.objects.create_user(
+            username='dist_mult', email='dist_mult@test.com', password='password123', usertype='district'
+        )
+        self.mandalam = CustomUser.objects.create_user(
+            username='mand_mult', email='mand_mult@test.com', password='password123', usertype='mandalam',
+            assigned_district=self.district
+        )
+        self.marketing = CustomUser.objects.create_user(
+            username='mark_mult', email='mark_mult@test.com', password='password123', usertype='marketing',
+            assigned_district=self.district, assigned_mandalam=self.mandalam
+        )
+
+        # Categories
+        self.category = Category.objects.create(name='MultCategory', cat_type='count', created_by=self.superadmin)
+        
+        # Subcategories - make two of them mandatory
+        self.sub_mand_1 = SubCategory.objects.create(
+            category=self.category, name='MandatorySub1', is_mandatory_target=True, created_by=self.superadmin
+        )
+        self.sub_mand_2 = SubCategory.objects.create(
+            category=self.category, name='MandatorySub2', is_mandatory_target=True, created_by=self.superadmin
+        )
+        self.sub_normal = SubCategory.objects.create(
+            category=self.category, name='NormalSub', is_mandatory_target=False, created_by=self.superadmin
+        )
+
+        # Customer Requirement
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.customer, category=self.category, title='Mult Req', status='approved'
+        )
+        self.requirement.customer.accessible_districts.add(self.district)
+
+        # Requirement Items
+        self.item_mand_1 = RequirementItem.objects.create(
+            requirement=self.requirement, subcategory=self.sub_mand_1, count=100,
+            customer_amount=Decimal('10.00'), admin_markup=Decimal('5.00')
+        )
+        self.item_mand_2 = RequirementItem.objects.create(
+            requirement=self.requirement, subcategory=self.sub_mand_2, count=100,
+            customer_amount=Decimal('10.00'), admin_markup=Decimal('5.00')
+        )
+        self.item_normal = RequirementItem.objects.create(
+            requirement=self.requirement, subcategory=self.sub_normal, count=100,
+            customer_amount=Decimal('10.00'), admin_markup=Decimal('5.00')
+        )
+
+    def test_assign_gating_logic(self):
+        client = Client()
+        client.login(username='dist_mult', password='password123')
+
+        # 1. FC has not achieved target yet.
+        # Try to assign normal subcategory requirement. It should fail with 400.
+        post_data = {
+            'mandalams': [self.mandalam.id],
+            f'count_{self.mandalam.id}': 10
+        }
+        response = client.post(f'/requirements/item/{self.item_normal.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not achieved 20 confirmed leads", response.json()['message'])
+
+        # 2. Try to assign first mandatory requirement (item_mand_1). This should succeed.
+        response = client.post(f'/requirements/item/{self.item_mand_1.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 200)
+
+        # 3. Try to assign second mandatory requirement (item_mand_2) while working on first one.
+        # This should fail because they can only work on one mandatory subcategory at a time when target not achieved.
+        response = client.post(f'/requirements/item/{self.item_mand_2.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already working on another mandatory subcategory", response.json()['message'])
+
+        # 4. Now simulate 20 leads confirmed on MandatorySub1.
+        for i in range(20):
+            lead = Lead.objects.create(
+                requirement=self.requirement, marketing_user=self.marketing, status='confirmed',
+                phone=f'987654321{i}'
+            )
+            LeadItem.objects.create(lead=lead, subcategory=self.sub_mand_1, count=1)
+
+        # Now they have achieved the target!
+        # Try to assign the second mandatory requirement (item_mand_2) again. It should now succeed.
+        response = client.post(f'/requirements/item/{self.item_mand_2.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 200)
+
+        # Try to assign the normal requirement (item_normal) again. It should now succeed.
+        response = client.post(f'/requirements/item/{self.item_normal.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 200)
+
+    def test_target_achievement_list(self):
+        client = Client()
+        client.login(username='admin_mult', password='password123')
+
+        # Try to access as superadmin
+        response = client.get('/superadmin/target-achievements/')
+        self.assertEqual(response.status_code, 200)
+
+        # Try to access as non-superadmin (should get 302 redirect)
+        non_admin_client = Client()
+        non_admin_client.login(username='dist_mult', password='password123')
+        response = non_admin_client.get('/superadmin/target-achievements/')
+        self.assertEqual(response.status_code, 302)
+
+    def test_target_achievement_notification(self):
+        # Setup manager
+        manager = CustomUser.objects.create_user(
+            username='mgr_mult',
+            password='password123',
+            usertype='manager',
+            assigned_district=self.district
+        )
+
+        # Clear existing notifications
+        Notification.objects.all().delete()
+
+        # Before generating leads, there should be no notifications
+        self.assertEqual(Notification.objects.count(), 0)
+
+        # Generate 19 confirmed leads for the FC on a mandatory category
+        for i in range(19):
+            lead = Lead.objects.create(
+                requirement=self.requirement,
+                marketing_user=self.marketing,
+                status='confirmed',
+                phone=f'99999999{i:02d}'
+            )
+            # Need to trigger post_save signals, so we create item first or trigger save again
+            LeadItem.objects.create(lead=lead, subcategory=self.sub_mand_1, count=1)
+            # Trigger save on lead to run the post_save receiver after items are attached
+            lead.save()
+
+        # No notifications yet because we haven't reached 20
+        self.assertEqual(Notification.objects.filter(verb__icontains="has achieved their 20-lead milestone").count(), 0)
+
+        # Generate the 20th confirmed lead
+        lead20 = Lead.objects.create(
+            requirement=self.requirement,
+            marketing_user=self.marketing,
+            status='confirmed',
+            phone='9999999920'
+        )
+        LeadItem.objects.create(lead=lead20, subcategory=self.sub_mand_1, count=1)
+        lead20.save()
+
+        # Now the notification should be triggered for superadmin, district franchise, and manager
+        milestone_notifications = Notification.objects.filter(verb__icontains="has achieved their 20-lead milestone")
+        
+        # Recipients should include superadmin, district franchise, and manager
+        recipients = [n.recipient for n in milestone_notifications]
+        self.assertIn(self.superadmin, recipients)
+        self.assertIn(self.district, recipients)
+        self.assertIn(manager, recipients)
+
+    def test_incentives_creation_and_wallet_credit(self):
+        client = Client()
+        client.login(username='admin_mult', password='password123')
+
+        response = client.get('/superadmin/incentives/')
+        self.assertEqual(response.status_code, 200)
+
+        post_data = {
+            'purpose': 'Performance Bonus',
+            f'amount_for_user_{self.marketing.id}': '150.00',
+            f'amount_for_user_{self.district.id}': '250.00'
+        }
+        
+        from cyborgapp.utils import get_or_create_wallet
+        marketing_wallet = get_or_create_wallet(self.marketing)
+        self.assertEqual(marketing_wallet.balance, Decimal('0.00'))
+
+        response = client.post('/superadmin/incentives/create/', post_data)
+        self.assertEqual(response.status_code, 302)
+
+        from cyborgapp.models import Incentive
+        self.assertEqual(Incentive.objects.filter(purpose='Performance Bonus').count(), 2)
+
+        marketing_wallet.refresh_from_db()
+        self.assertEqual(marketing_wallet.balance, Decimal('150.00'))
+
+        district_wallet = get_or_create_wallet(self.district)
+        self.assertEqual(district_wallet.balance, Decimal('250.00'))
 
 
 

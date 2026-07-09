@@ -163,6 +163,18 @@
         </div>
         {% endif %}
 
+        {% if 'target_achieved_fcs' in stats %}
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, rgba(25, 135, 84, 0.15) 0%, rgba(25, 135, 84, 0.05) 100%); color: #198754; box-shadow: 0 4px 10px rgba(25, 135, 84, 0.1);">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <div class="stat-info">
+                <h3>{{ stats.target_achieved_fcs }}</h3>
+                <p>Target Achieved FCs</p>
+            </div>
+        </div>
+        {% endif %}
+
         {% if 'assigned_fcs_count' in stats %}
         <div class="stat-card">
             <div class="stat-icon icon-franchise" style="background: rgba(111, 66, 193, 0.1); color: #6f42c1;">

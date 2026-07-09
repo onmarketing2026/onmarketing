@@ -177,14 +177,14 @@ def handle_registration_commission(new_user):
 def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
     """
     Checks if a facilitation center (mandalam user) has achieved at least 20 confirmed leads
-    for the specific subcategory marked as `is_mandatory_target=True`.
+    for ANY of the subcategories marked as `is_mandatory_target=True`.
     """
     if not fc_user or fc_user.usertype != 'mandalam':
         return True
     
     from .models import SubCategory
-    mandatory_sub = SubCategory.objects.filter(is_mandatory_target=True).first()
-    if not mandatory_sub:
+    mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
+    if not mandatory_subs.exists():
         # If no mandatory subcategory has been designated yet, do not block commissions or assignments.
         return True
         
@@ -193,22 +193,25 @@ def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
     
     # We count leads associated with this facilitation center (fc_user):
     # either created by the fc_user themselves, or created by marketing users under them.
-    leads_qs = Lead.objects.filter(
-        status='confirmed'
-    ).filter(
-        Q(marketing_user=fc_user) | Q(marketing_user__assigned_mandalam=fc_user)
-    ).filter(
-        items__subcategory=mandatory_sub
-    )
-    
-    if exclude_lead:
-        leads_qs = leads_qs.exclude(id=exclude_lead.id)
-    
-    # Exclude leads in "payment pending" status (part-payment mode where any installment is still pending)
-    leads_qs = leads_qs.exclude(
-        payment_mode='part',
-        installments__status='pending'
-    ).distinct()
-    
-    count = leads_qs.count()
-    return count >= 20
+    for sub in mandatory_subs:
+        leads_qs = Lead.objects.filter(
+            status='confirmed'
+        ).filter(
+            Q(marketing_user=fc_user) | Q(marketing_user__assigned_mandalam=fc_user)
+        ).filter(
+            items__subcategory=sub
+        )
+        
+        if exclude_lead:
+            leads_qs = leads_qs.exclude(id=exclude_lead.id)
+        
+        # Exclude leads in "payment pending" status (part-payment mode where any installment is still pending)
+        leads_qs = leads_qs.exclude(
+            payment_mode='part',
+            installments__status='pending'
+        ).distinct()
+        
+        if leads_qs.count() >= 20:
+            return True
+            
+    return False

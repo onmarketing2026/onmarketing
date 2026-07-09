@@ -427,9 +427,10 @@
 
                     <div class="form-group" id="accessible-districts-group" style="display: none;">
                         <label>Accessible District Franchises (For Requirements)</label>
-                        <div style="background: #fff; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; max-height: 150px; overflow-y: auto;">
+                        <input type="text" id="districtSearch" class="form-control" placeholder="Search District Franchises..." style="margin-bottom: 8px; padding: 8px 12px; font-size: 0.85rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main);">
+                        <div id="districtCheckboxesContainer" style="background: #fff; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; max-height: 150px; overflow-y: auto;">
                             {% for d in districts %}
-                                <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px; cursor: pointer; font-weight: normal;">
+                                <label class="district-label" style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px; cursor: pointer; font-weight: normal;">
                                     <input type="checkbox" name="accessible_districts" value="{{ d.id }}" class="district-checkbox" style="width: 16px; height: 16px;">
                                     <span>{{ d.name }}</span>
                                 </label>
@@ -1159,7 +1160,15 @@
             const staffFcSearchInput = document.getElementById('staffFcSearchInput');
             if (staffFcSearchInput) staffFcSearchInput.value = '';
 
+            const districtSearch = document.getElementById('districtSearch');
+            if (districtSearch) {
+                districtSearch.value = '';
+                const labels = document.querySelectorAll('#districtCheckboxesContainer .district-label');
+                labels.forEach(label => label.style.display = 'flex');
+            }
+
             toggleHierarchy();
+            $(userForm).find('select').trigger('change');
             modal.style.display = "block";
         }
 
@@ -1232,6 +1241,13 @@
                 renderSelectedFcs();
             }
 
+            const districtSearch = document.getElementById('districtSearch');
+            if (districtSearch) {
+                districtSearch.value = '';
+                const labels = document.querySelectorAll('#districtCheckboxesContainer .district-label');
+                labels.forEach(label => label.style.display = 'flex');
+            }
+
             if (districtId) {
                 document.getElementById('assigned_district').value = districtId;
             }
@@ -1239,6 +1255,7 @@
                 document.getElementById('assigned_mandalam').value = mandalamId;
             }
 
+            $(userForm).find('select').trigger('change');
             modal.style.display = "block";
         });
 
@@ -1266,6 +1283,23 @@
                 }
             });
         });
+
+        // Accessible District Franchises Search Box filtering
+        const districtSearch = document.getElementById('districtSearch');
+        if (districtSearch) {
+            districtSearch.addEventListener('input', function() {
+                const term = this.value.toLowerCase();
+                const labels = document.querySelectorAll('#districtCheckboxesContainer .district-label');
+                labels.forEach(label => {
+                    const text = label.querySelector('span').textContent.toLowerCase();
+                    if (text.includes(term)) {
+                        label.style.display = 'flex';
+                    } else {
+                        label.style.display = 'none';
+                    }
+                });
+            });
+        }
     });
 </script>
 {% endblock %}

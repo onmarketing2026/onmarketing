@@ -200,6 +200,22 @@ def superadmin_dashboard(request):
         
         # Total Franchise: Total Active Marketing users
         stats['total_franchise'] = CustomUser.objects.filter(usertype='marketing', is_active=True).count()
+
+        # Target Achieved FCs count
+        from .models import SubCategory, RequirementAssignment
+        from .utils import has_fc_achieved_mandatory_target
+        mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
+        target_achieved_count = 0
+        if mandatory_subs.exists():
+            fcs = CustomUser.objects.filter(usertype='mandalam')
+            for fc in fcs:
+                is_assigned = RequirementAssignment.objects.filter(
+                    requirement_item__subcategory__in=mandatory_subs,
+                    facilitation_center=fc
+                ).exists()
+                if is_assigned and has_fc_achieved_mandatory_target(fc):
+                    target_achieved_count += 1
+        stats['target_achieved_fcs'] = target_achieved_count
         
         # Month-specific calculations for Superadmin Graph
         from django.utils import timezone
@@ -549,12 +565,12 @@ def superadmin_users(request):
             target_status = None
             if u.usertype == 'mandalam':
                 from .models import SubCategory, RequirementAssignment
-                mandatory_sub = SubCategory.objects.filter(is_mandatory_target=True).first()
-                if not mandatory_sub:
+                mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
+                if not mandatory_subs.exists():
                     target_status = 'Target Not Assigned'
                 else:
                     is_assigned = RequirementAssignment.objects.filter(
-                        requirement_item__subcategory=mandatory_sub,
+                        requirement_item__subcategory__in=mandatory_subs,
                         facilitation_center=u
                     ).exists()
                     if not is_assigned:
@@ -1068,15 +1084,32 @@ def assign_mandalams(request, item_id):
 
         # Check target achievement if it is NOT the mandatory target subcategory
         is_mandatory_item = item.subcategory.is_mandatory_target
-        if not is_mandatory_item:
-            from .utils import has_fc_achieved_mandatory_target
-            for m_id in checked_mandalam_ids:
-                fc = CustomUser.objects.filter(id=m_id).first()
-                if fc and not has_fc_achieved_mandatory_target(fc):
-                    return JsonResponse({
-                        'status': 'error',
-                        'message': f"Cannot assign requirement to {fc.name or fc.username} because they have not achieved 20 confirmed leads for the mandatory target subcategory."
-                    }, status=400)
+        from .utils import has_fc_achieved_mandatory_target
+        for m_id in checked_mandalam_ids:
+            fc = CustomUser.objects.filter(id=m_id).first()
+            if fc:
+                target_achieved = has_fc_achieved_mandatory_target(fc)
+                if not target_achieved:
+                    if not is_mandatory_item:
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': f"Cannot assign requirement to {fc.name or fc.username} because they have not achieved 20 confirmed leads for any mandatory target subcategory."
+                        }, status=400)
+                    else:
+                        # If target not achieved, they can only work on one mandatory subcategory at a time.
+                        other_assigned_exists = RequirementAssignment.objects.filter(
+                            facilitation_center=fc,
+                            requirement_item__subcategory__is_mandatory_target=True
+                        ).exclude(requirement_item__subcategory=item.subcategory).exists()
+                        if other_assigned_exists:
+                            other_sub_name = RequirementAssignment.objects.filter(
+                                facilitation_center=fc,
+                                requirement_item__subcategory__is_mandatory_target=True
+                            ).exclude(requirement_item__subcategory=item.subcategory).first().requirement_item.subcategory.name
+                            return JsonResponse({
+                                'status': 'error',
+                                'message': f"Cannot assign mandatory requirement to {fc.name or fc.username} because they are already working on another mandatory subcategory: '{other_sub_name}'."
+                            }, status=400)
 
         # Always parse count input for every mandalam regardless of cat_type
         total_new = 0
@@ -1177,12 +1210,31 @@ def assign_mandalams(request, item_id):
     from .utils import has_fc_achieved_mandatory_target
     mand_list = []
     for mand in mandalams:
+        target_achieved = has_fc_achieved_mandatory_target(mand)
+        
+        # Check if they can be assigned this specific subcategory requirement
+        can_assign = False
+        if target_achieved:
+            can_assign = True
+        else:
+            if item.subcategory.is_mandatory_target:
+                # Check if they have active assignments in another mandatory subcategory
+                other_assigned_exists = RequirementAssignment.objects.filter(
+                    facilitation_center=mand,
+                    requirement_item__subcategory__is_mandatory_target=True
+                ).exclude(requirement_item__subcategory=item.subcategory).exists()
+                if not other_assigned_exists:
+                    can_assign = True
+            else:
+                can_assign = False
+
         mand_list.append({
             'id': mand.id,
             'name': mand.name or mand.username,
             'checked': mand.id in current_assignments,
             'assigned_count': current_assignments.get(mand.id, 0),
-            'target_achieved': has_fc_achieved_mandatory_target(mand)
+            'target_achieved': target_achieved,
+            'can_assign': can_assign
         })
 
     return JsonResponse({
@@ -3622,17 +3674,21 @@ def category_create(request):
         cat_type = request.POST.get('cat_type')
         subcategories = request.POST.getlist('subcategories')
         
-        mandatory_sub_index = request.POST.get('mandatory_sub_index')
-        try:
-            mandatory_sub_index = int(mandatory_sub_index)
-        except (ValueError, TypeError):
-            mandatory_sub_index = -1
+        mandatory_sub_indices = request.POST.get('mandatory_sub_indices', '')
+        if mandatory_sub_indices:
+            mandatory_indices = [int(x) for x in mandatory_sub_indices.split(',') if x.strip()]
+        else:
+            mandatory_sub_index = request.POST.get('mandatory_sub_index')
+            if mandatory_sub_index is not None and mandatory_sub_index != '-1':
+                mandatory_indices = [int(mandatory_sub_index)]
+            else:
+                mandatory_indices = []
 
         category = Category.objects.create(name=name, cat_type=cat_type, created_by=request.user)
         error_msg = None
         for idx, sub_name in enumerate(subcategories):
             if sub_name.strip():
-                is_mandatory = (request.user.usertype == 'superadmin' and idx == mandatory_sub_index)
+                is_mandatory = (request.user.usertype == 'superadmin' and idx in mandatory_indices)
                 try:
                     SubCategory.objects.create(
                         category=category, 
@@ -3669,11 +3725,15 @@ def category_edit(request, cat_id):
         submitted_subs = request.POST.getlist('subcategories')
         submitted_subs_clean = [s.strip() for s in submitted_subs if s.strip()]
         
-        mandatory_sub_index = request.POST.get('mandatory_sub_index')
-        try:
-            mandatory_sub_index = int(mandatory_sub_index)
-        except (ValueError, TypeError):
-            mandatory_sub_index = -1
+        mandatory_sub_indices = request.POST.get('mandatory_sub_indices', '')
+        if mandatory_sub_indices:
+            mandatory_indices = [int(x) for x in mandatory_sub_indices.split(',') if x.strip()]
+        else:
+            mandatory_sub_index = request.POST.get('mandatory_sub_index')
+            if mandatory_sub_index is not None and mandatory_sub_index != '-1':
+                mandatory_indices = [int(mandatory_sub_index)]
+            else:
+                mandatory_indices = []
 
         for existing_sub in category.subcategories.all():
             if existing_sub.name not in submitted_subs_clean:
@@ -3692,7 +3752,7 @@ def category_edit(request, cat_id):
         
         error_msg = None
         for idx, sub_name in enumerate(submitted_subs_clean):
-            is_mandatory = (request.user.usertype == 'superadmin' and idx == mandatory_sub_index)
+            is_mandatory = (request.user.usertype == 'superadmin' and idx in mandatory_indices)
             sub_obj = SubCategory.objects.filter(category=category, name=sub_name).first()
             if sub_obj:
                 sub_obj.is_mandatory_target = is_mandatory
@@ -4535,3 +4595,210 @@ def send_invoice_email_view(request, lead_id):
         return JsonResponse({'status': 'success', 'message': f'Invoice sent to {lead.email}.'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': f'Failed to send email: {str(e)}'}, status=500)
+
+
+@login_required(login_url='login')
+def target_achievement_list(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+
+    from django.db.models import Q
+    from .models import SubCategory, RequirementAssignment
+    from .utils import has_fc_achieved_mandatory_target
+
+    fcs = CustomUser.objects.filter(usertype='mandalam').order_by('name', 'username')
+    mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
+
+    fc_details = []
+    for fc in fcs:
+        status = 'Not Assigned'
+        total_count_achieved = 0
+        target_achieved_date = None
+        assigned_targets = []
+
+        if mandatory_subs.exists():
+            assigned_qs = RequirementAssignment.objects.filter(
+                requirement_item__subcategory__in=mandatory_subs,
+                facilitation_center=fc
+            ).select_related('requirement_item__subcategory__category')
+
+            seen_subs = set()
+            for assignment in assigned_qs:
+                sub = assignment.requirement_item.subcategory
+                if sub.id not in seen_subs:
+                    seen_subs.add(sub.id)
+                    assigned_targets.append({
+                        'category_name': sub.category.name,
+                        'subcategory_name': sub.name
+                    })
+
+            if assigned_qs.exists():
+                # Calculate max confirmed leads on any mandatory subcategory
+                max_count = 0
+                achievement_dates = []
+
+                achieved = has_fc_achieved_mandatory_target(fc)
+
+                for sub in mandatory_subs:
+                    leads_qs = Lead.objects.filter(
+                        status='confirmed'
+                    ).filter(
+                        Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
+                    ).filter(
+                        items__subcategory=sub
+                    ).distinct()
+
+                    cnt = leads_qs.count()
+                    if cnt > max_count:
+                        max_count = cnt
+
+                    if cnt >= 20:
+                        # Get 20th lead's date
+                        sorted_leads = leads_qs.order_by('created_at')
+                        if sorted_leads.count() >= 20:
+                            twentieth_lead = sorted_leads[19]
+                            achievement_dates.append(twentieth_lead.created_at)
+
+                total_count_achieved = min(max_count, 20)
+
+                if achieved:
+                    status = 'Achieved'
+                    if achievement_dates:
+                        target_achieved_date = min(achievement_dates)
+                else:
+                    status = 'Pending'
+
+        fc_details.append({
+            'fc': fc,
+            'status': status,
+            'total_count_achieved': total_count_achieved,
+            'target_achieved_date': target_achieved_date,
+            'assigned_targets': assigned_targets,
+        })
+
+    # Sort order: Achieved (latest date first) -> Pending (highest count first) -> Not Assigned
+    def get_sort_key(x):
+        status = x['status']
+        if status == 'Achieved':
+            dt = x['target_achieved_date']
+            ts = -dt.timestamp() if dt else 0
+            return (0, ts, (x['fc'].name or x['fc'].username or '').lower())
+        elif status == 'Pending':
+            return (1, -x['total_count_achieved'], (x['fc'].name or x['fc'].username or '').lower())
+        else:
+            return (2, 0, (x['fc'].name or x['fc'].username or '').lower())
+
+    fc_details.sort(key=get_sort_key)
+
+    return render(request, 'cyborgapp/superadmin/target_achievement.html', {
+        'fc_details': fc_details
+    })
+
+from .models import Incentive
+
+@login_required(login_url='login')
+def incentive_list(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+        
+    incentives = Incentive.objects.all().order_by('-created_at')
+    
+    districts = CustomUser.objects.filter(usertype='district', is_active=True).order_by('name')
+    mandalams = CustomUser.objects.filter(usertype='mandalam', is_active=True).order_by('name')
+    staffs = CustomUser.objects.filter(usertype='staff', is_active=True).order_by('name')
+    managers = CustomUser.objects.filter(usertype='manager', is_active=True).order_by('name')
+    marketings = CustomUser.objects.filter(usertype='marketing', is_active=True).order_by('name')
+    
+    return render(request, 'cyborgapp/superadmin/incentive_list.html', {
+        'incentives': incentives,
+        'districts': districts,
+        'mandalams': mandalams,
+        'staffs': staffs,
+        'managers': managers,
+        'marketings': marketings,
+    })
+
+@login_required(login_url='login')
+def incentive_create(request):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+        
+    if request.method == 'POST':
+        purpose = request.POST.get('purpose', '').strip()
+        if not purpose:
+            messages.error(request, 'Purpose is required.')
+            return redirect('incentive_list')
+            
+        from .utils import add_to_wallet
+        from decimal import Decimal
+        from django.db import transaction
+        
+        created_count = 0
+        
+        with transaction.atomic():
+            for key, value in request.POST.items():
+                if key.startswith('amount_for_user_'):
+                    try:
+                        user_id = int(key.replace('amount_for_user_', ''))
+                        val_str = value.strip() if value else ''
+                        if not val_str:
+                            continue
+                        amount = Decimal(val_str)
+                    except Exception:
+                        continue
+                        
+                    if amount <= 0:
+                        continue
+                        
+                    user = CustomUser.objects.filter(id=user_id).first()
+                    if user:
+                        incentive = Incentive.objects.create(
+                            user=user,
+                            purpose=purpose,
+                            amount=amount,
+                            created_by=request.user
+                        )
+                        add_to_wallet(
+                            user=user,
+                            amount=amount,
+                            transaction_type='incentive',
+                            reference_id=incentive.id,
+                            description=f"Incentive: {purpose}"
+                        )
+                        created_count += 1
+                        
+        if created_count > 0:
+            messages.success(request, f'Successfully created {created_count} incentives and credited wallets.')
+        else:
+            messages.error(request, 'No valid incentives were specified or amount was zero.')
+            
+    return redirect('incentive_list')
+
+@login_required(login_url='login')
+def incentives_get_users_api(request):
+    if request.user.usertype != 'superadmin':
+        return JsonResponse({'status': 'error', 'message': 'Permission denied'}, status=403)
+    
+    usertype = request.GET.get('usertype')
+    district_id = request.GET.get('district_id')
+    mandalam_id = request.GET.get('mandalam_id')
+    
+    users = CustomUser.objects.filter(is_active=True)
+    if usertype:
+        users = users.filter(usertype=usertype)
+    if district_id:
+        users = users.filter(assigned_district_id=district_id)
+    if mandalam_id:
+        users = users.filter(assigned_mandalam_id=mandalam_id)
+        
+    users_data = []
+    for u in users:
+        users_data.append({
+            'id': u.id,
+            'name': u.name or u.username,
+            'email': u.email
+        })
+    return JsonResponse({'status': 'success', 'users': users_data})

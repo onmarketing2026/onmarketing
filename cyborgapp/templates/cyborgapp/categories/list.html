@@ -221,7 +221,7 @@
             div.className = 'sub-input-group';
             div.style.alignItems = 'center';
             
-            const showMandatory = isSuperadmin && (mandatoryCategoryId === null || mandatoryCategoryId === currentEditingCategoryId);
+            const showMandatory = isSuperadmin;
             
             let checkboxHtml = '';
             if (showMandatory) {
@@ -283,9 +283,6 @@
                                 });
                                 return;
                             }
-                            subContainer.querySelectorAll('.mandatory-chk').forEach(c => {
-                                if (c !== this) c.checked = false;
-                            });
                         }
                     };
                 }
@@ -358,10 +355,14 @@
         form.onsubmit = function(e) {
             if (isSuperadmin) {
                 const chks = subContainer.querySelectorAll('.mandatory-chk');
+                let checkedIndices = [];
                 let checkedIndex = -1;
                 chks.forEach((chk, idx) => {
                     if (chk.checked) {
-                        checkedIndex = idx;
+                        checkedIndices.push(idx);
+                        if (checkedIndex === -1) {
+                            checkedIndex = idx;
+                        }
                     }
                 });
                 
@@ -373,6 +374,15 @@
                     form.appendChild(hiddenInput);
                 }
                 hiddenInput.value = checkedIndex;
+
+                let hiddenIndicesInput = form.querySelector('input[name="mandatory_sub_indices"]');
+                if (!hiddenIndicesInput) {
+                    hiddenIndicesInput = document.createElement('input');
+                    hiddenIndicesInput.type = 'hidden';
+                    hiddenIndicesInput.name = 'mandatory_sub_indices';
+                    form.appendChild(hiddenIndicesInput);
+                }
+                hiddenIndicesInput.value = checkedIndices.join(',');
             }
         };
 

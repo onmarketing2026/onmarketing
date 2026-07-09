@@ -560,7 +560,7 @@
                 }
                 
                 tbody.innerHTML = data.mandalams.map(m => {
-                    const canAssign = data.has_mandatory_target_in_system !== false && (data.is_mandatory_item || m.target_achieved);
+                    const canAssign = data.has_mandatory_target_in_system !== false && m.can_assign;
                     return `
                         <tr>
                             <td style="text-align: center; vertical-align: middle;">
