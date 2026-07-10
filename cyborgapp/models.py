@@ -59,6 +59,7 @@ class SubCategory(models.Model):
     name = models.CharField(max_length=100)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
     is_mandatory_target = models.BooleanField(default=False, verbose_name="Is Mandatory Target")
+    mandatory_target_count = models.PositiveIntegerField(default=20, verbose_name="Mandatory Target Lead Count")
 
     def clean(self):
         super().clean()
@@ -396,14 +397,26 @@ class CommissionTransaction(models.Model):
         return f"{self.user.name} - {self.amount} ({self.get_transaction_type_display()})"
 
 class Incentive(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='incentives')
-    purpose = models.CharField(max_length=255)
-    amount = models.DecimalField(max_digits=15, decimal_places=2)
-    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_incentives')
+    incentive_type = models.CharField(max_length=255)
+    lead_from = models.IntegerField(default=1)
+    lead_to = models.IntegerField(default=5)
+    district_franchise_incentive = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    feciliattion_center_incentive = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    digital_franchise_incentive = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_incentives')
 
     def __str__(self):
-        return f"Incentive for {self.user.name or self.user.username} - {self.amount} ({self.purpose})"
+        return f"{self.incentive_type} ({self.lead_from}-{self.lead_to})"
+
+    @property
+    def has_been_used(self):
+        from .models import CommissionTransaction
+        return CommissionTransaction.objects.filter(
+            transaction_type='incentive',
+            description__contains=f"Incentive Rule #{self.id}"
+        ).exists()
 
 class WithdrawalRequest(models.Model):
     STATUS_CHOICES = (
@@ -584,7 +597,8 @@ def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
             items__subcategory=sub
         ).distinct()
 
-        if leads_qs.count() == 20:
+        target_count = sub.mandatory_target_count
+        if leads_qs.count() == target_count:
             # Check if this is the first time the FC achieved any mandatory target
             mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
             other_achieved = False
@@ -597,12 +611,12 @@ def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
                     ).filter(
                         items__subcategory=other_sub
                     ).distinct().count()
-                    if other_cnt >= 20:
+                    if other_cnt >= other_sub.mandatory_target_count:
                         other_achieved = True
                         break
 
             if not other_achieved:
-                # FC has reached their 20th confirmed lead milestone!
+                # FC has reached their milestone!
                 recipients = set()
 
                 # Superadmins
@@ -621,7 +635,7 @@ def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
                         recipients.add(mgr)
 
                 # Send notifications
-                verb = f"Facilitation Center {fc.name or fc.username} has achieved their 20-lead milestone on mandatory target: {sub.name}!"
+                verb = f"Facilitation Center {fc.name or fc.username} has achieved their {target_count}-lead milestone on mandatory target: {sub.name}!"
                 
                 for recipient in recipients:
                     if not Notification.objects.filter(recipient=recipient, verb=verb).exists():

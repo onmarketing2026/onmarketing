@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.db import IntegrityError, models
-from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification, CommissionTransaction, WithdrawalRequest
+from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification, CommissionTransaction, WithdrawalRequest, Incentive
 
 def create_lead_notification(actor, lead, verb):
     if lead:
@@ -257,6 +257,7 @@ def superadmin_dashboard(request):
         stats['total_franchise'] = CustomUser.objects.filter(
             usertype='marketing', assigned_district=target_district, is_active=True
         ).count()
+        stats['active_incentives_count'] = Incentive.objects.filter(is_active=True).count()
         
     elif user.usertype == 'mandalam':
         # Total Sales: Leads added by users in this mandalam (marketers or mandalam himself)
@@ -271,6 +272,37 @@ def superadmin_dashboard(request):
         stats['total_franchise'] = CustomUser.objects.filter(
             usertype='marketing', assigned_mandalam=user, is_active=True
         ).count()
+        stats['active_incentives_count'] = Incentive.objects.filter(is_active=True).count()
+
+        # Mandatory target warnings: only for subcategories this FC is assigned to
+        from .models import SubCategory, RequirementAssignment
+        mandatory_warnings = []
+        assigned_mandatory_subs = SubCategory.objects.filter(
+            is_mandatory_target=True,
+            requirementitem__assignments__facilitation_center=user
+        ).distinct()
+        for sub in assigned_mandatory_subs:
+            leads_qs = Lead.objects.filter(
+                status='confirmed'
+            ).filter(
+                Q(marketing_user=user) | Q(marketing_user__assigned_mandalam=user)
+            ).filter(
+                items__subcategory=sub
+            ).exclude(
+                payment_mode='part',
+                installments__status='pending'
+            ).distinct()
+            achieved = leads_qs.count()
+            needed = sub.mandatory_target_count
+            if achieved < needed:
+                mandatory_warnings.append({
+                    'category': sub.category.name,
+                    'subcategory': sub.name,
+                    'achieved': achieved,
+                    'needed': needed,
+                    'remaining': needed - achieved,
+                })
+        stats['mandatory_warnings'] = mandatory_warnings
         
     elif user.usertype == 'marketing':
         # Total Sales: Leads added by this marketing user
@@ -278,6 +310,7 @@ def superadmin_dashboard(request):
         stats['total_sales'] = confirmed_leads.aggregate(
             total=Sum('total_amount')
         )['total'] or 0
+        stats['active_incentives_count'] = Incentive.objects.filter(is_active=True).count()
         
     elif user.usertype == 'customer':
         stats['total_requirements'] = CustomerRequirement.objects.filter(customer=user).count()
@@ -3684,17 +3717,23 @@ def category_create(request):
             else:
                 mandatory_indices = []
 
+        # Read per-subcategory mandatory counts (comma-separated list matching subcategory order)
+        mandatory_counts_raw = request.POST.get('mandatory_target_counts', '')
+        mandatory_counts = [int(x) if x.strip().isdigit() else 20 for x in mandatory_counts_raw.split(',') if mandatory_counts_raw]
+
         category = Category.objects.create(name=name, cat_type=cat_type, created_by=request.user)
         error_msg = None
         for idx, sub_name in enumerate(subcategories):
             if sub_name.strip():
                 is_mandatory = (request.user.usertype == 'superadmin' and idx in mandatory_indices)
+                target_count = mandatory_counts[idx] if is_mandatory and idx < len(mandatory_counts) else 20
                 try:
                     SubCategory.objects.create(
                         category=category, 
                         name=sub_name.strip(), 
                         created_by=request.user, 
-                        is_mandatory_target=is_mandatory
+                        is_mandatory_target=is_mandatory,
+                        mandatory_target_count=target_count
                     )
                 except ValidationError as e:
                     error_msg = e.messages[0] if hasattr(e, 'messages') else str(e)
@@ -3735,6 +3774,10 @@ def category_edit(request, cat_id):
             else:
                 mandatory_indices = []
 
+        # Read per-subcategory mandatory counts (comma-separated list matching subcategory order)
+        mandatory_counts_raw = request.POST.get('mandatory_target_counts', '')
+        mandatory_counts = [int(x) if x.strip().isdigit() else 20 for x in mandatory_counts_raw.split(',') if mandatory_counts_raw]
+
         for existing_sub in category.subcategories.all():
             if existing_sub.name not in submitted_subs_clean:
                 sub_is_used = existing_sub.requirementitem_set.exists()
@@ -3753,9 +3796,12 @@ def category_edit(request, cat_id):
         error_msg = None
         for idx, sub_name in enumerate(submitted_subs_clean):
             is_mandatory = (request.user.usertype == 'superadmin' and idx in mandatory_indices)
+            target_count = mandatory_counts[idx] if is_mandatory and idx < len(mandatory_counts) else 20
             sub_obj = SubCategory.objects.filter(category=category, name=sub_name).first()
             if sub_obj:
                 sub_obj.is_mandatory_target = is_mandatory
+                if is_mandatory and not sub_obj.is_assigned_to_fc:
+                    sub_obj.mandatory_target_count = target_count
                 try:
                     sub_obj.save()
                 except ValidationError as e:
@@ -3766,7 +3812,8 @@ def category_edit(request, cat_id):
                         category=category, 
                         name=sub_name, 
                         created_by=request.user,
-                        is_mandatory_target=is_mandatory
+                        is_mandatory_target=is_mandatory,
+                        mandatory_target_count=target_count
                     )
                 except ValidationError as e:
                     error_msg = e.messages[0] if hasattr(e, 'messages') else str(e)
@@ -4695,29 +4742,21 @@ def target_achievement_list(request):
         'fc_details': fc_details
     })
 
-from .models import Incentive
 
 @login_required(login_url='login')
 def incentive_list(request):
-    if request.user.usertype != 'superadmin':
+    allowed_types = ['superadmin', 'district', 'manager', 'mandalam', 'marketing']
+    if request.user.usertype not in allowed_types:
         messages.error(request, 'Permission denied.')
         return redirect('superadmin_dashboard')
         
-    incentives = Incentive.objects.all().order_by('-created_at')
-    
-    districts = CustomUser.objects.filter(usertype='district', is_active=True).order_by('name')
-    mandalams = CustomUser.objects.filter(usertype='mandalam', is_active=True).order_by('name')
-    staffs = CustomUser.objects.filter(usertype='staff', is_active=True).order_by('name')
-    managers = CustomUser.objects.filter(usertype='manager', is_active=True).order_by('name')
-    marketings = CustomUser.objects.filter(usertype='marketing', is_active=True).order_by('name')
-    
+    if request.user.usertype == 'superadmin':
+        incentives = Incentive.objects.all().order_by('-created_at')
+    else:
+        incentives = Incentive.objects.filter(is_active=True).order_by('-created_at')
+        
     return render(request, 'cyborgapp/superadmin/incentive_list.html', {
         'incentives': incentives,
-        'districts': districts,
-        'mandalams': mandalams,
-        'staffs': staffs,
-        'managers': managers,
-        'marketings': marketings,
     })
 
 @login_required(login_url='login')
@@ -4727,54 +4766,144 @@ def incentive_create(request):
         return redirect('superadmin_dashboard')
         
     if request.method == 'POST':
-        purpose = request.POST.get('purpose', '').strip()
-        if not purpose:
-            messages.error(request, 'Purpose is required.')
+        incentive_type = request.POST.get('incentive_type', 'sale')
+        
+        try:
+            lead_from = int(request.POST.get('lead_from', 1))
+            lead_to = int(request.POST.get('lead_to', 5))
+            
+            from decimal import Decimal
+            dist_inc = Decimal(request.POST.get('district_franchise_incentive', '0.00') or '0.00')
+            fc_inc = Decimal(request.POST.get('feciliattion_center_incentive', '0.00') or '0.00')
+            dig_inc = Decimal(request.POST.get('digital_franchise_incentive', '0.00') or '0.00')
+        except Exception:
+            messages.error(request, 'Invalid values provided for incentive fields.')
             return redirect('incentive_list')
             
-        from .utils import add_to_wallet
-        from decimal import Decimal
-        from django.db import transaction
-        
-        created_count = 0
-        
-        with transaction.atomic():
-            for key, value in request.POST.items():
-                if key.startswith('amount_for_user_'):
-                    try:
-                        user_id = int(key.replace('amount_for_user_', ''))
-                        val_str = value.strip() if value else ''
-                        if not val_str:
-                            continue
-                        amount = Decimal(val_str)
-                    except Exception:
-                        continue
-                        
-                    if amount <= 0:
-                        continue
-                        
-                    user = CustomUser.objects.filter(id=user_id).first()
-                    if user:
-                        incentive = Incentive.objects.create(
-                            user=user,
-                            purpose=purpose,
-                            amount=amount,
-                            created_by=request.user
-                        )
-                        add_to_wallet(
-                            user=user,
-                            amount=amount,
-                            transaction_type='incentive',
-                            reference_id=incentive.id,
-                            description=f"Incentive: {purpose}"
-                        )
-                        created_count += 1
-                        
-        if created_count > 0:
-            messages.success(request, f'Successfully created {created_count} incentives and credited wallets.')
-        else:
-            messages.error(request, 'No valid incentives were specified or amount was zero.')
+        if lead_from <= 0 or lead_to <= 0:
+            messages.error(request, 'Lead range values must be greater than 0.')
+            return redirect('incentive_list')
             
+        if lead_from > lead_to:
+            messages.error(request, 'Lead From value cannot be greater than Lead To value.')
+            return redirect('incentive_list')
+            
+        if dist_inc < 0 or fc_inc < 0 or dig_inc < 0:
+            messages.error(request, 'Incentive amounts cannot be negative.')
+            return redirect('incentive_list')
+            
+        if dist_inc == 0 and fc_inc == 0 and dig_inc == 0:
+            messages.error(request, 'At least one franchise incentive amount must be greater than 0.')
+            return redirect('incentive_list')
+
+        Incentive.objects.create(
+            incentive_type=incentive_type,
+            lead_from=lead_from,
+            lead_to=lead_to,
+            district_franchise_incentive=dist_inc,
+            feciliattion_center_incentive=fc_inc,
+            digital_franchise_incentive=dig_inc,
+            is_active=False,
+            created_by=request.user
+        )
+        messages.success(request, 'Incentive created successfully (default status: inactive).')
+        
+    return redirect('incentive_list')
+
+@login_required(login_url='login')
+def incentive_toggle_status(request, pk):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+        
+    incentive = Incentive.objects.filter(pk=pk).first()
+    if not incentive:
+        messages.error(request, 'Incentive not found.')
+        return redirect('incentive_list')
+        
+    incentive.is_active = not incentive.is_active
+    incentive.save()
+    
+    status_str = "activated" if incentive.is_active else "deactivated"
+    messages.success(request, f'Incentive successfully {status_str}.')
+    return redirect('incentive_list')
+
+@login_required(login_url='login')
+def incentive_edit(request, pk):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+        
+    incentive = Incentive.objects.filter(pk=pk).first()
+    if not incentive:
+        messages.error(request, 'Incentive rule not found.')
+        return redirect('incentive_list')
+        
+    if incentive.has_been_used:
+        messages.error(request, 'This incentive rule has already been applied to users and cannot be edited.')
+        return redirect('incentive_list')
+        
+    if request.method == 'POST':
+        incentive_type = request.POST.get('incentive_type', 'sale')
+        try:
+            lead_from = int(request.POST.get('lead_from', 1))
+            lead_to = int(request.POST.get('lead_to', 5))
+            
+            from decimal import Decimal
+            dist_inc = Decimal(request.POST.get('district_franchise_incentive', '0.00') or '0.00')
+            fc_inc = Decimal(request.POST.get('feciliattion_center_incentive', '0.00') or '0.00')
+            dig_inc = Decimal(request.POST.get('digital_franchise_incentive', '0.00') or '0.00')
+        except Exception:
+            messages.error(request, 'Invalid values provided for incentive fields.')
+            return redirect('incentive_list')
+            
+        if lead_from <= 0 or lead_to <= 0:
+            messages.error(request, 'Lead range values must be greater than 0.')
+            return redirect('incentive_list')
+            
+        if lead_from > lead_to:
+            messages.error(request, 'Lead From value cannot be greater than Lead To value.')
+            return redirect('incentive_list')
+            
+        if dist_inc < 0 or fc_inc < 0 or dig_inc < 0:
+            messages.error(request, 'Incentive amounts cannot be negative.')
+            return redirect('incentive_list')
+            
+        if dist_inc == 0 and fc_inc == 0 and dig_inc == 0:
+            messages.error(request, 'At least one franchise incentive amount must be greater than 0.')
+            return redirect('incentive_list')
+            
+        incentive.incentive_type = incentive_type
+        incentive.lead_from = lead_from
+        incentive.lead_to = lead_to
+        incentive.district_franchise_incentive = dist_inc
+        incentive.feciliattion_center_incentive = fc_inc
+        incentive.digital_franchise_incentive = dig_inc
+        incentive.save()
+        
+        messages.success(request, 'Incentive rule updated successfully.')
+        
+    return redirect('incentive_list')
+
+@login_required(login_url='login')
+def incentive_delete(request, pk):
+    if request.user.usertype != 'superadmin':
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+        
+    incentive = Incentive.objects.filter(pk=pk).first()
+    if not incentive:
+        messages.error(request, 'Incentive rule not found.')
+        return redirect('incentive_list')
+        
+    if incentive.has_been_used:
+        messages.error(request, 'This incentive rule has already been applied to users and cannot be deleted.')
+        return redirect('incentive_list')
+        
+    if request.method == 'POST':
+        incentive.delete()
+        messages.success(request, 'Incentive rule deleted successfully.')
+        
     return redirect('incentive_list')
 
 @login_required(login_url='login')

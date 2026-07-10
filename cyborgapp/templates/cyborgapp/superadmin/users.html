@@ -728,7 +728,22 @@
                         });
                     }
                 } else {
-                    performToggle(userId, false, checkbox);
+                    // manager, customer (associate company), staff — simple confirmation
+                    e.preventDefault();
+                    checkbox.checked = false;
+                    Swal.fire({
+                        title: 'Are you sure?',
+                        text: 'Do you want to activate this user?',
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, Activate',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#198754',
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            performToggle(userId, false, checkbox);
+                        }
+                    });
                 }
             } else {
                 e.preventDefault();

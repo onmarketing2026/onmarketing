@@ -26,6 +26,7 @@ def add_to_wallet(user, amount, transaction_type, reference_id, description):
 
 def distribute_product_sale_commission(lead, installment=None):
     from decimal import Decimal
+    trigger_lead_incentives(lead)
     # Calculate amounts based on lead's specific items
     total_customer_amount = Decimal('0.00')
     total_markup_pool = Decimal('0.00')
@@ -173,6 +174,7 @@ def handle_registration_commission(new_user):
                 
         if district and config.district_amount > 0:
             add_to_wallet(district, config.district_amount, 'marketer_reg', new_user.id, f"Commission from Marketer registration: {new_user.name}")
+    trigger_registration_incentives(new_user)
 
 def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
     """
@@ -211,7 +213,110 @@ def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
             installments__status='pending'
         ).distinct()
         
-        if leads_qs.count() >= 20:
+        if leads_qs.count() >= sub.mandatory_target_count:
             return True
             
     return False
+
+def trigger_lead_incentives(lead):
+    from .models import Lead, Incentive, LeadInstallment
+    from django.db.models import Exists, OuterRef, Q
+    marketing_user = lead.marketing_user
+    if not marketing_user or marketing_user.usertype != 'marketing':
+        return
+
+    # If lead is part payment (has installments), only proceed if all installments are paid
+    if lead.installments.exists():
+        if lead.installments.filter(status='pending').exists():
+            return
+
+    # Count how many fully paid confirmed leads this digital franchise has
+    pending_installments = LeadInstallment.objects.filter(
+        lead=OuterRef('pk'),
+        status='pending'
+    )
+    
+    confirmed_count = Lead.objects.filter(
+        marketing_user=marketing_user,
+        status='confirmed'
+    ).annotate(
+        has_pending=Exists(pending_installments)
+    ).filter(
+        has_pending=False
+    ).exclude(
+        id=lead.id
+    ).count() + 1
+
+    # Get active incentives that are not registration-based
+    active_incentives = Incentive.objects.filter(is_active=True).exclude(
+        incentive_type__iexact='registration'
+    ).exclude(
+        incentive_type__iexact='register'
+    ).exclude(
+        incentive_type__iexact='user registration'
+    )
+
+    for inc in active_incentives:
+        if inc.lead_from <= confirmed_count <= inc.lead_to:
+            # We qualify for this incentive! Let's distribute.
+            # 1. Digital Franchise
+            if inc.digital_franchise_incentive > 0:
+                desc = f"Incentive for lead #{confirmed_count} (Lead ID: {lead.id}) (Incentive Rule #{inc.id})"
+                if not CommissionTransaction.objects.filter(user=marketing_user, transaction_type='incentive', reference_id=lead.id, description__contains=f"Incentive Rule #{inc.id}").exists():
+                    add_to_wallet(marketing_user, inc.digital_franchise_incentive, 'incentive', lead.id, desc)
+
+            # 2. Facilitation Center
+            fc_user = marketing_user.assigned_mandalam
+            if fc_user and inc.feciliattion_center_incentive > 0:
+                desc = f"FC Incentive for lead #{confirmed_count} (Lead ID: {lead.id}) of Digital Franchise {marketing_user.name or marketing_user.username} (Incentive Rule #{inc.id})"
+                if not CommissionTransaction.objects.filter(user=fc_user, transaction_type='incentive', reference_id=lead.id, description__contains=f"Incentive Rule #{inc.id}").exists():
+                    add_to_wallet(fc_user, inc.feciliattion_center_incentive, 'incentive', lead.id, desc)
+
+            # 3. District Franchise
+            district_user = marketing_user.assigned_district
+            if district_user and inc.district_franchise_incentive > 0:
+                desc = f"District Incentive for lead #{confirmed_count} (Lead ID: {lead.id}) of Digital Franchise {marketing_user.name or marketing_user.username} (Incentive Rule #{inc.id})"
+                if not CommissionTransaction.objects.filter(user=district_user, transaction_type='incentive', reference_id=lead.id, description__contains=f"Incentive Rule #{inc.id}").exists():
+                    add_to_wallet(district_user, inc.district_franchise_incentive, 'incentive', lead.id, desc)
+
+def trigger_registration_incentives(new_user):
+    from .models import Incentive, CustomUser
+    if new_user.usertype != 'marketing':
+        return
+        
+    fc_user = new_user.assigned_mandalam
+    if not fc_user:
+        return
+        
+    # Count digital franchises registered under this FC (mandalam)
+    reg_count = CustomUser.objects.filter(usertype='marketing', assigned_mandalam=fc_user).exclude(id=new_user.id).count() + 1
+    
+    # Get active registration incentives
+    from django.db.models import Q
+    active_incentives = Incentive.objects.filter(is_active=True).filter(
+        Q(incentive_type__iexact='registration') |
+        Q(incentive_type__iexact='register') |
+        Q(incentive_type__iexact='user registration')
+    )
+    
+    for inc in active_incentives:
+        if inc.lead_from <= reg_count <= inc.lead_to:
+            # We qualify! Let's distribute.
+            # 1. Digital Franchise (new registered user)
+            if inc.digital_franchise_incentive > 0:
+                desc = f"Incentive for registration #{reg_count} (Incentive Rule #{inc.id})"
+                if not CommissionTransaction.objects.filter(user=new_user, transaction_type='incentive', reference_id=new_user.id, description__contains=f"Incentive Rule #{inc.id}").exists():
+                    add_to_wallet(new_user, inc.digital_franchise_incentive, 'incentive', new_user.id, desc)
+                
+            # 2. Facilitation Center (fc_user)
+            if inc.feciliattion_center_incentive > 0:
+                desc = f"FC Incentive for registration #{reg_count} of Digital Franchise {new_user.name or new_user.username} (Incentive Rule #{inc.id})"
+                if not CommissionTransaction.objects.filter(user=fc_user, transaction_type='incentive', reference_id=new_user.id, description__contains=f"Incentive Rule #{inc.id}").exists():
+                    add_to_wallet(fc_user, inc.feciliattion_center_incentive, 'incentive', new_user.id, desc)
+                
+            # 3. District Franchise
+            district_user = new_user.assigned_district
+            if district_user and inc.district_franchise_incentive > 0:
+                desc = f"District Incentive for registration #{reg_count} of Digital Franchise {new_user.name or new_user.username} (Incentive Rule #{inc.id})"
+                if not CommissionTransaction.objects.filter(user=district_user, transaction_type='incentive', reference_id=new_user.id, description__contains=f"Incentive Rule #{inc.id}").exists():
+                    add_to_wallet(district_user, inc.district_franchise_incentive, 'incentive', new_user.id, desc)

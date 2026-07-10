@@ -684,10 +684,6 @@
                 <i class="fa-solid fa-medal"></i>
                 Target Achievement
             </a>
-            <a href="{% url 'incentive_list' %}" class="menu-item {% if request.resolver_match.url_name == 'incentive_list' %}active{% endif %}">
-                <i class="fa-solid fa-gift"></i>
-                Incentives
-            </a>
             <a href="{% url 'superadmin_user_wallets' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_user_wallets' %}active{% endif %}" style="position: relative;">
                 <i class="fa-solid fa-vault"></i>
                 User Wallets
@@ -704,6 +700,13 @@
             <a href="{% url 'superadmin_expenses' %}" class="menu-item {% if request.resolver_match.url_name == 'superadmin_expenses' %}active{% endif %}">
                 <i class="fa-solid fa-receipt"></i>
                 Expenses
+            </a>
+            {% endif %}
+
+            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' or request.user.usertype == 'mandalam' or request.user.usertype == 'marketing' %}
+            <a href="{% url 'incentive_list' %}" class="menu-item {% if request.resolver_match.url_name == 'incentive_list' %}active{% endif %}">
+                <i class="fa-solid fa-gift"></i>
+                Incentives
             </a>
             {% endif %}
 

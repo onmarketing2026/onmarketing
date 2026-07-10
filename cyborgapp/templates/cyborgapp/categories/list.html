@@ -127,7 +127,7 @@
                                     data-type="{{ cat.cat_type }}"
                                     data-used="{{ cat.is_used|yesno:'true,false' }}"
                                     data-readonly="{{ cat.is_readonly_for_user|yesno:'true,false' }}"
-                                    data-subcategories="{% for s in cat.subcategories.all %}{{ s.name }}|{% if request.user.usertype == 'superadmin' or request.user == cat.created_by or request.user == s.created_by %}1{% else %}0{% endif %}|{% if s.requirementitem_set.exists %}1{% else %}0{% endif %}|{{ s.is_mandatory_target|yesno:'1,0' }}|{{ s.is_assigned_to_fc|yesno:'1,0' }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                    data-subcategories="{% for s in cat.subcategories.all %}{{ s.name }}|{% if request.user.usertype == 'superadmin' or request.user == cat.created_by or request.user == s.created_by %}1{% else %}0{% endif %}|{% if s.requirementitem_set.exists %}1{% else %}0{% endif %}|{{ s.is_mandatory_target|yesno:'1,0' }}|{{ s.is_assigned_to_fc|yesno:'1,0' }}|{{ s.mandatory_target_count }}{% if not forloop.last %},{% endif %}{% endfor %}"
                                     title="Edit Category">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
@@ -216,20 +216,25 @@
         const mandatoryCategoryId = {{ mandatory_category_id|default:"null" }};
         let currentEditingCategoryId = null;
 
-        function addSubInput(value = '', isReadonly = false, isUsed = false, isMandatory = false, isAssigned = false) {
+        function addSubInput(value = '', isReadonly = false, isUsed = false, isMandatory = false, isAssigned = false, targetCount = 20) {
             const div = document.createElement('div');
             div.className = 'sub-input-group';
             div.style.alignItems = 'center';
             
             const showMandatory = isSuperadmin;
+            const disableCheckbox = isMandatory && isAssigned;
             
             let checkboxHtml = '';
             if (showMandatory) {
-                const disableCheckbox = isMandatory && isAssigned;
                 checkboxHtml = `
-                    <div style="display: flex; align-items: center; gap: 6px; margin-right: 15px; min-width: 110px;" title="${disableCheckbox ? 'Cannot unset because this mandatory target is already assigned to facilitation centers' : 'Mark as Mandatory'}">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-right: 8px; min-width: 110px;" title="${disableCheckbox ? 'Cannot unset because this mandatory target is already assigned to facilitation centers' : 'Mark as Mandatory'}">
                         <input type="checkbox" class="mandatory-chk" ${isMandatory ? 'checked' : ''} ${disableCheckbox ? 'disabled style="cursor: not-allowed; opacity: 0.6;"' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--role-color);">
                         <label style="margin: 0; font-size: 0.8rem; font-weight: 700; cursor: ${disableCheckbox ? 'not-allowed' : 'pointer'}; color: var(--role-color); white-space: nowrap; ${disableCheckbox ? 'opacity: 0.6;' : ''}">Mandatory</label>
+                    </div>
+                    <div class="mandatory-count-wrap" style="display: ${isMandatory ? 'flex' : 'none'}; align-items: center; gap: 4px; margin-right: 8px;">
+                        <label style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); white-space: nowrap;">Target:</label>
+                        <input type="number" class="mandatory-count-inp" value="${targetCount}" min="1" ${disableCheckbox ? 'disabled style="cursor: not-allowed; opacity: 0.6; width: 60px; padding: 4px 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem;"' : 'style="width: 60px; padding: 4px 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem;"'}>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">leads</span>
                     </div>
                 `;
             }
@@ -243,8 +248,7 @@
                 div.innerHTML = `
                     ${checkboxHtml}
                     <div style="flex: 1;">
-                        <input type="text" name="subcategories" value="${value}" class="form-control" placeholder="Subcategory name" required style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px;" ${isUsed ? 'readonly style="background-color: #f8f9fa;" title="Cannot edit name because it is in use"' : ''}>
-                        ${isUsed ? '<div style="font-size: 0.75rem; color: #dc3545; font-weight: 700; margin-top: 4px; margin-left: 5px;">Cannot be edited</div>' : ''}
+                        <input type="text" name="subcategories" value="${value}" class="form-control" placeholder="Subcategory name" required style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; ${isUsed ? 'background-color: #f8f9fa; cursor: not-allowed;' : ''}" ${isUsed ? 'readonly title="This subcategory is in use and cannot be renamed"' : ''}>
                     </div>
                     <button type="button" class="btn-remove-sub" style="height: 42px; margin-left: 10px;"><i class="fa-solid fa-trash"></i></button>
                 `;
@@ -264,26 +268,11 @@
 
             if (showMandatory) {
                 const chk = div.querySelector('.mandatory-chk');
+                const countWrap = div.querySelector('.mandatory-count-wrap');
                 if (chk) {
                     chk.onchange = function() {
-                        if (this.checked) {
-                            let hasDisabledChecked = false;
-                            subContainer.querySelectorAll('.mandatory-chk').forEach(c => {
-                                if (c !== this && c.checked && c.disabled) {
-                                    hasDisabledChecked = true;
-                                }
-                            });
-                            if (hasDisabledChecked) {
-                                this.checked = false;
-                                Swal.fire({
-                                    icon: 'warning',
-                                    title: 'Action Blocked',
-                                    text: 'The mandatory subcategory is already assigned to facilitation centers and cannot be changed.',
-                                    confirmButtonColor: 'var(--role-color)'
-                                });
-                                return;
-                            }
-                        }
+                        // Toggle count input visibility based on checkbox state
+                        if (countWrap) countWrap.style.display = this.checked ? 'flex' : 'none';
                     };
                 }
             }
@@ -328,7 +317,8 @@
                         const isUsed = parts[2] === '1';
                         const isMandatory = parts[3] === '1';
                         const isAssigned = parts[4] === '1';
-                        addSubInput(sName, !canDelete, isUsed, isMandatory, isAssigned);
+                        const targetCount = parseInt(parts[5] || '20', 10);
+                        addSubInput(sName, !canDelete, isUsed, isMandatory, isAssigned, targetCount);
                     }
                 });
                 if(subs.length === 0 || (subs.length === 1 && subs[0] === '')) addSubInput();
@@ -357,12 +347,14 @@
                 const chks = subContainer.querySelectorAll('.mandatory-chk');
                 let checkedIndices = [];
                 let checkedIndex = -1;
+                let mandatoryCounts = [];
                 chks.forEach((chk, idx) => {
+                    // Collect count for every checkbox position (0 if unchecked)
+                    const countInp = chk.closest('.sub-input-group').querySelector('.mandatory-count-inp');
+                    mandatoryCounts.push(countInp ? parseInt(countInp.value || 20, 10) : 20);
                     if (chk.checked) {
                         checkedIndices.push(idx);
-                        if (checkedIndex === -1) {
-                            checkedIndex = idx;
-                        }
+                        if (checkedIndex === -1) checkedIndex = idx;
                     }
                 });
                 
@@ -383,6 +375,15 @@
                     form.appendChild(hiddenIndicesInput);
                 }
                 hiddenIndicesInput.value = checkedIndices.join(',');
+
+                let hiddenCountsInput = form.querySelector('input[name="mandatory_target_counts"]');
+                if (!hiddenCountsInput) {
+                    hiddenCountsInput = document.createElement('input');
+                    hiddenCountsInput.type = 'hidden';
+                    hiddenCountsInput.name = 'mandatory_target_counts';
+                    form.appendChild(hiddenCountsInput);
+                }
+                hiddenCountsInput.value = mandatoryCounts.join(',');
             }
         };
 

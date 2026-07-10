@@ -883,26 +883,190 @@ class MultipleMandatoryMilestoneTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         post_data = {
-            'purpose': 'Performance Bonus',
-            f'amount_for_user_{self.marketing.id}': '150.00',
-            f'amount_for_user_{self.district.id}': '250.00'
+            'incentive_type': 'sale',
+            'lead_from': '1',
+            'lead_to': '5',
+            'district_franchise_incentive': '2000.00',
+            'feciliattion_center_incentive': '1000.00',
+            'digital_franchise_incentive': '3000.00'
         }
-        
-        from cyborgapp.utils import get_or_create_wallet
-        marketing_wallet = get_or_create_wallet(self.marketing)
-        self.assertEqual(marketing_wallet.balance, Decimal('0.00'))
 
         response = client.post('/superadmin/incentives/create/', post_data)
         self.assertEqual(response.status_code, 302)
 
         from cyborgapp.models import Incentive
-        self.assertEqual(Incentive.objects.filter(purpose='Performance Bonus').count(), 2)
+        incentive = Incentive.objects.filter(incentive_type='sale').first()
+        self.assertIsNotNone(incentive)
+        self.assertFalse(incentive.is_active)
+        self.assertEqual(incentive.digital_franchise_incentive, Decimal('3000.00'))
 
-        marketing_wallet.refresh_from_db()
-        self.assertEqual(marketing_wallet.balance, Decimal('150.00'))
+        # Toggle status
+        response = client.post(f'/superadmin/incentives/{incentive.id}/toggle/')
+        self.assertEqual(response.status_code, 302)
+        incentive.refresh_from_db()
+        self.assertTrue(incentive.is_active)
+
+        # Confirm a lead under marketing user
+        from cyborgapp.utils import get_or_create_wallet, distribute_product_sale_commission
+        
+        # Reset wallets to 0
+        marketing_wallet = get_or_create_wallet(self.marketing)
+        marketing_wallet.balance = Decimal('0.00')
+        marketing_wallet.total_earned = Decimal('0.00')
+        marketing_wallet.save()
+
+        fc_user = self.marketing.assigned_mandalam
+        if fc_user:
+            fc_wallet = get_or_create_wallet(fc_user)
+            fc_wallet.balance = Decimal('0.00')
+            fc_wallet.total_earned = Decimal('0.00')
+            fc_wallet.save()
+        else:
+            fc_wallet = None
 
         district_wallet = get_or_create_wallet(self.district)
-        self.assertEqual(district_wallet.balance, Decimal('250.00'))
+        district_wallet.balance = Decimal('0.00')
+        district_wallet.total_earned = Decimal('0.00')
+        district_wallet.save()
+
+        # Let's call the helper trigger or distribute commission which triggers it
+        from cyborgapp.models import Lead
+        lead = Lead.objects.create(
+            name="Test Lead for Incentive",
+            phone="9876543210",
+            email="testlead@example.com",
+            requirement=self.requirement,
+            marketing_user=self.marketing,
+            status='confirmed'
+        )
+
+        distribute_product_sale_commission(lead)
+
+        marketing_wallet.refresh_from_db()
+        # Since lead count is 1 (which is between 1 and 5), they should get 3000.00
+        self.assertEqual(marketing_wallet.balance, Decimal('3000.00'))
+
+        if fc_wallet:
+            fc_wallet.refresh_from_db()
+            self.assertEqual(fc_wallet.balance, Decimal('1000.00'))
+
+        district_wallet.refresh_from_db()
+        self.assertEqual(district_wallet.balance, Decimal('2000.00'))
+
+    def test_part_payment_incentive_ranking(self):
+        from cyborgapp.models import Lead, LeadInstallment, Incentive
+        from cyborgapp.utils import get_or_create_wallet, distribute_product_sale_commission
+        
+        # 1. Create a 10 to 20 range incentive rule
+        Incentive.objects.create(
+            incentive_type='sale',
+            lead_from=10,
+            lead_to=20,
+            digital_franchise_incentive=Decimal('1000.00'),
+            is_active=True
+        )
+
+        # 2. Reset marketing user's wallet
+        wallet = get_or_create_wallet(self.marketing)
+        wallet.balance = Decimal('0.00')
+        wallet.total_earned = Decimal('0.00')
+        wallet.save()
+
+        # 3. Simulate 19 fully paid leads (confirmed, no installments)
+        for i in range(19):
+            Lead.objects.create(
+                requirement=self.requirement,
+                marketing_user=self.marketing,
+                status='confirmed',
+                phone=f'9870000{i:03d}'
+            )
+
+        # 4. Create Lead A (20th lead) with part payment (has pending installments)
+        lead_a = Lead.objects.create(
+            requirement=self.requirement,
+            marketing_user=self.marketing,
+            status='confirmed',
+            phone='9870000200'
+        )
+        # Create one paid and one pending installment for Lead A
+        inst_1 = LeadInstallment.objects.create(lead=lead_a, installment_number=1, amount=Decimal('50.00'), status='paid')
+        inst_2 = LeadInstallment.objects.create(lead=lead_a, installment_number=2, amount=Decimal('50.00'), status='pending')
+
+        # Trigger commission for Lead A (e.g. on first installment)
+        distribute_product_sale_commission(lead_a, installment=inst_1)
+
+        # Verify Lead A did not trigger the incentive (wallet balance remains 0)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, Decimal('0.00'))
+
+        # 5. Create Lead B (21st lead) with full payment (no installments)
+        lead_b = Lead.objects.create(
+            requirement=self.requirement,
+            marketing_user=self.marketing,
+            status='confirmed',
+            phone='9870000201'
+        )
+        distribute_product_sale_commission(lead_b)
+
+        # Lead B becomes the 20th fully paid lead (leads 1-19, plus Lead B).
+        # Since 20 is within range 10-20, Lead B qualifies and triggers the incentive!
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, Decimal('1000.00'))
+
+        # 6. Complete payment of the final installment of Lead A
+        inst_2.status = 'paid'
+        inst_2.save()
+        distribute_product_sale_commission(lead_a, installment=inst_2)
+
+        # Lead A now becomes fully paid. Since B is already fully paid, A's count is 21.
+        # 21 is outside the 10-20 range, so Lead A should NOT trigger the incentive.
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, Decimal('1000.00'))
+
+    def test_incentive_edit_delete_restrictions(self):
+        from cyborgapp.models import Incentive, CommissionTransaction
+        
+        # 1. Create an incentive rule
+        inc = Incentive.objects.create(
+            incentive_type='sale',
+            lead_from=1,
+            lead_to=5,
+            digital_franchise_incentive=Decimal('500.00'),
+            is_active=True
+        )
+        
+        # Initially, has_been_used should be False
+        self.assertFalse(inc.has_been_used)
+        
+        # 2. Simulate user getting wallet credit under this incentive
+        from cyborgapp.utils import add_to_wallet
+        desc = f"Incentive for lead #1 (Incentive Rule #{inc.id})"
+        add_to_wallet(self.marketing, Decimal('500.00'), 'incentive', 9999, desc)
+        
+        # Now, has_been_used should be True
+        self.assertTrue(inc.has_been_used)
+        
+        # 3. Try to edit via POST request
+        self.client.force_login(self.superadmin)
+        response = self.client.post(f'/superadmin/incentives/{inc.id}/edit/', {
+            'incentive_type': 'sale',
+            'lead_from': 1,
+            'lead_to': 10,
+            'digital_franchise_incentive': '600.00'
+        })
+        # Check that it redirected back
+        self.assertEqual(response.status_code, 302)
+        
+        # Refresh and verify it was NOT edited
+        inc.refresh_from_db()
+        self.assertEqual(inc.lead_to, 5)
+        
+        # 4. Try to delete via POST request
+        response = self.client.post(f'/superadmin/incentives/{inc.id}/delete/')
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify it was NOT deleted
+        self.assertTrue(Incentive.objects.filter(pk=inc.id).exists())
 
 
 

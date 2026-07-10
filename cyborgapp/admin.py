@@ -3,7 +3,7 @@ from .models import (
     CustomUser, Category, SubCategory, CustomerRequirement,
     RequirementItem, Lead, LeadItem, LeadUpdate, LeadAssociateUpdate,
     CommissionSetting, RegistrationCommission, Wallet, CommissionTransaction,
-    WithdrawalRequest, RequirementAssignment, LeadInstallment
+    WithdrawalRequest, RequirementAssignment, LeadInstallment, Incentive
 )
 
 @admin.register(CustomUser)
@@ -111,3 +111,9 @@ class LeadAssociateUpdateAdmin(admin.ModelAdmin):
     list_display = ('lead', 'user', 'created_at')
     search_fields = ('lead__name', 'user__name', 'update_text')
     list_filter = ('user__usertype',)
+
+@admin.register(Incentive)
+class IncentiveAdmin(admin.ModelAdmin):
+    list_display = ('incentive_type', 'lead_from', 'lead_to', 'district_franchise_incentive', 'feciliattion_center_incentive', 'digital_franchise_incentive', 'is_active', 'created_by', 'created_at')
+    list_filter = ('incentive_type', 'is_active', 'created_by')
+    search_fields = ('incentive_type',)

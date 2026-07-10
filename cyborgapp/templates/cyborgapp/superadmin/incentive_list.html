@@ -12,36 +12,39 @@
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
         padding: 25px;
     }
-    .user-info {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-    }
-    .user-name {
-        font-weight: 700;
-        color: var(--text-main);
-        font-size: 0.95rem;
-    }
-    .user-email {
+    .badge-type {
         font-size: 0.8rem;
-        color: var(--text-muted);
-        font-weight: 500;
-    }
-    .role-badge {
-        font-size: 0.75rem;
-        padding: 4px 8px;
-        border-radius: 6px;
+        padding: 6px 12px;
+        border-radius: 20px;
         font-weight: 700;
         text-transform: uppercase;
-        display: inline-block;
-        background: var(--role-bg-light);
-        color: var(--role-color);
-        border: 1px solid rgba(111, 66, 193, 0.15);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
     }
-    .amount-badge {
-        font-weight: 800;
+    .badge-type.sale {
+        background-color: rgba(13, 110, 253, 0.1);
+        color: #0d6efd;
+        border: 1px solid rgba(13, 110, 253, 0.2);
+    }
+    .badge-type.registration {
+        background-color: rgba(111, 66, 193, 0.1);
+        color: #6f42c1;
+        border: 1px solid rgba(111, 66, 193, 0.2);
+    }
+    .badge-range {
+        font-size: 0.85rem;
+        font-weight: 600;
+        background-color: #f8f9fa;
+        color: #212529;
+        border: 1px solid #dee2e6;
+        padding: 4px 10px;
+        border-radius: 6px;
+    }
+    .amount-display {
+        font-weight: 700;
         color: #198754;
-        font-size: 1rem;
+        font-size: 0.95rem;
     }
     .btn-add {
         background: var(--role-color);
@@ -61,29 +64,94 @@
         opacity: 0.9;
         transform: translateY(-1px);
     }
-    .nested-list-group {
-        border-left: 3px solid var(--role-color);
-        padding-left: 15px;
-        margin-top: 10px;
-        margin-bottom: 15px;
+    
+    /* Toggle Switch Styles */
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 46px;
+        height: 24px;
+        margin: 0;
     }
-    .nested-item {
-        background: #f8f9fa;
-        padding: 10px 15px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        display: flex;
+    .switch input { 
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .3s;
+        border-radius: 24px;
+    }
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .3s;
+        border-radius: 50%;
+    }
+    input:checked + .slider {
+        background-color: #198754;
+    }
+    input:checked + .slider:before {
+        transform: translateX(22px);
+    }
+
+    /* Action Buttons Styles */
+    .btn-action {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: none;
+        display: inline-flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 15px;
-        border: 1px solid var(--border-color);
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-right: 5px;
+    }
+    .btn-action.btn-edit {
+        background-color: rgba(13, 110, 253, 0.1);
+        color: #0d6efd;
+    }
+    .btn-action.btn-edit:hover:not(.disabled) {
+        background-color: #0d6efd;
+        color: white;
+    }
+    .btn-action.btn-delete {
+        background-color: rgba(220, 53, 69, 0.1);
+        color: #dc3545;
+    }
+    .btn-action.btn-delete:hover:not(.disabled) {
+        background-color: #dc3545;
+        color: white;
+    }
+    .btn-action.disabled {
+        background-color: #f8f9fa;
+        color: #6c757d;
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    .swal2-container {
+        z-index: 9999 !important;
     }
 
     /* Modal Styles */
     .modal {
         display: none;
         position: fixed;
-        z-index: 2000;
+        z-index: 1000;
         left: 0;
         top: 0;
         width: 100%;
@@ -101,7 +169,7 @@
         border: 1px solid var(--border-color);
         border-radius: 12px;
         width: 90%; 
-        max-width: 650px;
+        max-width: 600px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         position: relative;
     }
@@ -136,9 +204,6 @@
     }
 
     .modal-body {
-        max-height: 60vh;
-        overflow-y: auto;
-        padding-right: 10px;
         margin-bottom: 20px;
     }
 
@@ -178,44 +243,116 @@
 <div class="table-card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 15px; flex-wrap: wrap;">
         <div>
-            <h3 style="margin: 0; font-size: 1.4rem; font-weight: 800; color: var(--text-main);">Incentives List</h3>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">Track and manage incentives disbursed to users and their wallets</p>
+            <h3 style="margin: 0; font-size: 1.4rem; font-weight: 800; color: var(--text-main);">Incentive Management</h3>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.88rem;">
+                {% if request.user.usertype == 'superadmin' %}
+                Create rules to automatically award commissions to franchises based on achievement level
+                {% else %}
+                Overview of active incentive rules and target milestones
+                {% endif %}
+            </p>
         </div>
-        <button class="btn-add" id="openCreateModalBtn"><i class="fa-solid fa-plus"></i> Create Incentive</button>
+        {% if request.user.usertype == 'superadmin' %}
+        <button class="btn-add" id="openCreateModalBtn"><i class="fa-solid fa-plus"></i> Create Incentive Rule</button>
+        {% endif %}
     </div>
     
     <div class="table-container">
         <table id="incentivesTable" class="display" style="width:100%">
             <thead>
                 <tr>
-                    <th>Recipient</th>
-                    <th>Role</th>
-                    <th>Purpose</th>
-                    <th>Amount</th>
-                    <th>Date</th>
+                    <th>Rule No</th>
+                    <th>Incentive Type</th>
+                    <th>Lead Range</th>
+                    {% if request.user.usertype == 'superadmin' %}
+                    <th>District Franchise (₹)</th>
+                    <th>Facilitation Center (₹)</th>
+                    <th>Digital Franchise (₹)</th>
+                    <th>Status (Toggle)</th>
+                    <th>Actions</th>
+                    {% elif request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                    <th>District Franchise Incentive (₹)</th>
+                    {% elif request.user.usertype == 'mandalam' %}
+                    <th>Facilitation Center Incentive (₹)</th>
+                    {% elif request.user.usertype == 'marketing' %}
+                    <th>Digital Franchise Incentive (₹)</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
                 {% for item in incentives %}
                 <tr>
                     <td>
-                        <div class="user-info">
-                            <span class="user-name">{{ item.user.name|default:item.user.username }}</span>
-                            <span class="user-email">{{ item.user.email }}</span>
+                        <span style="font-weight: 700; color: var(--text-muted);">#{{ item.id }}</span>
+                    </td>
+                    <td>
+                        {% if item.incentive_type|lower == 'sale' or item.incentive_type|lower == 'lead' or item.incentive_type|lower == 'lead confirmation' %}
+                        <span class="badge-type sale"><i class="fa-solid fa-circle-check"></i> {{ item.incentive_type }}</span>
+                        {% elif item.incentive_type|lower == 'registration' or item.incentive_type|lower == 'register' or item.incentive_type|lower == 'user registration' %}
+                        <span class="badge-type registration"><i class="fa-solid fa-user-plus"></i> {{ item.incentive_type }}</span>
+                        {% else %}
+                        <span class="badge-type" style="background-color: rgba(108, 117, 125, 0.1); color: #6c757d; border: 1px solid rgba(108, 117, 125, 0.2);"><i class="fa-solid fa-gear"></i> {{ item.incentive_type }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge-range">{{ item.lead_from }} - {{ item.lead_to }}</span>
+                    </td>
+                    {% if request.user.usertype == 'superadmin' %}
+                    <td>
+                        <span class="amount-display">₹{{ item.district_franchise_incentive }}</span>
+                    </td>
+                    <td>
+                        <span class="amount-display">₹{{ item.feciliattion_center_incentive }}</span>
+                    </td>
+                    <td>
+                        <span class="amount-display">₹{{ item.digital_franchise_incentive }}</span>
+                    </td>
+                    <td>
+                        <form method="POST" action="{% url 'incentive_toggle_status' item.pk %}" class="toggle-status-form" style="display:inline-block; vertical-align: middle;">
+                            {% csrf_token %}
+                            <label class="switch">
+                                <input type="checkbox" class="toggle-status-chk" {% if item.is_active %}checked{% endif %} data-action="{% if item.is_active %}deactivate{% else %}activate{% endif %}">
+                                <span class="slider round"></span>
+                            </label>
+                        </form>
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                            <button class="btn-action btn-edit open-edit-modal-btn" 
+                                    data-id="{{ item.id }}" 
+                                    data-type="{{ item.incentive_type }}" 
+                                    data-from="{{ item.lead_from }}" 
+                                    data-to="{{ item.lead_to }}" 
+                                    data-dist="{{ item.district_franchise_incentive }}" 
+                                    data-fc="{{ item.feciliattion_center_incentive }}" 
+                                    data-df="{{ item.digital_franchise_incentive }}"
+                                    data-used="{% if item.has_been_used %}true{% else %}false{% endif %}"
+                                    title="{% if item.has_been_used %}View Rule (Used){% else %}Edit Rule{% endif %}">
+                                <i class="fa-solid {% if item.has_been_used %}fa-eye{% else %}fa-pen{% endif %}"></i>
+                            </button>
+                            {% if item.has_been_used %}
+                                <button class="btn-action btn-delete disabled" disabled title="Cannot delete: already applied to users"><i class="fa-solid fa-trash"></i></button>
+                            {% else %}
+                                <form method="POST" action="{% url 'incentive_delete' item.pk %}" style="display:inline-block; vertical-align: middle;">
+                                    {% csrf_token %}
+                                    <button type="button" class="btn-action btn-delete btn-delete-confirm" title="Delete Rule"><i class="fa-solid fa-trash"></i></button>
+                                </form>
+                            {% endif %}
                         </div>
                     </td>
+                    {% elif request.user.usertype == 'district' or request.user.usertype == 'manager' %}
                     <td>
-                        <span class="role-badge">{{ item.user.get_usertype_display }}</span>
+                        <span class="amount-display">₹{{ item.district_franchise_incentive }}</span>
                     </td>
+                    {% elif request.user.usertype == 'mandalam' %}
                     <td>
-                        <span style="font-weight: 500; color: var(--text-main);">{{ item.purpose }}</span>
+                        <span class="amount-display">₹{{ item.feciliattion_center_incentive }}</span>
                     </td>
+                    {% elif request.user.usertype == 'marketing' %}
                     <td>
-                        <span class="amount-badge">₹{{ item.amount }}</span>
+                        <span class="amount-display">₹{{ item.digital_franchise_incentive }}</span>
                     </td>
-                    <td>
-                        <span style="color: var(--text-muted); font-size: 0.85rem; font-weight: 500;">{{ item.created_at|date:"d M Y, h:i A" }}</span>
-                    </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -223,354 +360,293 @@
     </div>
 </div>
 
+{% if request.user.usertype == 'superadmin' %}
 <!-- Create Incentive Modal -->
 <div id="incentiveModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 650px;">
+    <div class="modal-content">
         <div class="modal-header">
-            <h3 id="modalTitle">Create Incentive</h3>
+            <h3>Create Incentive Rule</h3>
             <span class="close" id="closeModalBtn">&times;</span>
         </div>
         <form id="incentiveForm" method="POST" action="{% url 'incentive_create' %}">
             {% csrf_token %}
             <div class="modal-body">
                 <div class="form-group">
-                    <label>Purpose of Incentive <span style="color: red;">*</span></label>
-                    <input type="text" name="purpose" class="form-control" required placeholder="e.g. Monthly Milestone Bonus">
+                    <label>Incentive Type <span style="color: red;">*</span></label>
+                    <input type="text" name="incentive_type" class="form-control" placeholder="e.g. sale, registration, milestone" required>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                    <div style="flex: 1;">
+                        <label>Lead From <span style="color: red;">*</span></label>
+                        <input type="number" name="lead_from" class="form-control" min="1" required>
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Lead To <span style="color: red;">*</span></label>
+                        <input type="number" name="lead_to" class="form-control" min="1" required>
+                    </div>
                 </div>
 
                 <div class="form-group">
-                    <label>Select User Type <span style="color: red;">*</span></label>
-                    <select name="usertype" id="incentiveUsertype" class="form-control" required>
-                        <option value="">-- Select Role --</option>
-                        <option value="marketing">Digital Franchise</option>
-                        <option value="staff">Staff</option>
-                        <option value="manager">Manager</option>
-                        <option value="mandalam">Facilitation Center</option>
-                        <option value="district">District Franchise</option>
-                    </select>
+                    <label>District Franchise Incentive Amount (₹) <span style="color: red;">*</span></label>
+                    <input type="number" name="district_franchise_incentive" class="form-control" step="0.01" min="0" value="0.00" required>
                 </div>
 
-                <!-- Dynamic Containers -->
-                <!-- 1. Single User Container (Staff, Manager, Digital Franchise) -->
-                <div id="singleUserContainer" style="display: none;">
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
-                        <div style="flex: 2; min-width: 200px;">
-                            <label id="singleUserLabel" style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); font-size: 0.9rem;">Select User</label>
-                            <select id="singleUserSelect" class="form-control"></select>
-                        </div>
-                        <div style="flex: 1; min-width: 150px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); font-size: 0.9rem;">Amount (₹) <span style="color: red;">*</span></label>
-                            <input type="number" id="singleUserAmount" step="0.01" min="0" class="form-control" placeholder="Enter amount">
-                        </div>
-                    </div>
+                <div class="form-group">
+                    <label>Facilitation Center Incentive Amount (₹) <span style="color: red;">*</span></label>
+                    <input type="number" name="feciliattion_center_incentive" class="form-control" step="0.01" min="0" value="0.00" required>
                 </div>
 
-                <!-- 2. Facilitation Center Container -->
-                <div id="fcContainer" style="display: none;">
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
-                        <div style="flex: 2; min-width: 200px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); font-size: 0.9rem;">Select Facilitation Center</label>
-                            <select id="fcSelect" class="form-control"></select>
-                        </div>
-                        <div style="flex: 1; min-width: 150px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); font-size: 0.9rem;">FC Incentive Amount (₹) <span style="color: red;">*</span></label>
-                            <input type="number" id="fcAmount" step="0.01" min="0" class="form-control" placeholder="Enter FC amount">
-                        </div>
-                    </div>
-                    <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
-                        <input type="checkbox" id="fcGiveDfs" style="width: 18px; height: 18px; cursor: pointer;">
-                        <label for="fcGiveDfs" style="margin: 0; cursor: pointer; font-weight: 600;">Do you want to give for digital franchise also?</label>
-                    </div>
-                    <div id="fcDfsList" class="nested-list-group" style="display: none;">
-                        <h4 style="margin-bottom: 10px; font-size: 0.9rem; font-weight: 700; color: var(--text-main);">Digital Franchises under this FC:</h4>
-                        <div id="fcDfsContainer"></div>
-                    </div>
-                </div>
-
-                <!-- 3. District Franchise Container -->
-                <div id="districtContainer" style="display: none;">
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
-                        <div style="flex: 2; min-width: 200px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); font-size: 0.9rem;">Select District Franchise</label>
-                            <select id="districtSelect" class="form-control"></select>
-                        </div>
-                        <div style="flex: 1; min-width: 150px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); font-size: 0.9rem;">District Incentive Amount (₹) <span style="color: red;">*</span></label>
-                            <input type="number" id="districtAmount" step="0.01" min="0" class="form-control" placeholder="Enter District amount">
-                        </div>
-                    </div>
-                    <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
-                        <input type="checkbox" id="districtGiveFcs" style="width: 18px; height: 18px; cursor: pointer;">
-                        <label for="districtGiveFcs" style="margin: 0; cursor: pointer; font-weight: 600;">Do you want to add incentive for facilitation centers?</label>
-                    </div>
-                    <div id="districtFcsList" class="nested-list-group" style="display: none;">
-                        <h4 style="margin-bottom: 10px; font-size: 0.9rem; font-weight: 700; color: var(--text-main);">Facilitation Centers under this District:</h4>
-                        <div id="districtFcsContainer"></div>
-                    </div>
+                <div class="form-group">
+                    <label>Digital Franchise Incentive Amount (₹) <span style="color: red;">*</span></label>
+                    <input type="number" name="digital_franchise_incentive" class="form-control" step="0.01" min="0" value="0.00" required>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="submit" class="btn-add">Save Incentives</button>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                <button type="submit" class="btn-add">Save Rule</button>
             </div>
         </form>
     </div>
 </div>
+
+<!-- Edit Incentive Modal -->
+<div id="editIncentiveModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="editModalHeaderTitle">Edit Incentive Rule</h3>
+            <span class="close" id="closeEditModalBtn">&times;</span>
+        </div>
+        <form id="editIncentiveForm" method="POST" action="">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Incentive Type <span style="color: red;">*</span></label>
+                    <input type="text" name="incentive_type" id="edit_incentive_type" class="form-control" placeholder="e.g. sale, registration, milestone" required>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                    <div style="flex: 1;">
+                        <label>Lead From <span style="color: red;">*</span></label>
+                        <input type="number" name="lead_from" id="edit_lead_from" class="form-control" min="1" required>
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Lead To <span style="color: red;">*</span></label>
+                        <input type="number" name="lead_to" id="edit_lead_to" class="form-control" min="1" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>District Franchise Incentive Amount (₹) <span style="color: red;">*</span></label>
+                    <input type="number" name="district_franchise_incentive" id="edit_district_franchise_incentive" class="form-control" step="0.01" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Facilitation Center Incentive Amount (₹) <span style="color: red;">*</span></label>
+                    <input type="number" name="feciliattion_center_incentive" id="edit_feciliattion_center_incentive" class="form-control" step="0.01" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Digital Franchise Incentive Amount (₹) <span style="color: red;">*</span></label>
+                    <input type="number" name="digital_franchise_incentive" id="edit_digital_franchise_incentive" class="form-control" step="0.01" min="0" required>
+                </div>
+
+
+
+                <!-- Warning/Notice Message for Used Rules -->
+                <div id="edit_used_warning" class="alert alert-danger" style="background-color: rgba(220, 53, 69, 0.1); border: 1px solid rgba(220, 53, 69, 0.25); color: #842029; padding: 12px; border-radius: 8px; font-size: 0.85rem; margin-top: 15px; display: none; gap: 10px; align-items: flex-start;">
+                    <i class="fa-solid fa-circle-xmark" style="margin-top: 2px;"></i>
+                    <div>
+                        <strong>Notice:</strong> This incentive rule has already been applied to user commission payouts. It is read-only and cannot be modified.
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                <button type="submit" id="edit_submit_btn" class="btn-add">Save Rule Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
     $(document).ready(function() {
         $('#incentivesTable').DataTable({
-            order: [[4, 'desc']],
+            order: [[0, 'desc']],
             pageLength: 25
         });
 
-        const modal = document.getElementById("incentiveModal");
-        const btnOpen = document.getElementById("openCreateModalBtn");
-        const btnClose = document.getElementById("closeModalBtn");
-        const form = document.getElementById("incentiveForm");
+        const isSuperAdmin = {% if request.user.usertype == 'superadmin' %}true{% else %}false{% endif %};
 
-        btnOpen.onclick = function() {
-            form.reset();
-            // Clear and hide containers
-            $('#singleUserContainer').hide();
-            $('#fcContainer').hide();
-            $('#districtContainer').hide();
-            
-            // Sync all selects in the form
-            $(form).find('select').val('').trigger('change');
-            
-            modal.style.display = "block";
-            document.body.style.overflow = "hidden";
-        }
+        if (isSuperAdmin) {
+            // Create Modal logic
+            const createModal = document.getElementById("incentiveModal");
+            const btnOpenCreate = document.getElementById("openCreateModalBtn");
+            const btnCloseCreate = document.getElementById("closeModalBtn");
+            const createForm = document.getElementById("incentiveForm");
 
-        btnClose.onclick = function() {
-            modal.style.display = "none";
-            document.body.style.overflow = "";
-        }
+            if (btnOpenCreate) {
+                btnOpenCreate.onclick = function() {
+                    createForm.reset();
+                    createModal.style.display = "block";
+                    document.body.style.overflow = "hidden";
+                }
+            }
 
-        window.onclick = function(event) {
-            if (event.target == modal) {
-                modal.style.display = "none";
-                document.body.style.overflow = "";
+            if (btnCloseCreate) {
+                btnCloseCreate.onclick = function() {
+                    createModal.style.display = "none";
+                    document.body.style.overflow = "";
+                }
+            }
+
+            // Edit Modal logic
+            const editModal = document.getElementById("editIncentiveModal");
+            const btnCloseEdit = document.getElementById("closeEditModalBtn");
+            const editForm = document.getElementById("editIncentiveForm");
+
+            $(document).on('click', '.open-edit-modal-btn', function() {
+                const id = $(this).data('id');
+                const type = $(this).data('type');
+                const from = $(this).data('from');
+                const to = $(this).data('to');
+                const dist = $(this).data('dist');
+                const fc = $(this).data('fc');
+                const df = $(this).data('df');
+                const used = $(this).data('used');
+
+                // Populate form fields
+                $('#edit_incentive_type').val(type);
+                $('#edit_lead_from').val(from);
+                $('#edit_lead_to').val(to);
+                $('#edit_district_franchise_incentive').val(dist);
+                $('#edit_feciliattion_center_incentive').val(fc);
+                $('#edit_digital_franchise_incentive').val(df);
+
+                if (used === true || used === "true") {
+                    // Show read-only view
+                    $('#editModalHeaderTitle').text("View Incentive Rule");
+                    $('#edit_used_warning').css('display', 'flex');
+                    $('#edit_submit_btn').css('display', 'none');
+                    $('#editIncentiveForm input').prop('disabled', true);
+                } else {
+                    // Show edit view
+                    $('#editModalHeaderTitle').text("Edit Incentive Rule");
+                    $('#edit_used_warning').css('display', 'none');
+                    $('#edit_submit_btn').css('display', 'block');
+                    $('#editIncentiveForm input').prop('disabled', false);
+                }
+
+                // Dynamically set action URL
+                editForm.action = `/superadmin/incentives/${id}/edit/`;
+
+                editModal.style.display = "block";
+                document.body.style.overflow = "hidden";
+            });
+
+            if (btnCloseEdit) {
+                btnCloseEdit.onclick = function() {
+                    editModal.style.display = "none";
+                    document.body.style.overflow = "";
+                }
+            }
+
+            // Form validation: at least one amount must be > 0
+            if (createForm) {
+                $(createForm).on('submit', function(e) {
+                    const dist = parseFloat($('input[name="district_franchise_incentive"]').val() || 0);
+                    const fc = parseFloat($('input[name="feciliattion_center_incentive"]').val() || 0);
+                    const df = parseFloat($('input[name="digital_franchise_incentive"]').val() || 0);
+                    if (dist <= 0 && fc <= 0 && df <= 0) {
+                        e.preventDefault();
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Validation Error',
+                            text: 'At least one franchise incentive amount must be greater than 0.',
+                            confirmButtonColor: 'var(--role-color, #0d6efd)'
+                        });
+                        return false;
+                    }
+                });
+            }
+
+            if (editForm) {
+                $(editForm).on('submit', function(e) {
+                    const dist = parseFloat($('#edit_district_franchise_incentive').val() || 0);
+                    const fc = parseFloat($('#edit_feciliattion_center_incentive').val() || 0);
+                    const df = parseFloat($('#edit_digital_franchise_incentive').val() || 0);
+                    if (dist <= 0 && fc <= 0 && df <= 0) {
+                        e.preventDefault();
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Validation Error',
+                            text: 'At least one franchise incentive amount must be greater than 0.',
+                            confirmButtonColor: 'var(--role-color, #0d6efd)'
+                        });
+                        return false;
+                    }
+                });
+            }
+
+            // Delete confirmation with SweetAlert
+            $(document).on('click', '.btn-delete-confirm', function(e) {
+                e.preventDefault();
+                const form = $(this).closest('form');
+                
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: 'Are you sure you want to delete this incentive rule?',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Yes, delete it!'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        form.submit();
+                    }
+                });
+            });
+
+            // Toggle status confirmation with SweetAlert
+            $(document).on('change', '.toggle-status-chk', function(e) {
+                e.preventDefault();
+                const chk = this;
+                const form = $(this).closest('form');
+                const isActivating = $(this).data('action') === 'activate';
+
+                // Revert toggle visually until user confirms
+                chk.checked = !chk.checked;
+
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: isActivating
+                        ? 'Do you want to activate this incentive rule? It will start applying to future commissions.'
+                        : 'Do you want to deactivate this incentive rule? It will no longer apply to future commissions.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: isActivating ? '#198754' : '#fd7e14',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: isActivating ? 'Yes, activate it!' : 'Yes, deactivate it!'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        form.submit();
+                    }
+                });
+            });
+
+            // Close on window click
+            window.onclick = function(event) {
+                if (event.target == createModal) {
+                    createModal.style.display = "none";
+                    document.body.style.overflow = "";
+                } else if (event.target == editModal) {
+                    editModal.style.display = "none";
+                    document.body.style.overflow = "";
+                }
             }
         }
-
-        // Handle Usertype Selection
-        $('#incentiveUsertype').on('change', function() {
-            const role = $(this).val();
-            
-            // Hide all dynamic parts first
-            $('#singleUserContainer').hide();
-            $('#fcContainer').hide();
-            $('#districtContainer').hide();
-
-            // Clear names & validation
-            $('#singleUserSelect').attr('name', '').html('').prop('required', false);
-            $('#singleUserAmount').attr('name', '').prop('required', false);
-            $('#fcSelect').attr('name', '').html('').prop('required', false);
-            $('#fcAmount').attr('name', '').prop('required', false);
-            $('#districtSelect').attr('name', '').html('').prop('required', false);
-            $('#districtAmount').attr('name', '').prop('required', false);
-
-            if (!role) return;
-
-            if (['marketing', 'staff', 'manager'].includes(role)) {
-                // Populate single user select
-                let labelText = "Select ";
-                if (role === 'marketing') labelText += "Digital Franchise";
-                else if (role === 'staff') labelText += "Staff";
-                else if (role === 'manager') labelText += "Manager";
-                $('#singleUserLabel').text(labelText);
-
-                // Fetch users of selected type
-                fetch(`/superadmin/incentives/api/users/?usertype=${role}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            let options = '<option value="">-- Select Recipient --</option>';
-                            data.users.forEach(u => {
-                                options += `<option value="${u.id}">${u.name} (${u.email})</option>`;
-                            });
-                            $('#singleUserSelect').html(options).prop('required', true).trigger('change');
-                            $('#singleUserAmount').prop('required', true);
-                            $('#singleUserContainer').show();
-                        }
-                    });
-            } else if (role === 'mandalam') {
-                // Fetch FCs
-                fetch(`/superadmin/incentives/api/users/?usertype=mandalam`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            let options = '<option value="">-- Select Facilitation Center --</option>';
-                            data.users.forEach(u => {
-                                options += `<option value="${u.id}">${u.name} (${u.email})</option>`;
-                            });
-                            $('#fcSelect').html(options).prop('required', true).trigger('change');
-                            $('#fcAmount').prop('required', true);
-                            $('#fcGiveDfs').prop('checked', false);
-                            $('#fcDfsList').hide();
-                            $('#fcDfsContainer').html('');
-                            $('#fcContainer').show();
-                        }
-                    });
-            } else if (role === 'district') {
-                // Fetch Districts
-                fetch(`/superadmin/incentives/api/users/?usertype=district`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            let options = '<option value="">-- Select District Franchise --</option>';
-                            data.users.forEach(u => {
-                                options += `<option value="${u.id}">${u.name} (${u.email})</option>`;
-                            });
-                            $('#districtSelect').html(options).prop('required', true).trigger('change');
-                            $('#districtAmount').prop('required', true);
-                            $('#districtGiveFcs').prop('checked', false);
-                            $('#districtFcsList').hide();
-                            $('#districtFcsContainer').html('');
-                            $('#districtContainer').show();
-                        }
-                    });
-            }
-        });
-
-        // Set amount field names dynamically when main user selection changes
-        $('#singleUserSelect').on('change', function() {
-            const userId = $(this).val();
-            $('#singleUserAmount').attr('name', userId ? 'amount_for_user_' + userId : '');
-        });
-
-        $('#fcSelect').on('change', function() {
-            const userId = $(this).val();
-            $('#fcAmount').attr('name', userId ? 'amount_for_user_' + userId : '');
-            triggerFcDfsFetch();
-        });
-
-        $('#districtSelect').on('change', function() {
-            const userId = $(this).val();
-            $('#districtAmount').attr('name', userId ? 'amount_for_user_' + userId : '');
-            triggerDistrictFcsFetch();
-        });
-
-        // FC -> Digital Franchise Toggle
-        $('#fcGiveDfs').on('change', function() {
-            triggerFcDfsFetch();
-        });
-
-        function triggerFcDfsFetch() {
-            const fcId = $('#fcSelect').val();
-            const checked = $('#fcGiveDfs').is(':checked');
-            
-            if (checked && fcId) {
-                fetch(`/superadmin/incentives/api/users/?usertype=marketing&mandalam_id=${fcId}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            if (data.users.length === 0) {
-                                $('#fcDfsContainer').html('<p style="color: var(--text-muted); font-size: 0.85rem;">No digital franchises under this facilitation center.</p>');
-                            } else {
-                                let html = '';
-                                data.users.forEach(u => {
-                                    html += `
-                                        <div class="nested-item">
-                                            <span style="font-weight:600; font-size:0.85rem;">${u.name} (${u.email})</span>
-                                            <input type="number" name="amount_for_user_${u.id}" step="0.01" min="0" class="form-control" style="width: 150px; margin: 0;" placeholder="Amount">
-                                        </div>
-                                    `;
-                                });
-                                $('#fcDfsContainer').html(html);
-                            }
-                            $('#fcDfsList').show();
-                        }
-                    });
-            } else {
-                $('#fcDfsList').hide();
-                $('#fcDfsContainer').html('');
-            }
-        }
-
-        // District -> FC -> DF Toggles
-        $('#districtGiveFcs').on('change', function() {
-            triggerDistrictFcsFetch();
-        });
-
-        function triggerDistrictFcsFetch() {
-            const distId = $('#districtSelect').val();
-            const checked = $('#districtGiveFcs').is(':checked');
-
-            if (checked && distId) {
-                fetch(`/superadmin/incentives/api/users/?usertype=mandalam&district_id=${distId}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            if (data.users.length === 0) {
-                                $('#districtFcsContainer').html('<p style="color: var(--text-muted); font-size: 0.85rem;">No facilitation centers under this district.</p>');
-                            } else {
-                                let html = '';
-                                data.users.forEach(u => {
-                                    html += `
-                                        <div style="background: #f8f9fa; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                                                <span style="font-weight:700; font-size:0.88rem; color: var(--text-main);">${u.name} (${u.email})</span>
-                                                <input type="number" name="amount_for_user_${u.id}" step="0.01" min="0" class="form-control" style="width: 150px; margin: 0;" placeholder="Amount">
-                                            </div>
-                                            <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-                                                <input type="checkbox" class="fc-give-dfs-sub" data-fc-id="${u.id}" id="give_dfs_${u.id}" style="width: 15px; height: 15px; cursor: pointer;">
-                                                <label for="give_dfs_${u.id}" style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">Add incentive for digital franchise under this FC?</label>
-                                            </div>
-                                            <div id="sub_dfs_list_${u.id}" class="nested-list-group" style="display: none; margin-top:10px; margin-bottom:0;">
-                                                <div id="sub_dfs_container_${u.id}"></div>
-                                            </div>
-                                        </div>
-                                    `;
-                                });
-                                $('#districtFcsContainer').html(html);
-                            }
-                            $('#districtFcsList').show();
-                        }
-                    });
-            } else {
-                $('#districtFcsList').hide();
-                $('#districtFcsContainer').html('');
-            }
-        }
-
-        // Sub-FC -> DF trigger (Event Delegation)
-        $(document).on('change', '.fc-give-dfs-sub', function() {
-            const fcId = $(this).data('fc-id');
-            const checked = $(this).is(':checked');
-            const subList = $(`#sub_dfs_list_${fcId}`);
-            const subContainer = $(`#sub_dfs_container_${fcId}`);
-
-            if (checked && fcId) {
-                fetch(`/superadmin/incentives/api/users/?usertype=marketing&mandalam_id=${fcId}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            if (data.users.length === 0) {
-                                subContainer.html('<p style="color: var(--text-muted); font-size: 0.8rem;">No digital franchises under this facilitation center.</p>');
-                            } else {
-                                let html = '';
-                                data.users.forEach(u => {
-                                    html += `
-                                        <div class="nested-item" style="background:#fff;">
-                                            <span style="font-weight:600; font-size:0.8rem;">${u.name} (${u.email})</span>
-                                            <input type="number" name="amount_for_user_${u.id}" step="0.01" min="0" class="form-control" style="width: 130px; margin: 0; padding:4px 8px; font-size:0.8rem;" placeholder="Amount">
-                                        </div>
-                                    `;
-                                });
-                                subContainer.html(html);
-                            }
-                            subList.show();
-                        }
-                    });
-            } else {
-                subList.hide();
-                subContainer.html('');
-            }
-        });
     });
 </script>
 {% endblock %}
