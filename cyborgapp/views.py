@@ -200,6 +200,7 @@ def superadmin_dashboard(request):
         
         # Total Franchise: Total Active Marketing users
         stats['total_franchise'] = CustomUser.objects.filter(usertype='marketing', is_active=True).count()
+        stats['active_incentives_count'] = Incentive.objects.filter(is_active=True).count()
 
         # Target Achieved FCs count
         from .models import SubCategory, RequirementAssignment
