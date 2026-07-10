@@ -1133,12 +1133,14 @@ def assign_mandalams(request, item_id):
                         # If target not achieved, they can only work on one mandatory subcategory at a time.
                         other_assigned_exists = RequirementAssignment.objects.filter(
                             facilitation_center=fc,
-                            requirement_item__subcategory__is_mandatory_target=True
+                            requirement_item__subcategory__is_mandatory_target=True,
+                            requirement_item__requirement__status='approved'
                         ).exclude(requirement_item__subcategory=item.subcategory).exists()
                         if other_assigned_exists:
                             other_sub_name = RequirementAssignment.objects.filter(
                                 facilitation_center=fc,
-                                requirement_item__subcategory__is_mandatory_target=True
+                                requirement_item__subcategory__is_mandatory_target=True,
+                                requirement_item__requirement__status='approved'
                             ).exclude(requirement_item__subcategory=item.subcategory).first().requirement_item.subcategory.name
                             return JsonResponse({
                                 'status': 'error',
@@ -1255,7 +1257,8 @@ def assign_mandalams(request, item_id):
                 # Check if they have active assignments in another mandatory subcategory
                 other_assigned_exists = RequirementAssignment.objects.filter(
                     facilitation_center=mand,
-                    requirement_item__subcategory__is_mandatory_target=True
+                    requirement_item__subcategory__is_mandatory_target=True,
+                    requirement_item__requirement__status='approved'
                 ).exclude(requirement_item__subcategory=item.subcategory).exists()
                 if not other_assigned_exists:
                     can_assign = True
@@ -2402,6 +2405,9 @@ def requirement_toggle_status(request, req_id):
         requirement = get_object_or_404(CustomerRequirement, id=req_id)
         requirement.status = 'approved' if requirement.status == 'pending' else 'pending'
         requirement.save()
+        if requirement.status == 'pending':
+            from .models import RequirementAssignment
+            RequirementAssignment.objects.filter(requirement_item__requirement=requirement).delete()
         return JsonResponse({'status': 'success', 'new_status': requirement.status})
     return JsonResponse({'status': 'error'}, status=400)
 
@@ -3050,6 +3056,17 @@ def lead_add_update(request, lead_id):
             )
             return JsonResponse({'status': 'success', 'message': 'Payment failure logged.'})
 
+        # Check if Facilitation Center is assigned to this requirement
+        fc = lead.marketing_user if lead.marketing_user.usertype == 'mandalam' else lead.marketing_user.assigned_mandalam
+        if fc:
+            from .models import RequirementAssignment
+            is_assigned = RequirementAssignment.objects.filter(
+                facilitation_center=fc,
+                requirement_item__requirement=lead.requirement
+            ).exists()
+            if not is_assigned:
+                return JsonResponse({'status': 'error', 'message': 'Facilitation Center is not assigned to this requirement. Currently cannot update.'}, status=403)
+
         update_text = data.get('update_text')
         new_status = data.get('status')
         pass_lead = data.get('pass_lead')
@@ -3472,7 +3489,16 @@ def lead_get_updates(request, lead_id):
     can_update = (effective_user_level == lead.current_level) and lead.status == 'pending'
     requirement_approved = lead.requirement.status == 'approved'
     
-    if not requirement_approved:
+    fc = lead.marketing_user if lead.marketing_user.usertype == 'mandalam' else lead.marketing_user.assigned_mandalam
+    is_assigned = True
+    if fc:
+        from .models import RequirementAssignment
+        is_assigned = RequirementAssignment.objects.filter(
+            facilitation_center=fc,
+            requirement_item__requirement=lead.requirement
+        ).exists()
+    
+    if not requirement_approved or not is_assigned:
         can_update = False
         
     installments_data = []
@@ -3493,6 +3519,7 @@ def lead_get_updates(request, lead_id):
         'current_level': lead.current_level,
         'can_update': can_update,
         'requirement_approved': requirement_approved,
+        'is_assigned': is_assigned,
         'total_amount': float(lead.get_total_amount),
         'payment_mode': lead.payment_mode,
         'installments': installments_data,
@@ -3800,8 +3827,8 @@ def category_edit(request, cat_id):
             target_count = mandatory_counts[idx] if is_mandatory and idx < len(mandatory_counts) else 20
             sub_obj = SubCategory.objects.filter(category=category, name=sub_name).first()
             if sub_obj:
-                sub_obj.is_mandatory_target = is_mandatory
-                if is_mandatory and not sub_obj.is_assigned_to_fc:
+                if not sub_obj.is_locked:
+                    sub_obj.is_mandatory_target = is_mandatory
                     sub_obj.mandatory_target_count = target_count
                 try:
                     sub_obj.save()

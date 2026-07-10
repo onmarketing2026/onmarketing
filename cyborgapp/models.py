@@ -61,28 +61,48 @@ class SubCategory(models.Model):
     is_mandatory_target = models.BooleanField(default=False, verbose_name="Is Mandatory Target")
     mandatory_target_count = models.PositiveIntegerField(default=20, verbose_name="Mandatory Target Lead Count")
 
+    @property
+    def is_locked(self):
+        from .models import RequirementAssignment, LeadItem
+        # Locked if assigned to FC on an approved requirement
+        assigned = RequirementAssignment.objects.filter(
+            requirement_item__subcategory=self,
+            requirement_item__requirement__status='approved'
+        ).exists()
+        # Locked if any confirmed lead exists against this subcategory
+        has_leads = LeadItem.objects.filter(
+            subcategory=self,
+            lead__status='confirmed'
+        ).exists()
+        return assigned or has_leads
+
+    @property
+    def is_assigned_to_fc(self):
+        from .models import RequirementAssignment
+        return RequirementAssignment.objects.filter(
+            requirement_item__subcategory=self,
+            requirement_item__requirement__status='approved'
+        ).exists()
+
     def clean(self):
         super().clean()
-        from django.apps import apps
-        RequirementAssignment = apps.get_model('cyborgapp', 'RequirementAssignment')
-
         if self.pk:
             old_sub = SubCategory.objects.get(pk=self.pk)
-            if old_sub.is_mandatory_target != self.is_mandatory_target:
-                if RequirementAssignment.objects.filter(requirement_item__subcategory=self).exists():
+            if old_sub.is_locked:
+                if old_sub.is_mandatory_target != self.is_mandatory_target:
                     raise ValidationError(
                         "The mandatory status of this subcategory cannot be changed "
-                        "because its requirements have already been assigned to facilitation centers."
+                        "because it has active assignments or leads."
+                    )
+                if old_sub.mandatory_target_count != self.mandatory_target_count:
+                    raise ValidationError(
+                        "The target count of this subcategory cannot be changed "
+                        "because it has active assignments or leads."
                     )
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
-
-    @property
-    def is_assigned_to_fc(self):
-        from .models import RequirementAssignment
-        return RequirementAssignment.objects.filter(requirement_item__subcategory=self).exists()
 
     def __str__(self):
         return f"{self.category.name} - {self.name}"

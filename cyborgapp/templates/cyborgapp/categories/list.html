@@ -127,7 +127,7 @@
                                     data-type="{{ cat.cat_type }}"
                                     data-used="{{ cat.is_used|yesno:'true,false' }}"
                                     data-readonly="{{ cat.is_readonly_for_user|yesno:'true,false' }}"
-                                    data-subcategories="{% for s in cat.subcategories.all %}{{ s.name }}|{% if request.user.usertype == 'superadmin' or request.user == cat.created_by or request.user == s.created_by %}1{% else %}0{% endif %}|{% if s.requirementitem_set.exists %}1{% else %}0{% endif %}|{{ s.is_mandatory_target|yesno:'1,0' }}|{{ s.is_assigned_to_fc|yesno:'1,0' }}|{{ s.mandatory_target_count }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                    data-subcategories="{% for s in cat.subcategories.all %}{{ s.name }}|{% if request.user.usertype == 'superadmin' or request.user == cat.created_by or request.user == s.created_by %}1{% else %}0{% endif %}|{% if s.requirementitem_set.exists %}1{% else %}0{% endif %}|{{ s.is_mandatory_target|yesno:'1,0' }}|{{ s.is_locked|yesno:'1,0' }}|{{ s.mandatory_target_count }}{% if not forloop.last %},{% endif %}{% endfor %}"
                                     title="Edit Category">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
