@@ -29,7 +29,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(SubCategory)
 class SubCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'is_mandatory_target')
+    list_display = ('name', 'category', 'is_mandatory_target', 'mandatory_target_count')
     list_filter = ('category', 'is_mandatory_target')
     search_fields = ('name',)
 
