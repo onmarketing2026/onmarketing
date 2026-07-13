@@ -1305,7 +1305,14 @@ def requirement_list(request):
             )
         ).order_by('is_pending', '-created_at')
     elif current_user.usertype == 'customer':
-        requirements = CustomerRequirement.objects.filter(customer=current_user).order_by('-created_at')
+        from django.db.models import Case, When, Value, IntegerField
+        requirements = CustomerRequirement.objects.filter(customer=current_user).annotate(
+            is_pending=Case(
+                When(status='pending', then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        ).order_by('is_pending', '-created_at')
     elif current_user.usertype in ['district', 'manager']:
         if current_user.usertype == 'district':
             districts = [current_user]
@@ -1413,7 +1420,7 @@ def requirement_list(request):
         if order_dir == 'desc':
             sort_field = f'-{sort_field}'
             
-        if current_user.usertype == 'superadmin':
+        if current_user.usertype in ['superadmin', 'customer']:
             requirements = requirements.order_by('is_pending', sort_field)
         else:
             requirements = requirements.order_by(sort_field)

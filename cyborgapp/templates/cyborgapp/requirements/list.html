@@ -1333,6 +1333,24 @@
             const currentStatus = this.getAttribute('data-status');
             const markups = this.getAttribute('data-markups') || "";
             
+            // If moving from approved to pending, ask for confirmation
+            if (currentStatus === 'approved') {
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: "Returning this requirement to pending will remove all active facilitation center assignments. Are you sure?",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Yes, Return to Pending'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        performToggle(reqId);
+                    }
+                });
+                return;
+            }
+            
             // If moving from pending to approved, check for zero markups
             if (currentStatus === 'pending') {
                 const markupList = markups.split(',').filter(m => m !== "");
@@ -1352,8 +1370,22 @@
                             performToggle(reqId);
                         }
                     });
-                    return;
+                } else {
+                    Swal.fire({
+                        title: 'Are you sure?',
+                        text: "Are you sure you want to approve this requirement?",
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: '#198754',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Yes, Approve'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            performToggle(reqId);
+                        }
+                    });
                 }
+                return;
             }
             
             performToggle(reqId);
