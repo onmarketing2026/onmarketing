@@ -4696,77 +4696,94 @@ def target_achievement_list(request):
     for fc in fcs:
         status = 'Not Assigned'
         total_count_achieved = 0
+        target_count = 0
         target_achieved_date = None
         assigned_targets = []
 
         if mandatory_subs.exists():
             assigned_qs = RequirementAssignment.objects.filter(
                 requirement_item__subcategory__in=mandatory_subs,
+                requirement_item__requirement__status='approved',
                 facilitation_center=fc
             ).select_related('requirement_item__subcategory__category')
 
-            seen_subs = set()
+            assigned_subs = {}
             for assignment in assigned_qs:
                 sub = assignment.requirement_item.subcategory
-                if sub.id not in seen_subs:
-                    seen_subs.add(sub.id)
-                    assigned_targets.append({
-                        'category_name': sub.category.name,
-                        'subcategory_name': sub.name
-                    })
-
-            if assigned_qs.exists():
-                # Calculate max confirmed leads on any mandatory subcategory
-                max_count = 0
-                achievement_dates = []
-
-                achieved = has_fc_achieved_mandatory_target(fc)
-
-                for sub in mandatory_subs:
+                if sub.id not in assigned_subs:
                     leads_qs = Lead.objects.filter(
                         status='confirmed'
                     ).filter(
                         Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
                     ).filter(
                         items__subcategory=sub
+                    ).exclude(
+                        payment_mode='part',
+                        installments__status='pending'
                     ).distinct()
 
                     cnt = leads_qs.count()
-                    if cnt > max_count:
-                        max_count = cnt
+                    assigned_subs[sub.id] = {
+                        'sub': sub,
+                        'count': cnt,
+                        'target': sub.mandatory_target_count,
+                        'leads_qs': leads_qs
+                    }
 
-                    if cnt >= 20:
-                        # Get 20th lead's date
-                        sorted_leads = leads_qs.order_by('created_at')
-                        if sorted_leads.count() >= 20:
-                            twentieth_lead = sorted_leads[19]
-                            achievement_dates.append(twentieth_lead.created_at)
+            if assigned_subs:
+                status = 'Pending'
+                achievement_dates = []
+                max_cnt = 0
+                best_sub_target = 0
 
-                total_count_achieved = min(max_count, 20)
+                for sub_id, info in assigned_subs.items():
+                    sub = info['sub']
+                    cnt = info['count']
+                    t_count = info['target']
+                    
+                    assigned_targets.append({
+                        'category_name': sub.category.name,
+                        'subcategory_name': sub.name,
+                        'achieved_count': cnt,
+                        'target_count': t_count
+                    })
 
-                if achieved:
-                    status = 'Achieved'
+                    if cnt > max_cnt or (cnt == max_cnt and t_count > best_sub_target):
+                        max_cnt = cnt
+                        best_sub_target = t_count
+
+                    if cnt >= t_count:
+                        status = 'Achieved'
+                        sorted_leads = info['leads_qs'].order_by('created_at')
+                        if sorted_leads.count() >= t_count:
+                            nth_lead = sorted_leads[t_count - 1]
+                            achievement_dates.append(nth_lead.created_at)
+
+                total_count_achieved = max_cnt
+                target_count = best_sub_target
+
+                if status == 'Achieved':
                     if achievement_dates:
                         target_achieved_date = min(achievement_dates)
-                else:
-                    status = 'Pending'
+            else:
+                status = 'Not Assigned'
 
         fc_details.append({
             'fc': fc,
             'status': status,
             'total_count_achieved': total_count_achieved,
+            'target_count': target_count,
             'target_achieved_date': target_achieved_date,
             'assigned_targets': assigned_targets,
         })
 
-    # Sort order: Achieved (latest date first) -> Pending (highest count first) -> Not Assigned
     def get_sort_key(x):
-        status = x['status']
-        if status == 'Achieved':
+        st = x['status']
+        if st == 'Achieved':
             dt = x['target_achieved_date']
             ts = -dt.timestamp() if dt else 0
             return (0, ts, (x['fc'].name or x['fc'].username or '').lower())
-        elif status == 'Pending':
+        elif st == 'Pending':
             return (1, -x['total_count_achieved'], (x['fc'].name or x['fc'].username or '').lower())
         else:
             return (2, 0, (x['fc'].name or x['fc'].username or '').lower())
