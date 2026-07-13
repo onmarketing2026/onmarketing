@@ -4708,6 +4708,7 @@ def target_achievement_list(request):
             ).select_related('requirement_item__subcategory__category')
 
             assigned_subs = {}
+            # 1. Add active assignments
             for assignment in assigned_qs:
                 sub = assignment.requirement_item.subcategory
                 if sub.id not in assigned_subs:
@@ -4729,6 +4730,29 @@ def target_achievement_list(request):
                         'target': sub.mandatory_target_count,
                         'leads_qs': leads_qs
                     }
+
+            # 2. Add any mandatory subcategories where target has already been achieved
+            for sub in mandatory_subs:
+                if sub.id not in assigned_subs:
+                    leads_qs = Lead.objects.filter(
+                        status='confirmed'
+                    ).filter(
+                        Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
+                    ).filter(
+                        items__subcategory=sub
+                    ).exclude(
+                        payment_mode='part',
+                        installments__status='pending'
+                    ).distinct()
+
+                    cnt = leads_qs.count()
+                    if cnt >= sub.mandatory_target_count:
+                        assigned_subs[sub.id] = {
+                            'sub': sub,
+                            'count': cnt,
+                            'target': sub.mandatory_target_count,
+                            'leads_qs': leads_qs
+                        }
 
             if assigned_subs:
                 status = 'Pending'
