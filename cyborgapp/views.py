@@ -1109,6 +1109,24 @@ def assign_mandalams(request, item_id):
 
     from .models import RequirementItem, RequirementAssignment, CustomUser
     item = get_object_or_404(RequirementItem, id=item_id)
+    mandalams = CustomUser.objects.filter(
+        usertype='mandalam', assigned_district=district_user, is_active=True
+    ).order_by('name')
+
+    def get_sold_count_for_fc(fc_user, requirement_item):
+        from .models import LeadItem
+        from django.db.models import Sum
+        marketing_users = CustomUser.objects.filter(assigned_mandalam=fc_user, usertype='marketing')
+        qs = LeadItem.objects.filter(
+            subcategory=requirement_item.subcategory,
+            lead__requirement=requirement_item.requirement,
+            lead__status='confirmed',
+            lead__marketing_user__in=marketing_users
+        )
+        if requirement_item.requirement.category and requirement_item.requirement.category.cat_type == 'count':
+            return qs.aggregate(Sum('count'))['count__sum'] or 0
+        return qs.count()
+
     cat_type = item.requirement.category.cat_type if item.requirement.category else 'other'
     # Use the associate company's count as the global ceiling (always, regardless of cat_type)
     item_count = item.count or 0
@@ -1185,25 +1203,21 @@ def assign_mandalams(request, item_id):
                 'message': f'Total assigned count ({total_new}) cannot exceed the maximum allowed for this district ({max_allowed_this_district}).'
             }, status=400)
 
-        # 1. Validation for removed/unchecked FCs
-        for m_id, assignment in existing_assignments.items():
-            if m_id not in checked_mandalam_ids:
-                sold = assignment.get_sold_count
-                if sold > 0:
+        # 1. Validation for removed/unchecked FCs or decreased counts
+        for mand in mandalams:
+            sold = get_sold_count_for_fc(mand, item)
+            if sold > 0:
+                if mand.id not in checked_mandalam_ids:
                     return JsonResponse({
                         'status': 'error',
-                        'message': f'Cannot remove Facilitation Center {assignment.facilitation_center.name} because it already has {sold} confirmed lead(s).'
+                        'message': f'Cannot remove Facilitation Center {mand.name or mand.username} because it already has {sold} confirmed lead(s).'
                     }, status=400)
-
-        # 2. Validation for decreased counts on checked FCs
-        for m_id, cnt in assignments_to_save:
-            if m_id in existing_assignments:
-                assignment = existing_assignments[m_id]
-                sold = assignment.get_sold_count
-                if cnt < sold:
+                
+                new_cnt = next((cnt for m_id, cnt in assignments_to_save if m_id == mand.id), 0)
+                if new_cnt < sold:
                     return JsonResponse({
                         'status': 'error',
-                        'message': f'Cannot decrease count for {assignment.facilitation_center.name} to {cnt} because it already has {sold} confirmed lead(s).'
+                        'message': f'Cannot decrease count for {mand.name or mand.username} to {new_cnt} because it already has {sold} confirmed lead(s).'
                     }, status=400)
 
         # Remove FC assignments for this item that are no longer checked (under this district)
@@ -1223,9 +1237,6 @@ def assign_mandalams(request, item_id):
         return JsonResponse({'status': 'success', 'message': 'Facilitation Center assignments updated successfully.'})
 
     # GET – return list of FCs under this district with current assignment data
-    mandalams = CustomUser.objects.filter(
-        usertype='mandalam', assigned_district=district_user, is_active=True
-    ).order_by('name')
 
     current_assignments = {
         a.facilitation_center_id: a.assigned_count
@@ -1265,13 +1276,15 @@ def assign_mandalams(request, item_id):
             else:
                 can_assign = False
 
+        sold = get_sold_count_for_fc(mand, item)
         mand_list.append({
             'id': mand.id,
             'name': mand.name or mand.username,
             'checked': mand.id in current_assignments,
             'assigned_count': current_assignments.get(mand.id, 0),
             'target_achieved': target_achieved,
-            'can_assign': can_assign
+            'can_assign': can_assign,
+            'sold': sold
         })
 
     return JsonResponse({

@@ -222,6 +222,56 @@ class RequirementAssignmentTest(TestCase):
         fc_asgn.refresh_from_db()
         self.assertEqual(fc_asgn.assigned_count, 5)
 
+    def test_mandalam_assignment_cannot_be_less_than_sold_after_reapprove(self):
+        # Set up FC assignment with assigned_count = 10
+        fc_asgn = RequirementAssignment.objects.create(
+            requirement_item=self.item, facilitation_center=self.mandalam, assigned_count=10, assigned_by=self.district
+        )
+
+        # Create a lead with status='confirmed' to consume 3 items
+        lead = Lead.objects.create(
+            requirement=self.requirement, marketing_user=self.marketing, status='confirmed'
+        )
+        LeadItem.objects.create(lead=lead, subcategory=self.subcategory, count=3)
+
+        # Now simulate requirement moving to pending (deletes the assignment) and approved again
+        self.requirement.status = 'pending'
+        self.requirement.save()
+        # Trigger cleanup
+        RequirementAssignment.objects.filter(requirement_item__requirement=self.requirement).delete()
+        
+        # Verify assignment was deleted
+        self.assertFalse(RequirementAssignment.objects.filter(id=fc_asgn.id).exists())
+
+        # Re-approve requirement
+        self.requirement.status = 'approved'
+        self.requirement.save()
+
+        # Login as district user
+        client = Client()
+        client.login(username='dist_user', password='password123')
+
+        # Try to assign count to FC below sold (e.g. 2 < 3)
+        post_data = {
+            'mandalams': [self.mandalam.id],
+            f'count_{self.mandalam.id}': 2
+        }
+        response = client.post(f'/requirements/item/{self.item.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 400)
+        res_data = response.json()
+        self.assertEqual(res_data['status'], 'error')
+        self.assertIn("Cannot decrease count", res_data['message'])
+
+        # Try to remove FC from checked mandalams
+        post_data = {
+            'mandalams': []
+        }
+        response = client.post(f'/requirements/item/{self.item.id}/assign-mandalams/', post_data)
+        self.assertEqual(response.status_code, 400)
+        res_data = response.json()
+        self.assertEqual(res_data['status'], 'error')
+        self.assertIn("Cannot remove Facilitation Center", res_data['message'])
+
     def test_noncount_lead_confirm_blocked_when_remaining_zero(self):
         """For non-count categories, confirm must be blocked when FC remaining limit is 0."""
         from decimal import Decimal
