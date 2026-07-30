@@ -2899,22 +2899,7 @@ def share_lead_payment(request, lead_id):
         from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         
-        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-        
-        # 2. Sanitization: Clean phone number and ensure it conforms to Razorpay constraints (8 to 14 chars)
-        phone = lead.phone.strip() if lead.phone else ""
-        if phone:
-            phone = "".join(filter(str.isdigit, phone))
-            if len(phone) == 10:
-                phone = f"+91{phone}"
-            elif len(phone) > 10 and not phone.startswith('+'):
-                phone = f"+{phone}"
-            
-            # Safely omit invalid phone lengths to prevent Razorpay validation exceptions
-            if not (8 <= len(phone) <= 14):
-                phone = ""
-
-        # Create Razorpay Payment Link(s)
+        from django.urls import reverse
         short_url = None
         rich_installments = []
         
@@ -2923,39 +2908,7 @@ def share_lead_payment(request, lead_id):
             if not next_inst:
                 return JsonResponse({'status': 'error', 'message': 'All installments for this lead have already been paid.'}, status=400)
             
-            payment_link = ""
-            inst_amount_in_paise = int(next_inst.amount * 100)
-            inst_desc = f"Payment for Installment #{next_inst.installment_number} of Lead #{lead.id}"
-            if len(inst_desc) > 200:
-                inst_desc = inst_desc[:197] + "..."
-                
-            inst_link_data = {
-                "amount": inst_amount_in_paise,
-                "currency": "INR",
-                "accept_partial": False,
-                "description": inst_desc,
-                "customer": {
-                    "name": lead.name,
-                    "email": lead.email,
-                },
-                "notify": {
-                    "sms": False,
-                    "email": False
-                },
-                "notes": {
-                    "lead_id": str(lead.id),
-                    "installment_id": str(next_inst.id)
-                }
-            }
-            if phone:
-                inst_link_data["customer"]["contact"] = phone
-                
-            try:
-                inst_payment_link = client.payment_link.create(inst_link_data)
-                payment_link = inst_payment_link.get('short_url')
-            except Exception as rzp_err:
-                print(f"Error creating installment payment link: {rzp_err}")
-                payment_link = ""
+            payment_link = request.build_absolute_uri(reverse('pay_installment_from_mail', args=[next_inst.id]))
             
             rich_installments.append({
                 'installment_number': next_inst.installment_number,
@@ -2965,33 +2918,7 @@ def share_lead_payment(request, lead_id):
                 'razorpay_payment_id': next_inst.razorpay_payment_id or ''
             })
         else:
-            items_desc = ", ".join([f"{item.subcategory.name} (Qty: {item.count})" for item in lead.items.all()])
-            desc = f"Payment for Lead #{lead.id}: {items_desc}"
-            if len(desc) > 200:
-                desc = desc[:197] + "..."
-
-            link_data = {
-                "amount": amount_in_paise,
-                "currency": "INR",
-                "accept_partial": False,
-                "description": desc,
-                "customer": {
-                    "name": lead.name,
-                    "email": lead.email,
-                },
-                "notify": {
-                    "sms": False,
-                    "email": False
-                },
-                "notes": {
-                    "lead_id": str(lead.id)
-                }
-            }
-            if phone:
-                link_data["customer"]["contact"] = phone
-
-            payment_link = client.payment_link.create(link_data)
-            short_url = payment_link.get('short_url')
+            short_url = request.build_absolute_uri(reverse('pay_lead_from_mail', args=[lead.id]))
         
         # Construct rich subcategory items for the email
         rich_items = []
@@ -3229,48 +3156,8 @@ def lead_add_update(request, lead_id):
                         if not first_inst:
                             return JsonResponse({'status': 'error', 'message': 'No installments created.'}, status=400)
                             
-                        phone = lead.phone.strip() if lead.phone else ""
-                        if phone:
-                            phone = "".join(filter(str.isdigit, phone))
-                            if len(phone) == 10:
-                                phone = f"+91{phone}"
-                            elif len(phone) > 10 and not phone.startswith('+'):
-                                phone = f"+{phone}"
-                            if not (8 <= len(phone) <= 14):
-                                phone = ""
-                                
-                        inst_amount_in_paise = int(first_inst.amount * 100)
-                        inst_desc = f"Payment for Installment #{first_inst.installment_number} of Lead #{lead.id}"
-                        if len(inst_desc) > 200:
-                            inst_desc = inst_desc[:197] + "..."
-                            
-                        inst_link_data = {
-                            "amount": inst_amount_in_paise,
-                            "currency": "INR",
-                            "accept_partial": False,
-                            "description": inst_desc,
-                            "customer": {
-                                "name": lead.name,
-                                "email": lead.email,
-                            },
-                            "notify": {
-                                "sms": False,
-                                "email": False
-                            },
-                            "notes": {
-                                "lead_id": str(lead.id),
-                                "installment_id": str(first_inst.id)
-                            }
-                        }
-                        if phone:
-                            inst_link_data["customer"]["contact"] = phone
-                            
-                        try:
-                            inst_payment_link = client.payment_link.create(inst_link_data)
-                            payment_link_url = inst_payment_link.get('short_url')
-                        except Exception as rzp_err:
-                            print(f"Error creating installment payment link: {rzp_err}")
-                            payment_link_url = ""
+                        from django.urls import reverse
+                        payment_link_url = request.build_absolute_uri(reverse('pay_installment_from_mail', args=[first_inst.id]))
                             
                         rich_installments = [{
                             'installment_number': first_inst.installment_number,
@@ -5024,3 +4911,162 @@ def incentives_get_users_api(request):
             'email': u.email
         })
     return JsonResponse({'status': 'success', 'users': users_data})
+
+
+def pay_lead_from_mail(request, lead_id):
+    from .models import Lead
+    lead = get_object_or_404(Lead, id=lead_id)
+
+    # Check if this lead is configured for part payments
+    if lead.payment_mode == 'part':
+        next_inst = lead.installments.filter(status='pending').order_by('installment_number').first()
+        if next_inst:
+            return redirect('pay_installment_from_mail', installment_id=next_inst.id)
+        else:
+            return render(request, 'cyborgapp/leads/payment_status.html', {
+                'status': 'already_confirmed',
+                'lead': lead,
+                'message': 'All installments for this lead have been fully paid. Thank you!'
+            })
+
+    # Check if lead is already confirmed
+    if lead.status == 'confirmed':
+        return render(request, 'cyborgapp/leads/payment_status.html', {
+            'status': 'already_confirmed',
+            'lead': lead
+        })
+
+    try:
+        import razorpay
+        from django.conf import settings
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        
+        # Sanitization: Clean phone number
+        phone = lead.phone.strip() if lead.phone else ""
+        if phone:
+            phone = "".join(filter(str.isdigit, phone))
+            if len(phone) == 10:
+                phone = f"+91{phone}"
+            elif len(phone) > 10 and not phone.startswith('+'):
+                phone = f"+{phone}"
+            if not (8 <= len(phone) <= 14):
+                phone = ""
+                
+        total_amount = lead.get_total_amount
+        amount_in_paise = int(total_amount * 100)
+        is_count_cat = lead.requirement.category and lead.requirement.category.cat_type == 'count'
+        items_desc = ", ".join([
+            f"{item.subcategory.name} (Qty: {item.count if (is_count_cat and item.count) else 1})"
+            for item in lead.items.all()
+        ])
+        desc = f"Payment for Lead #{lead.id}: {items_desc}"
+        if len(desc) > 200:
+            desc = desc[:197] + "..."
+
+        link_data = {
+            "amount": amount_in_paise,
+            "currency": "INR",
+            "accept_partial": False,
+            "description": desc,
+            "customer": {
+                "name": lead.name,
+                "email": lead.email,
+            },
+            "notify": {
+                "sms": False,
+                "email": False
+            },
+            "notes": {
+                "lead_id": str(lead.id)
+            }
+        }
+        if phone:
+            link_data["customer"]["contact"] = phone
+
+        payment_link = client.payment_link.create(link_data)
+        short_url = payment_link.get('short_url')
+        return redirect(short_url)
+    except Exception as e:
+        return render(request, 'cyborgapp/leads/payment_status.html', {
+            'status': 'error',
+            'message': f'Failed to generate payment link: {str(e)}',
+            'lead': lead
+        })
+
+
+def pay_installment_from_mail(request, installment_id):
+    from .models import LeadInstallment
+    installment = get_object_or_404(LeadInstallment, id=installment_id)
+    lead = installment.lead
+
+    # Check if the specific installment is already paid
+    if installment.status == 'paid':
+        return render(request, 'cyborgapp/leads/payment_status.html', {
+            'status': 'installment_already_paid',
+            'installment': installment,
+            'lead': lead
+        })
+
+    # Check if there are previous pending installments
+    previous_pending = LeadInstallment.objects.filter(
+        lead=lead,
+        installment_number__lt=installment.installment_number,
+        status='pending'
+    ).exists()
+    if previous_pending:
+        return render(request, 'cyborgapp/leads/payment_status.html', {
+            'status': 'previous_pending',
+            'installment': installment,
+            'lead': lead
+        })
+
+    try:
+        import razorpay
+        from django.conf import settings
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+        phone = lead.phone.strip() if lead.phone else ""
+        if phone:
+            phone = "".join(filter(str.isdigit, phone))
+            if len(phone) == 10:
+                phone = f"+91{phone}"
+            elif len(phone) > 10 and not phone.startswith('+'):
+                phone = f"+{phone}"
+            if not (8 <= len(phone) <= 14):
+                phone = ""
+
+        inst_amount_in_paise = int(installment.amount * 100)
+        inst_desc = f"Payment for Installment #{installment.installment_number} of Lead #{lead.id}"
+        if len(inst_desc) > 200:
+            inst_desc = inst_desc[:197] + "..."
+
+        inst_link_data = {
+            "amount": inst_amount_in_paise,
+            "currency": "INR",
+            "accept_partial": False,
+            "description": inst_desc,
+            "customer": {
+                "name": lead.name,
+                "email": lead.email,
+            },
+            "notify": {
+                "sms": False,
+                "email": False
+            },
+            "notes": {
+                "lead_id": str(lead.id),
+                "installment_id": str(installment.id)
+            }
+        }
+        if phone:
+            inst_link_data["customer"]["contact"] = phone
+
+        inst_payment_link = client.payment_link.create(inst_link_data)
+        short_url = inst_payment_link.get('short_url')
+        return redirect(short_url)
+    except Exception as e:
+        return render(request, 'cyborgapp/leads/payment_status.html', {
+            'status': 'error',
+            'message': f'Failed to generate payment link: {str(e)}',
+            'lead': lead
+        })

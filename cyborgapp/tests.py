@@ -1119,5 +1119,84 @@ class MultipleMandatoryMilestoneTest(TestCase):
         self.assertTrue(Incentive.objects.filter(pk=inc.id).exists())
 
 
+class LeadMailPaymentLinkTest(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_superuser(
+            username='admin_pay', email='admin_pay@test.com', password='password123', usertype='superadmin'
+        )
+        self.category = Category.objects.create(name='Test Category Pay', cat_type='fixed')
+        self.subcategory = SubCategory.objects.create(category=self.category, name='Test Sub Pay')
+        self.customer = CustomUser.objects.create_user(
+            username='cust_pay', email='cust_pay@test.com', password='password123', usertype='customer'
+        )
+        self.marketing_user = CustomUser.objects.create_user(
+            username='mark_pay', email='mark_pay@test.com', password='password123', usertype='marketing'
+        )
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.customer, category=self.category, title='Pay Req', status='approved'
+        )
+        self.req_item = RequirementItem.objects.create(
+            requirement=self.requirement, subcategory=self.subcategory,
+            customer_amount=Decimal('1000.00'), admin_markup=Decimal('200.00'),
+            other_expenses=Decimal('0.00'), gst=Decimal('0.00')
+        )
+        self.lead = Lead.objects.create(
+            requirement=self.requirement, marketing_user=self.marketing_user,
+            status='pending', total_amount=Decimal('1200.00')
+        )
+        self.lead_item = LeadItem.objects.create(lead=self.lead, subcategory=self.subcategory, count=1)
+
+    def test_single_payment_confirmed_redirect(self):
+        # Set lead status to confirmed
+        self.lead.status = 'confirmed'
+        self.lead.save()
+
+        # Access pay-from-mail view for the confirmed lead without being logged in
+        response = self.client.get(f'/leads/{self.lead.id}/pay-from-mail/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'cyborgapp/leads/payment_status.html')
+        self.assertEqual(response.context['status'], 'already_confirmed')
+
+    def test_installment_payment_preventions(self):
+        self.lead.status = 'confirmed'
+        self.lead.payment_mode = 'part'
+        self.lead.save()
+
+        inst1 = LeadInstallment.objects.create(
+            lead=self.lead, installment_number=1, amount=Decimal('600.00'), status='pending'
+        )
+        inst2 = LeadInstallment.objects.create(
+            lead=self.lead, installment_number=2, amount=Decimal('600.00'), status='pending'
+        )
+
+        # 1. Attempt to pay inst2 from mail before paying inst1
+        response = self.client.get(f'/installments/{inst2.id}/pay-from-mail/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'cyborgapp/leads/payment_status.html')
+        self.assertEqual(response.context['status'], 'previous_pending')
+
+        # 2. Set inst1 status to paid
+        inst1.status = 'paid'
+        inst1.save()
+
+        # Attempt to pay inst1 again from mail
+        response = self.client.get(f'/installments/{inst1.id}/pay-from-mail/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'cyborgapp/leads/payment_status.html')
+        self.assertEqual(response.context['status'], 'installment_already_paid')
+
+        # 3. Attempt to pay inst2 from mail now that inst1 is paid (should generate razorpay payment link)
+        from unittest.mock import patch
+        with patch('razorpay.Client') as mock_razorpay:
+            instance = mock_razorpay.return_value
+            instance.payment_link.create.return_value = {
+                'short_url': 'https://rzp.io/i/mocked_link'
+            }
+            response = self.client.get(f'/installments/{inst2.id}/pay-from-mail/')
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, 'https://rzp.io/i/mocked_link')
+
+
+
 
 
