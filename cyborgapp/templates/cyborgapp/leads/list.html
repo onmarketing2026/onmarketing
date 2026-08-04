@@ -994,6 +994,7 @@
                     .then(r => r.json())
                     .then(payData => {
                         if (payData.status === 'payment_required') {
+                            let paymentOutcomeHandled = false;
                             var options = {
                                 "key": payData.key,
                                 "amount": payData.amount,
@@ -1002,6 +1003,7 @@
                                 "description": "Installment Payment",
                                 "order_id": payData.order_id,
                                 "handler": function (response) {
+                                    paymentOutcomeHandled = true;
                                     fetch(`/installments/${installmentId}/verify/`, {
                                         method: 'POST',
                                         headers: {
@@ -1026,7 +1028,11 @@
                                     });
                                 },
                                 "modal": {
-                                    "ondismiss": reEnableBtn
+                                    "ondismiss": function() {
+                                        if (paymentOutcomeHandled) return;
+                                        paymentOutcomeHandled = true;
+                                        reEnableBtn();
+                                    }
                                 },
                                 "prefill": {
                                     "name": payData.lead_name,
@@ -1039,6 +1045,8 @@
                             };
                             var rzp = new Razorpay(options);
                             rzp.on('payment.failed', function(response) {
+                                if (paymentOutcomeHandled) return;
+                                paymentOutcomeHandled = true;
                                 console.error("RAZORPAY PAYMENT FAILED:", response.error);
                                 reEnableBtn();
                                 Swal.fire({
@@ -1336,6 +1344,7 @@
                         saveUpdateBtn.disabled = false;
                         saveUpdateBtn.innerHTML = 'Save & Update Lead';
                         
+                        let paymentOutcomeHandled = false;
                         var options = {
                             "key": data.key,
                             "amount": data.amount, 
@@ -1344,6 +1353,7 @@
                             "description": data.payment_mode === 'part' ? "Lead Installment 1 Payment" : "Lead Confirmation Payment",
                             "order_id": data.order_id,
                             "handler": function (response) {
+                                paymentOutcomeHandled = true;
                                 // On successful payment, verify with backend
                                 saveUpdateBtn.disabled = true;
                                 saveUpdateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment...';
@@ -1385,6 +1395,8 @@
                             },
                             "modal": {
                                 "ondismiss": function() {
+                                    if (paymentOutcomeHandled) return;
+                                    paymentOutcomeHandled = true;
                                     // User closed the modal or payment failed
                                     fetch(`/leads/${currentLeadId}/update/`, {
                                         method: 'POST',
@@ -1404,6 +1416,8 @@
                         };
                         var rzp1 = new Razorpay(options);
                         rzp1.on('payment.failed', function (response){
+                            if (paymentOutcomeHandled) return;
+                            paymentOutcomeHandled = true;
                             // Payment officially failed
                             console.error("RAZORPAY PAYMENT FAILED:", response.error);
                             
@@ -1420,8 +1434,8 @@
                                 Swal.fire({
                                     icon: 'error',
                                     title: 'Payment Failed', 
-                                    text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error. Check console.'),
-                                });
+                                    text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error.'),
+                                }).then(() => location.reload());
                             });
                         });
                         rzp1.open();

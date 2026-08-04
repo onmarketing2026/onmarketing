@@ -812,6 +812,7 @@
                     // Refresh to update wallet balance
                     setTimeout(() => location.reload(), 1500);
                 } else if (data.status === 'payment_required') {
+                    let paymentOutcomeHandled = false;
                     var options = {
                         "key": data.key,
                         "amount": data.amount,
@@ -820,6 +821,7 @@
                         "description": "Digital Franchise Registration Payment",
                         "order_id": data.order_id,
                         "handler": function (response) {
+                            paymentOutcomeHandled = true;
                             Swal.fire({
                                 title: 'Verifying Payment...',
                                 allowOutsideClick: false,
@@ -861,6 +863,8 @@
                         },
                         "modal": {
                             "ondismiss": function() {
+                                if (paymentOutcomeHandled) return;
+                                paymentOutcomeHandled = true;
                                 checkbox.checked = !checkbox.checked;
                                 Swal.fire('Payment Cancelled', 'Activation was cancelled.', 'warning')
                                 .then(() => location.reload());
@@ -869,6 +873,8 @@
                     };
                     var rzp1 = new Razorpay(options);
                     rzp1.on('payment.failed', function (response){
+                        if (paymentOutcomeHandled) return;
+                        paymentOutcomeHandled = true;
                         console.error("RAZORPAY PAYMENT FAILED:", response.error);
                         checkbox.checked = !checkbox.checked;
                         Swal.fire({
