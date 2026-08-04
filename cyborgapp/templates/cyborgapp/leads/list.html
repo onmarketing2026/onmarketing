@@ -1038,7 +1038,15 @@
                                 }
                             };
                             var rzp = new Razorpay(options);
-                            rzp.on('payment.failed', function() { reEnableBtn(); });
+                            rzp.on('payment.failed', function(response) {
+                                console.error("RAZORPAY PAYMENT FAILED:", response.error);
+                                reEnableBtn();
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Payment Failed',
+                                    text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error.'),
+                                });
+                            });
                             rzp.open();
                         } else {
                             reEnableBtn();
