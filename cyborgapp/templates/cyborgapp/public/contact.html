@@ -1,0 +1,225 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us - On Cyborg</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="{% static 'img/logo.jpeg' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-gold: #cba135;
+            --primary-gold-hover: #b8912d;
+            --main-bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #1a1a1a;
+            --text-muted: #555555;
+            --border-color: rgba(0, 0, 0, 0.08);
+            --border-gold: rgba(203, 161, 53, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 0 30px rgba(203, 161, 53, 0.08);
+            border: 1px solid var(--border-gold);
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid var(--main-bg);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 10px;
+        }
+
+        .header h1 span {
+            color: var(--primary-gold);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .contact-grid {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        .info-card {
+            background: #fdfdfd;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: all 0.3s;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .info-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.03);
+            border-color: var(--primary-gold);
+        }
+
+        .info-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .info-item i {
+            font-size: 1.25rem;
+            color: var(--primary-gold);
+            margin-top: 4px;
+        }
+
+        .info-item-content h3 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-main);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .info-item-content p {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        .back-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: var(--primary-gold);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-gold-hover);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 25px;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" style="text-decoration: none;">
+                <img src="{% static 'img/logo.jpeg' %}" alt="Logo" style="max-height: 50px; border-radius: 8px;" onerror="this.style.display='none'">
+            </a>
+            <h1><span>Contact</span> Us</h1>
+            <p>Get in touch with Onfully Marketing Ltd support team.</p>
+        </div>
+
+        <div class="contact-grid">
+            <div class="info-card">
+                <div class="info-item">
+                    <i class="fa-solid fa-building"></i>
+                    <div class="info-item-content">
+                        <h3>Registered Entity</h3>
+                        <p>Onfully Marketing Ltd</p>
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <div class="info-item-content">
+                        <h3>Office Address</h3>
+                        <p>
+                            Onfully Marketing Ltd,<br>
+                            3rd Floor, 23/28, HiLite Business Park,<br>
+                            Phase II, Poovangal, Pantheerankavu,<br>
+                            Kozhikode, Kerala, 673014,<br>
+                            India
+                        </p>
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <i class="fa-solid fa-envelope"></i>
+                    <div class="info-item-content">
+                        <h3>Email Support</h3>
+                        <p><a href="mailto:oncyborgpvtltd@gmail.com" style="color: inherit;">oncyborgpvtltd@gmail.com</a></p>
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <i class="fa-solid fa-phone"></i>
+                    <div class="info-item-content">
+                        <h3>Contact Number</h3>
+                        <p>+91 82397 86313</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 Onfully Marketing Ltd. All rights reserved.</p>
+            <a href="/" class="back-btn">Go to Login</a>
+        </div>
+    </div>
+</body>
+</html>

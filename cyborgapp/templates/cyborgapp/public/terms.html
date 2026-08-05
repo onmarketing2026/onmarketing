@@ -1,0 +1,196 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms & Conditions - Onfully</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="{% static 'img/logo.jpeg' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gold: #cba135;
+            --primary-gold-hover: #b8912d;
+            --main-bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #1a1a1a;
+            --text-muted: #555555;
+            --border-color: rgba(0, 0, 0, 0.08);
+            --border-gold: rgba(203, 161, 53, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 0 30px rgba(203, 161, 53, 0.08);
+            border: 1px solid var(--border-gold);
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid var(--main-bg);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 10px;
+        }
+
+        .header h1 span {
+            color: var(--primary-gold);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .content {
+            line-height: 1.7;
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        .content h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--primary-gold);
+            padding-left: 12px;
+        }
+
+        .content p {
+            margin-bottom: 16px;
+        }
+
+        .content ul {
+            margin-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .content li {
+            margin-bottom: 8px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        .back-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: var(--primary-gold);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-gold-hover);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 25px;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" style="text-decoration: none;">
+                <img src="{% static 'img/logo.jpeg' %}" alt="Logo" style="max-height: 50px; border-radius: 8px;" onerror="this.style.display='none'">
+            </a>
+            <h1><span>Terms</span> & Conditions</h1>
+            <p>Last updated: August 05, 2026</p>
+        </div>
+
+        <div class="content">
+            <p>Welcome to Onfully. These Terms & Conditions outline the rules and regulations for the use of Onfully Marketing Ltd's Website and platform services, accessible via our associated domains (including onfully.in).</p>
+
+            <p>By accessing this website, we assume you accept these terms and conditions. Do not continue to use our platform if you do not agree to take all of the terms and conditions stated on this page.</p>
+
+            <h2>1. Definitions</h2>
+            <p>Throughout these Terms, the following definitions apply:</p>
+            <ul>
+                <li><strong>"Company", "We", "Our", or "Us"</strong> refers to Onfully Marketing Ltd.</li>
+                <li><strong>"Platform"</strong> refers to the website, applications, and backend systems provided by the Company.</li>
+                <li><strong>"Associate Company"</strong> refers to businesses registered on the Platform that publish lead requirements.</li>
+                <li><strong>"Digital Franchise / Franchise Agent"</strong> refers to registered agents or centers executing lead generation activities on behalf of Associate Companies.</li>
+                <li><strong>"User"</strong> refers to anyone registered or accessing our platform services.</li>
+            </ul>
+
+            <h2>2. Platform Services</h2>
+            <p>Onfully operates an affiliate commission ledger and business-to-business lead generation service model. The platform acts as a network connector that enables Associate Companies to publish customer requirements and assignments, and permits registered Digital Franchise agents to submit confirmed customer leads. We provide the management software, commission tracking ledger (internal wallets), and administrative dashboard for these workflows.</p>
+
+            <h2>3. Account Registration & Safety</h2>
+            <p>To use our services, Users must complete the registration form and undergo verification. Users are solely responsible for maintaining the confidentiality of their credentials and security keys. You agree to provide accurate, current, and complete information during registration and keep it updated at all times.</p>
+
+            <h2>4. Payment, Wallets, and Commissions</h2>
+            <ul>
+                <li>All franchise onboarding or registration payments are processed securely through third-party gateways (e.g., Razorpay).</li>
+                <li>An internal commission wallet ledger tracks earnings, bonuses, and incentives distributed according to confirmed leads and company requirement definitions. These wallets are virtual ledgers and do not constitute Prepaid Payment Instruments (PPI) or bank-linked deposits.</li>
+                <li>Franchise agents may submit withdrawal requests for verified balances in their internal wallet ledger, which will be transferred directly to their registered bank accounts within the designated payout timelines.</li>
+            </ul>
+
+            <h2>5. Intellectual Property</h2>
+            <p>Unless otherwise stated, Onfully Marketing Ltd owns the intellectual property rights for all material, software, designs, and content on the Platform. All intellectual property rights are reserved. You must not copy, reproduce, republish, or redistribute any materials or source code from our Platform without written consent.</p>
+
+            <h2>6. Limitation of Liability</h2>
+            <p>In no event shall Onfully Marketing Ltd, nor any of its officers, directors, and employees, be held liable for anything arising out of or in any way connected with your use of this Platform, whether such liability is under contract. Onfully Marketing Ltd shall not be held liable for any indirect, consequential, or special liability arising out of or in any way related to your use of this Platform.</p>
+
+            <h2>7. Governing Law & Jurisdiction</h2>
+            <p>These Terms will be governed by and interpreted in accordance with the laws of India, and you submit to the non-exclusive jurisdiction of the state and federal courts located in Kozhikode, Kerala, India for the resolution of any disputes.</p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 Onfully Marketing Ltd. All rights reserved.</p>
+            <a href="/" class="back-btn">Go to Login</a>
+        </div>
+    </div>
+</body>
+</html>

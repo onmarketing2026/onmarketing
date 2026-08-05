@@ -1,0 +1,190 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refund & Cancellation Policy - Onfully</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="{% static 'img/logo.jpeg' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gold: #cba135;
+            --primary-gold-hover: #b8912d;
+            --main-bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #1a1a1a;
+            --text-muted: #555555;
+            --border-color: rgba(0, 0, 0, 0.08);
+            --border-gold: rgba(203, 161, 53, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 0 30px rgba(203, 161, 53, 0.08);
+            border: 1px solid var(--border-gold);
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid var(--main-bg);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 10px;
+        }
+
+        .header h1 span {
+            color: var(--primary-gold);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .content {
+            line-height: 1.7;
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        .content h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--primary-gold);
+            padding-left: 12px;
+        }
+
+        .content p {
+            margin-bottom: 16px;
+        }
+
+        .content ul {
+            margin-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .content li {
+            margin-bottom: 8px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        .back-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: var(--primary-gold);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-gold-hover);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 25px;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" style="text-decoration: none;">
+                <img src="{% static 'img/logo.jpeg' %}" alt="Logo" style="max-height: 50px; border-radius: 8px;" onerror="this.style.display='none'">
+            </a>
+            <h1><span>Refund</span> & Cancellation Policy</h1>
+            <p>Last updated: August 05, 2026</p>
+        </div>
+
+        <div class="content">
+            <p>At Onfully Marketing Ltd, we strive to deliver transparent business-to-business lead generation and franchise support services. This Refund & Cancellation Policy explains the terms for payments, cancellations, and refund requests made through our Platform.</p>
+
+            <h2>1. Franchise Registration & Onboarding Fees</h2>
+            <p>To join our platform as a Digital Franchise, mandalam facilitation center, or district franchise, a registration or setup fee may be charged. 
+            <ul>
+                <li><strong>Non-Refundable:</strong> Once registration is completed, user activation credentials are created, and onboarding services are initiated. Therefore, all franchise registration fees are strictly <strong>non-refundable</strong>.</li>
+            </ul>
+            </p>
+
+            <h2>2. Lead Confirmation & Service Payments</h2>
+            <p>Registered users make payments to confirm lead allocations or purchase requirements listed on the platform.
+            <ul>
+                <li><strong>No Auto-Refunds on Valid Leads:</strong> Since leads represent real-time digital opportunities and verified contacts delivered to Associate Companies, payments made to confirm a lead are non-refundable once the lead details have been accessed or processed.</li>
+                <li><strong>Failed/Disputed Transactions:</strong> If a payment is deducted from your bank account but fails to register on our Platform (e.g., due to bank gateway drops or Razorpay security blocks), the deducted amount is automatically refunded by Razorpay or your card-issuing bank. This typically takes <strong>5 to 7 working days</strong> to reflect in your original payment method.</li>
+                <li><strong>Validation Exceptions:</strong> If a lead is disputed by the system administrators under platform terms due to inaccurate contact details or verification discrepancies, the disputed amount may be credited back to your internal wallet ledger or processed as a refund at the discretion of the Company.</li>
+            </ul>
+            </p>
+
+            <h2>3. Cancellation Policy</h2>
+            <ul>
+                <li><strong>Franchise Cancellation:</strong> You can cancel your franchise profile and request account deactivation at any time by contacting our support team at <strong>oncyborgpvtltd@gmail.com</strong>. However, deactivation does not entitle you to a refund of any past registration fees.</li>
+                <li><strong>Lead Order Cancellations:</strong> Lead confirmation orders cannot be canceled or recalled once payment has been captured and lead information has been authorized on the dashboard.</li>
+            </ul>
+
+            <h2>4. Payout Payout Settlement (Wallet Payouts)</h2>
+            <p>Withdrawal requests of approved wallet ledger balances are subject to platform verification rules. Once a withdrawal request is approved by the superadmin, the funds are wired directly to the franchise's bank account. This transaction is final and cannot be cancelled or reversed.</p>
+
+            <h2>5. Contact Us</h2>
+            <p>For any queries related to refunds, failed transactions, or cancellations, please contact our support desk with your payment transaction ID or order ID at: <strong>oncyborgpvtltd@gmail.com</strong>.</p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 Onfully Marketing Ltd. All rights reserved.</p>
+            <a href="/" class="back-btn">Go to Login</a>
+        </div>
+    </div>
+</body>
+</html>

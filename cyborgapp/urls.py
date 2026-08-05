@@ -7,6 +7,10 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('terms/', views.terms_view, name='terms'),
+    path('privacy/', views.privacy_view, name='privacy'),
+    path('refund/', views.refund_view, name='refund'),
+    path('contact/', views.contact_view, name='contact'),
     
     # Password Reset URLs
     path('password-reset/', auth_views.PasswordResetView.as_view(

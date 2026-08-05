@@ -137,6 +137,52 @@ def login_view(request):
             
     return render(request, 'cyborgapp/login.html')
 
+def terms_view(request):
+    return render(request, 'cyborgapp/public/terms.html')
+
+def privacy_view(request):
+    return render(request, 'cyborgapp/public/privacy.html')
+
+def refund_view(request):
+    return render(request, 'cyborgapp/public/refund.html')
+
+def contact_view(request):
+    if request.method == 'POST':
+        import json
+        from django.core.mail import EmailMessage
+        from django.conf import settings
+        
+        try:
+            # Handle both JSON (AJAX) and traditional form posts
+            if request.content_type == 'application/json':
+                data = json.loads(request.body)
+            else:
+                data = request.POST
+                
+            name = data.get('name')
+            email = data.get('email')
+            message = data.get('message')
+            
+            if not name or not email or not message:
+                return JsonResponse({'status': 'error', 'message': 'All fields are required.'}, status=400)
+            
+            subject = f'New Contact Us Message from {name}'
+            body = f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}"
+            
+            email_msg = EmailMessage(
+                subject=subject,
+                body=body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=['oncyborgpvtltd@gmail.com'],
+                reply_to=[email]
+            )
+            email_msg.send(fail_silently=False)
+            return JsonResponse({'status': 'success', 'message': 'Thank you! Your message has been sent successfully.'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f'Failed to send message: {str(e)}'}, status=500)
+            
+    return render(request, 'cyborgapp/public/contact.html')
+
 def logout_view(request):
     logout(request)
     return redirect('login')

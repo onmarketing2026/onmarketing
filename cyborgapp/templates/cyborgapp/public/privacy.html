@@ -1,0 +1,203 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Onfully</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="{% static 'img/logo.jpeg' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gold: #cba135;
+            --primary-gold-hover: #b8912d;
+            --main-bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #1a1a1a;
+            --text-muted: #555555;
+            --border-color: rgba(0, 0, 0, 0.08);
+            --border-gold: rgba(203, 161, 53, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 0 30px rgba(203, 161, 53, 0.08);
+            border: 1px solid var(--border-gold);
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid var(--main-bg);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 10px;
+        }
+
+        .header h1 span {
+            color: var(--primary-gold);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .content {
+            line-height: 1.7;
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        .content h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--primary-gold);
+            padding-left: 12px;
+        }
+
+        .content p {
+            margin-bottom: 16px;
+        }
+
+        .content ul {
+            margin-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .content li {
+            margin-bottom: 8px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        .back-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: var(--primary-gold);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: var(--primary-gold-hover);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 25px;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" style="text-decoration: none;">
+                <img src="{% static 'img/logo.jpeg' %}" alt="Logo" style="max-height: 50px; border-radius: 8px;" onerror="this.style.display='none'">
+            </a>
+            <h1><span>Privacy</span> Policy</h1>
+            <p>Last updated: August 05, 2026</p>
+        </div>
+
+        <div class="content">
+            <p>Onfully Marketing Ltd operates the Platform and respects your privacy. This Privacy Policy outlines what information we collect, how we use it, and the security measures we take to protect your data.</p>
+
+            <h2>1. Information We Collect</h2>
+            <p>We collect personal and business information that is necessary to facilitate our lead generation and franchise dashboard services, including:</p>
+            <ul>
+                <li><strong>Identity Data:</strong> Full name, username, business name, and role type.</li>
+                <li><strong>Contact Data:</strong> Email address, mobile phone number, and physical mailing address.</li>
+                <li><strong>Financial Data:</strong> Bank account numbers, IFSC codes, and transaction details necessary for payouts, commission distributions, and payment verifications.</li>
+                <li><strong>Transaction Data:</strong> Information about payments processed through payment links and franchise registrations.</li>
+                <li><strong>Usage Data:</strong> Technical logs, IP addresses, browser types, and session records of your interactions on the Platform.</li>
+            </ul>
+
+            <h2>2. How We Use Your Information</h2>
+            <p>We use the collected information to:</p>
+            <ul>
+                <li>Create and manage your user accounts and franchise levels.</li>
+                <li>Track and confirm lead requirements, and distribute affiliate commissions.</li>
+                <li>Process payments and verify signatures through payment gateways (e.g., Razorpay).</li>
+                <li>Facilitate payouts of wallet earnings to your linked bank account.</li>
+                <li>Send transactional notifications, invoices, and system updates.</li>
+                <li>Improve system security, prevent fraud, and comply with legal or auditing regulations.</li>
+            </ul>
+
+            <h2>3. Information Sharing and Disclosure</h2>
+            <p>We do not sell or rent your personal information to third parties. We share information only with authorized service providers who perform business-critical services for us:</p>
+            <ul>
+                <li><strong>Payment Processors:</strong> We share order identifiers and transaction amounts with Razorpay to facilitate secure, PCI-DSS compliant checkout and payments.</li>
+                <li><strong>Email Providers:</strong> We use mailing servers to send automated PDFs and payment link notifications.</li>
+                <li><strong>Law Enforcement & Audits:</strong> We may share data if required to do so by applicable law, tax authorities, or court orders.</li>
+            </ul>
+
+            <h2>4. Data Security</h2>
+            <p>We implement industry-standard administrative, technical, and physical security measures to protect your personal and financial details against unauthorized access, loss, alteration, or disclosure. All transaction information is encrypted using secure socket layer technology (SSL).</p>
+
+            <h2>5. Cookies and Tracking</h2>
+            <p>We use cookies to maintain your login session ("Remember me") and optimize dashboard usability. You can configure your browser to reject cookies, but doing so may limit your ability to access certain parts of our dashboard.</p>
+
+            <h2>6. Your Rights</h2>
+            <p>You have the right to request access to the personal data we hold about you, request corrections to inaccurate profiles, or delete your account (subject to regulatory audit and transaction record preservation requirements).</p>
+
+            <h2>7. Contact Us</h2>
+            <p>If you have any questions about this Privacy Policy or our practices, please contact us at: <strong>oncyborgpvtltd@gmail.com</strong>.</p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 Onfully Marketing Ltd. All rights reserved.</p>
+            <a href="/" class="back-btn">Go to Login</a>
+        </div>
+    </div>
+</body>
+</html>
