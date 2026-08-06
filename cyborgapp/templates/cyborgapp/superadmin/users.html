@@ -812,7 +812,6 @@
                     // Refresh to update wallet balance
                     setTimeout(() => location.reload(), 1500);
                 } else if (data.status === 'payment_required') {
-                    let paymentFailedEventTriggered = false;
                     var options = {
                         "key": data.key,
                         "amount": data.amount,
@@ -862,7 +861,6 @@
                         },
                         "modal": {
                             "ondismiss": function() {
-                                if (paymentFailedEventTriggered) return;
                                 checkbox.checked = !checkbox.checked;
                                 Swal.fire('Payment Cancelled', 'Activation was cancelled.', 'warning')
                                 .then(() => location.reload());
@@ -872,8 +870,6 @@
                     var rzp1 = new Razorpay(options);
                     rzp1.on('payment.failed', function (response){
                         console.error("RAZORPAY PAYMENT FAILED:", response.error);
-                        paymentFailedEventTriggered = true;
-                        rzp1.close();
                         checkbox.checked = !checkbox.checked;
                         Swal.fire({
                             icon: 'error',

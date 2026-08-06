@@ -1026,10 +1026,7 @@
                                     });
                                 },
                                 "modal": {
-                                    "ondismiss": function() {
-                                        if (paymentFailedEventTriggered) return;
-                                        reEnableBtn();
-                                    }
+                                    "ondismiss": reEnableBtn
                                 },
                                 "prefill": {
                                     "name": payData.lead_name,
@@ -1040,12 +1037,9 @@
                                     "color": "#198754"
                                 }
                             };
-                            let paymentFailedEventTriggered = false;
                             var rzp = new Razorpay(options);
                             rzp.on('payment.failed', function(response) {
                                 console.error("RAZORPAY PAYMENT FAILED:", response.error);
-                                paymentFailedEventTriggered = true;
-                                rzp.close();
                                 reEnableBtn();
                                 Swal.fire({
                                     icon: 'error',
@@ -1342,7 +1336,6 @@
                         saveUpdateBtn.disabled = false;
                         saveUpdateBtn.innerHTML = 'Save & Update Lead';
                         
-                        let paymentFailedEventTriggered = false;
                         var options = {
                             "key": data.key,
                             "amount": data.amount, 
@@ -1392,7 +1385,6 @@
                             },
                             "modal": {
                                 "ondismiss": function() {
-                                    if (paymentFailedEventTriggered) return;
                                     // User closed the modal or payment failed
                                     fetch(`/leads/${currentLeadId}/update/`, {
                                         method: 'POST',
@@ -1414,8 +1406,6 @@
                         rzp1.on('payment.failed', function (response){
                             // Payment officially failed
                             console.error("RAZORPAY PAYMENT FAILED:", response.error);
-                            paymentFailedEventTriggered = true;
-                            rzp1.close();
                             
                             fetch(`/leads/${currentLeadId}/update/`, {
                                 method: 'POST',
@@ -1431,7 +1421,7 @@
                                     icon: 'error',
                                     title: 'Payment Failed', 
                                     text: 'Razorpay Error: ' + (response.error ? response.error.description : 'Unknown error. Check console.'),
-                                }).then(() => location.reload());
+                                });
                             });
                         });
                         rzp1.open();
