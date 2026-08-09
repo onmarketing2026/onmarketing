@@ -3288,6 +3288,7 @@ def lead_add_update(request, lead_id):
                                 'notes': {
                                     'lead_id': str(lead.id),
                                     'installment_id': str(first_inst.id),
+                                    'installment_number': str(first_inst.installment_number),
                                     'project': 'onmarketing'
                                 }
                             }
@@ -3587,6 +3588,7 @@ def pay_installment(request, installment_id):
         'notes': {
             'lead_id': str(installment.lead.id),
             'installment_id': str(installment.id),
+            'installment_number': str(installment.installment_number),
             'project': 'onmarketing'
         }
     }
@@ -5023,7 +5025,8 @@ def pay_lead_from_mail(request, lead_id):
                 "email": False
             },
             "notes": {
-                "lead_id": str(lead.id)
+                "lead_id": str(lead.id),
+                "project": "onmarketing"
             }
         }
         if phone:
@@ -5101,7 +5104,9 @@ def pay_installment_from_mail(request, installment_id):
             },
             "notes": {
                 "lead_id": str(lead.id),
-                "installment_id": str(installment.id)
+                "installment_id": str(installment.id),
+                "installment_number": str(installment.installment_number),
+                "project": "onmarketing"
             }
         }
         if phone:
