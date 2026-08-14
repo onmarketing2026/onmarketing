@@ -409,21 +409,31 @@
                         },
                         {
                             data: 'status',
-                            render: function(data) {
+                            render: function(data, type, row) {
+                                const displayStatus = row.payout_status || data;
                                 let bg = 'rgba(255, 193, 7, 0.12)';
                                 let color = '#d39e00';
-                                if (data === 'approved') {
+                                if (displayStatus === 'approved' || displayStatus === 'processed') {
                                     bg = 'rgba(25, 135, 84, 0.12)';
                                     color = '#198754';
-                                } else if (data === 'rejected') {
+                                } else if (displayStatus === 'rejected' || displayStatus === 'failed' || displayStatus === 'reversed') {
                                     bg = 'rgba(220, 53, 69, 0.12)';
                                     color = '#dc3545';
+                                } else if (displayStatus === 'processing' || displayStatus === 'queued') {
+                                    bg = 'rgba(13, 110, 253, 0.12)';
+                                    color = '#0d6efd';
                                 }
-                                return `
+                                let html = `
                                     <span class="role-badge" style="background: ${bg}; color: ${color}; text-transform: capitalize;">
-                                        ${data}
+                                        ${displayStatus}
                                     </span>
                                 `;
+                                {% if request.user.usertype == 'superadmin' %}
+                                if (row.razorpay_payout_id) {
+                                    html += `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; font-family: monospace;"><strong>Payout ID:</strong> ${row.razorpay_payout_id}</div>`;
+                                }
+                                {% endif %}
+                                return html;
                             }
                         },
                         { data: 'created_at_formatted' },

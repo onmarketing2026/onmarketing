@@ -320,3 +320,103 @@ def trigger_registration_incentives(new_user):
                 desc = f"District Incentive for registration #{reg_count} of Digital Franchise {new_user.name or new_user.username} (Incentive Rule #{inc.id})"
                 if not CommissionTransaction.objects.filter(user=district_user, transaction_type='incentive', reference_id=new_user.id, description__contains=f"Incentive Rule #{inc.id}").exists():
                     add_to_wallet(district_user, inc.district_franchise_incentive, 'incentive', new_user.id, desc)
+
+
+def create_razorpay_x_payout(withdrawal_request):
+    import requests
+    import json
+    from django.conf import settings
+    from decimal import Decimal
+
+    key_id = getattr(settings, 'RAZORPAY_X_KEY_ID', None) or getattr(settings, 'RAZORPAY_KEY_ID', None)
+    key_secret = getattr(settings, 'RAZORPAY_X_KEY_SECRET', None) or getattr(settings, 'RAZORPAY_KEY_SECRET', None)
+    rx_account = getattr(settings, 'RAZORPAY_X_ACCOUNT_NUMBER', None)
+
+    if not key_id or not key_secret or not rx_account:
+        return False, "Razorpay X credentials or account number settings are missing in settings.py."
+
+    url = "https://api.razorpay.com/v1/payouts"
+    
+    # Amount in paise (multiply by 100 and convert to int)
+    amount_in_paise = int(Decimal(str(withdrawal_request.amount)) * 100)
+
+    # Beneficiary Details fallback logic
+    holder_name = withdrawal_request.account_holder or withdrawal_request.user.name or withdrawal_request.user.username
+    phone = withdrawal_request.phone_linked or withdrawal_request.user.bank_phone or ""
+    phone = "".join(filter(str.isdigit, phone))
+    if len(phone) != 10:
+        phone = "9999999999" # Default fallback for test mode/API requirement
+
+    email = withdrawal_request.user.email or "noemail@example.com"
+
+    payload = {
+        "account_number": rx_account,
+        "amount": amount_in_paise,
+        "currency": "INR",
+        "mode": "IMPS",
+        "purpose": "payout",
+        "reference_id": f"withdrawal_{withdrawal_request.id}",
+        "narration": f"Withdrawal {withdrawal_request.id}",
+        "queue_if_low_balance": True,
+        "fund_account": {
+            "account_type": "bank_account",
+            "bank_account": {
+                "name": holder_name,
+                "ifsc": withdrawal_request.ifsc_code,
+                "account_number": withdrawal_request.account_number
+            },
+            "contact": {
+                "name": holder_name,
+                "email": email,
+                "contact": phone,
+                "type": "vendor",
+                "reference_id": f"user_{withdrawal_request.user.id}"
+            }
+        }
+    }
+
+    # Pass X-Payout-Idempotency header to prevent duplicate payout attempts
+    import time
+    headers = {
+        "Content-Type": "application/json",
+        "X-Payout-Idempotency": f"withdrawal_{withdrawal_request.id}_{int(time.time())}"
+    }
+
+    try:
+        response = requests.post(
+            url,
+            auth=(key_id, key_secret),
+            data=json.dumps(payload),
+            headers=headers,
+            timeout=30
+        )
+        # Try parsing JSON, otherwise fallback to response text
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {"error": {"description": response.text}}
+    except Exception as e:
+        return False, f"HTTP request failed: {str(e)}"
+
+    if response.status_code in [200, 201]:
+        payout_id = response_data.get("id")
+        payout_status = response_data.get("status")
+        
+        # Save details on the withdrawal request object
+        withdrawal_request.razorpay_payout_id = payout_id
+        withdrawal_request.payout_status = payout_status
+        withdrawal_request.payout_error = None
+        withdrawal_request.save()
+        
+        return True, response_data
+    else:
+        # Extract error message if present
+        error_details = response_data.get("error", {})
+        error_msg = error_details.get("description", response.text)
+        
+        withdrawal_request.payout_error = error_msg
+        withdrawal_request.payout_status = "failed"
+        withdrawal_request.save()
+        
+        return False, error_msg
+

@@ -657,10 +657,13 @@ class GSTAndExpensesTestCase(TestCase):
         
         # Approve withdrawal request
         import json
-        client.post(f'/wallet/requests/{wr.id}/update/', json.dumps({
-            'status': 'approved',
-            'remarks': 'Approved GST withdrawal'
-        }), content_type='application/json')
+        from unittest.mock import patch
+        with patch('cyborgapp.utils.create_razorpay_x_payout') as mock_payout:
+            mock_payout.return_value = (True, {})
+            client.post(f'/wallet/requests/{wr.id}/update/', json.dumps({
+                'status': 'approved',
+                'remarks': 'Approved GST withdrawal'
+            }), content_type='application/json')
         
         wr.refresh_from_db()
         self.assertEqual(wr.status, 'approved')
@@ -1195,6 +1198,253 @@ class LeadMailPaymentLinkTest(TestCase):
             response = self.client.get(f'/installments/{inst2.id}/pay-from-mail/')
             self.assertEqual(response.status_code, 302)
             self.assertEqual(response.url, 'https://rzp.io/i/mocked_link')
+
+
+class RazorpayXPayoutTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='superadmin_payout@cyborg.com',
+            email='superadmin_payout@cyborg.com',
+            name='Super Admin Payout',
+            usertype='superadmin',
+            password='password123'
+        )
+        self.marketing_user = CustomUser.objects.create_user(
+            username='m_payout@cyborg.com',
+            email='m_payout@cyborg.com',
+            name='Marketing User Payout',
+            usertype='marketing',
+            password='password123'
+        )
+        # Give marketing user a wallet with some balance
+        from cyborgapp.utils import get_or_create_wallet
+        self.wallet = get_or_create_wallet(self.marketing_user)
+        self.wallet.balance = Decimal('5000.00')
+        self.wallet.total_earned = Decimal('5000.00')
+        self.wallet.save()
+
+        # Create a pending wallet withdrawal request
+        self.wr = WithdrawalRequest.objects.create(
+            user=self.marketing_user,
+            amount=Decimal('1000.00'),
+            request_type='wallet',
+            account_number='987654321012',
+            ifsc_code='HDFC0000053',
+            account_holder='Marketing User Payout',
+            phone_linked='9876543210',
+            status='pending'
+        )
+
+    def test_payout_fails_when_settings_missing(self):
+        from django.test import override_settings
+        with override_settings(
+            RAZORPAY_KEY_ID=None, RAZORPAY_KEY_SECRET=None,
+            RAZORPAY_X_KEY_ID=None, RAZORPAY_X_KEY_SECRET=None,
+            RAZORPAY_X_ACCOUNT_NUMBER=None
+        ):
+            client = Client()
+            client.login(username='superadmin_payout@cyborg.com', password='password123')
+            
+            import json
+            response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
+                'status': 'approved',
+                'remarks': 'Try approving without settings'
+            }), content_type='application/json')
+            
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Razorpay X credentials or account number settings are missing", response.json()['message'])
+            
+            # Request must remain pending
+            self.wr.refresh_from_db()
+            self.assertEqual(self.wr.status, 'pending')
+
+    def test_payout_success_flow(self):
+        from unittest.mock import patch
+        import json
+        
+        # Mock requests.post response for successful payout creation
+        mock_response = {
+            "id": "pout_test_12345",
+            "status": "processing",
+            "amount": 100000,
+            "currency": "INR",
+            "fund_account": {
+                "id": "fa_test_123",
+                "account_type": "bank_account",
+                "bank_account": {
+                    "name": "Marketing User Payout",
+                    "ifsc": "HDFC0000053",
+                    "account_number": "987654321012"
+                },
+                "contact": {
+                    "id": "cont_test_123",
+                    "name": "Marketing User Payout",
+                    "type": "vendor"
+                }
+            }
+        }
+        
+        with patch('requests.post') as mock_post:
+            # Setup mock to return 201 Created and json data
+            mock_post.return_value.status_code = 201
+            mock_post.return_value.json.return_value = mock_response
+            
+            client = Client()
+            client.login(username='superadmin_payout@cyborg.com', password='password123')
+            
+            response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
+                'status': 'approved',
+                'remarks': 'Approved'
+            }), content_type='application/json')
+            
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['status'], 'success')
+            
+            # Verify request updated in DB
+            self.wr.refresh_from_db()
+            self.assertEqual(self.wr.status, 'approved')
+            self.assertEqual(self.wr.razorpay_payout_id, 'pout_test_12345')
+            self.assertEqual(self.wr.payout_status, 'processing')
+            self.assertIsNone(self.wr.payout_error)
+            
+            # Verify user wallet balance was deducted
+            self.wallet.refresh_from_db()
+            self.assertEqual(self.wallet.balance, Decimal('4000.00'))
+            self.assertEqual(self.wallet.withdrawn_amount, Decimal('1000.00'))
+
+    def test_payout_error_flow_does_not_approve(self):
+        from unittest.mock import patch
+        import json
+        
+        # Mock requests.post response for failed payout creation (low balance, invalid details, etc.)
+        mock_response = {
+            "error": {
+                "code": "BAD_REQUEST_ERROR",
+                "description": "Insufficient funds in RazorpayX account.",
+                "source": "business",
+                "step": "payout_creation",
+                "reason": "insufficient_funds"
+            }
+        }
+        
+        with patch('requests.post') as mock_post:
+            mock_post.return_value.status_code = 400
+            mock_post.return_value.json.return_value = mock_response
+            
+            client = Client()
+            client.login(username='superadmin_payout@cyborg.com', password='password123')
+            
+            response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
+                'status': 'approved',
+                'remarks': 'Approved'
+            }), content_type='application/json')
+            
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Insufficient funds in RazorpayX account", response.json()['message'])
+            
+            # Verify request remains pending in DB
+            self.wr.refresh_from_db()
+            self.assertEqual(self.wr.status, 'pending')
+            self.assertEqual(self.wr.payout_status, 'failed')
+            self.assertEqual(self.wr.payout_error, 'Insufficient funds in RazorpayX account.')
+            
+            # Verify user wallet balance NOT deducted
+            self.wallet.refresh_from_db()
+            self.assertEqual(self.wallet.balance, Decimal('5000.00'))
+            self.assertEqual(self.wallet.withdrawn_amount, Decimal('0.00'))
+
+    def test_razorpayx_webhook_processed(self):
+        import hmac
+        import hashlib
+        import json
+        
+        self.wr.razorpay_payout_id = 'pout_processed_123'
+        self.wr.status = 'approved'
+        self.wr.save()
+
+        self.wallet.balance = Decimal('4000.00')
+        self.wallet.withdrawn_amount = Decimal('1000.00')
+        self.wallet.save()
+
+        payload = {
+            "event": "payout.processed",
+            "payload": {
+                "payout": {
+                    "entity": {
+                        "id": "pout_processed_123",
+                        "status": "processed"
+                    }
+                }
+            }
+        }
+        body_bytes = json.dumps(payload).encode('utf-8')
+        sig = hmac.new(b'Onmarketing2026', body_bytes, hashlib.sha256).hexdigest()
+
+        client = Client()
+        response = client.post(
+            '/razorpayx-webhook/',
+            data=body_bytes,
+            content_type='application/json',
+            HTTP_X_RAZORPAY_SIGNATURE=sig
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.wr.refresh_from_db()
+        self.assertEqual(self.wr.payout_status, 'processed')
+        self.assertEqual(self.wr.status, 'approved')
+        self.assertIsNone(self.wr.payout_error)
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('4000.00'))
+        self.assertEqual(self.wallet.withdrawn_amount, Decimal('1000.00'))
+
+    def test_razorpayx_webhook_failed_refunds_wallet(self):
+        import hmac
+        import hashlib
+        import json
+        
+        self.wr.razorpay_payout_id = 'pout_failed_123'
+        self.wr.status = 'approved'
+        self.wr.save()
+
+        self.wallet.balance = Decimal('4000.00')
+        self.wallet.withdrawn_amount = Decimal('1000.00')
+        self.wallet.save()
+
+        payload = {
+            "event": "payout.failed",
+            "payload": {
+                "payout": {
+                    "entity": {
+                        "id": "pout_failed_123",
+                        "status": "failed",
+                        "failure_reason": "Invalid beneficiary account number"
+                    }
+                }
+            }
+        }
+        body_bytes = json.dumps(payload).encode('utf-8')
+        sig = hmac.new(b'Onmarketing2026', body_bytes, hashlib.sha256).hexdigest()
+
+        client = Client()
+        response = client.post(
+            '/razorpayx-webhook/',
+            data=body_bytes,
+            content_type='application/json',
+            HTTP_X_RAZORPAY_SIGNATURE=sig
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.wr.refresh_from_db()
+        self.assertEqual(self.wr.payout_status, 'failed')
+        self.assertEqual(self.wr.status, 'rejected')
+        self.assertEqual(self.wr.payout_error, 'Invalid beneficiary account number')
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('5000.00'))
+        self.assertEqual(self.wallet.withdrawn_amount, Decimal('0.00'))
+
+
 
 
 

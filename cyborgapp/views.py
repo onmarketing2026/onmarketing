@@ -1917,6 +1917,82 @@ def razorpay_webhook(request):
             
     return HttpResponse(status=405)
 
+
+@csrf_exempt
+def razorpayx_webhook(request):
+    if request.method == 'POST':
+        import hmac
+        import hashlib
+        from django.conf import settings
+        from django.http import HttpResponse
+        import json
+        from decimal import Decimal
+        from django.db import transaction
+        from .utils import get_or_create_wallet
+        from .models import WithdrawalRequest, CustomUser
+        
+        webhook_signature = request.headers.get('X-Razorpay-Signature')
+        webhook_secret = getattr(settings, 'RAZORPAY_X_WEBHOOK_SECRET', None) or getattr(settings, 'RAZORPAY_WEBHOOK_SECRET', None)
+        
+        if not webhook_signature or not webhook_secret:
+            return HttpResponse(status=400)
+            
+        try:
+            expected_signature = hmac.new(
+                webhook_secret.encode('utf-8'),
+                request.body,
+                hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(expected_signature, webhook_signature):
+                return HttpResponse(status=400)
+        except Exception:
+            return HttpResponse(status=400)
+            
+        try:
+            payload = json.loads(request.body.decode('utf-8'))
+            event = payload.get('event')
+            payout_entity = payload.get('payload', {}).get('payout', {}).get('entity', {})
+            payout_id = payout_entity.get('id')
+            payout_status = payout_entity.get('status')
+            
+            if payout_id:
+                wr = WithdrawalRequest.objects.filter(razorpay_payout_id=payout_id).first()
+                if wr:
+                    wr.payout_status = payout_status
+                    
+                    if event == 'payout.processed':
+                        wr.payout_error = None
+                        wr.save()
+                    elif event in ['payout.failed', 'payout.reversed', 'payout.rejected']:
+                        failure_reason = payout_entity.get('failure_reason', 'Payout failed or was reversed.')
+                        wr.payout_error = failure_reason
+                        
+                        if wr.status == 'approved':
+                            with transaction.atomic():
+                                wr.status = 'rejected'
+                                wr.remarks = f"Payout failed: {failure_reason}"
+                                wr.save()
+                                
+                                if wr.request_type == 'wallet':
+                                    wallet = get_or_create_wallet(wr.user)
+                                    wallet.balance = Decimal(str(wallet.balance)) + Decimal(str(wr.amount))
+                                    wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) - Decimal(str(wr.amount))
+                                    wallet.save()
+                        else:
+                            wr.status = 'rejected'
+                            wr.remarks = f"Payout failed: {failure_reason}"
+                            wr.save()
+                    else:
+                        wr.save()
+                        
+            return HttpResponse(status=200)
+        except Exception as e:
+            return HttpResponse(status=500)
+            
+    return HttpResponse(status=405)
+
+
 @login_required(login_url='login')
 def wallet_dashboard(request, user_id=None):
     current_user = request.user
@@ -2010,13 +2086,14 @@ def wallet_dashboard(request, user_id=None):
         length = int(request.GET.get('length', 10))
         search_value = request.GET.get('search[value]', '')
         
-        reqs = WithdrawalRequest.objects.filter(user=target_user)
+        reqs = WithdrawalRequest.objects.filter(user=target_user, request_type='wallet')
         records_total = reqs.count()
         
         if search_value:
             from django.db.models import Q
             reqs = reqs.filter(
                 Q(status__icontains=search_value) |
+                Q(payout_status__icontains=search_value) |
                 Q(account_number__icontains=search_value) |
                 Q(account_holder__icontains=search_value)
             )
@@ -2045,6 +2122,9 @@ def wallet_dashboard(request, user_id=None):
                 'id': r.id,
                 'amount': float(r.amount),
                 'status': r.status,
+                'payout_status': r.payout_status or r.status,
+                'razorpay_payout_id': r.razorpay_payout_id or '',
+                'payout_error': r.payout_error or '',
                 'remarks': r.remarks or '',
                 'created_at_formatted': r.created_at.strftime('%b %d, %Y'),
                 'account_number': r.account_number or 'N/A',
@@ -2072,19 +2152,17 @@ def wallet_dashboard(request, user_id=None):
         # Global stats for Superadmin
         total_customer_payouts = CommissionTransaction.objects.filter(transaction_type='sale', user__usertype='customer').aggregate(Sum('amount'))['amount__sum'] or 0
         # Project Gross = Customer Payouts + Total Markup (all commission transactions including admin share)
-        total_markup_pool = CommissionTransaction.objects.filter(transaction_type='commission').aggregate(Sum('amount'))['amount__sum'] or 0
-        total_project_gross = total_customer_payouts + total_markup_pool
+        total_project_gross = total_customer_payouts + (CommissionTransaction.objects.aggregate(Sum('amount'))['amount__sum'] or 0)
         
         # Commissions Given = Total Markup - Admin's own share
-        total_commissions_given = CommissionTransaction.objects.filter(transaction_type='commission').exclude(user__usertype='superadmin').aggregate(Sum('amount'))['amount__sum'] or 0
+        total_commissions_given = CommissionTransaction.objects.filter(transaction_type__in=['sale', 'commission']).exclude(user__usertype='superadmin').aggregate(Sum('amount'))['amount__sum'] or 0
     else:
-        # ...
         transactions = CommissionTransaction.objects.filter(user=target_user).order_by('-created_at')
         pending_withdrawals = WithdrawalRequest.objects.filter(user=target_user, status='pending').order_by('-created_at')
         all_withdrawal_requests = WithdrawalRequest.objects.filter(user=target_user).order_by('-created_at')
         user_pending_count = pending_withdrawals.count()
         
-    withdrawal_history = WithdrawalRequest.objects.filter(user=target_user).order_by('-created_at')
+    withdrawal_history = WithdrawalRequest.objects.filter(user=target_user, request_type='wallet').order_by('-created_at')
     
     return render(request, 'cyborgapp/wallet/dashboard.html', {
         'wallet': wallet,
@@ -2162,7 +2240,7 @@ def superadmin_user_wallets(request):
         length = int(request.GET.get('length', 10))
         search_value = request.GET.get('search[value]', '')
         
-        reqs = WithdrawalRequest.objects.all()
+        reqs = WithdrawalRequest.objects.filter(request_type='wallet').exclude(user__usertype='superadmin')
         records_total = reqs.count()
         
         if search_value:
@@ -2208,6 +2286,9 @@ def superadmin_user_wallets(request):
                 'ifsc_code': r.ifsc_code or 'N/A',
                 'account_holder': r.account_holder or 'N/A',
                 'phone_linked': r.phone_linked or 'N/A',
+                'razorpay_payout_id': r.razorpay_payout_id or '',
+                'payout_status': r.payout_status or '',
+                'payout_error': r.payout_error or '',
             })
             
         return JsonResponse({
@@ -2360,7 +2441,7 @@ def request_withdrawal(request):
             messages.error(request, 'Invalid amount.')
         else:
             # Create the withdrawal request with bank details
-            WithdrawalRequest.objects.create(
+            wr = WithdrawalRequest.objects.create(
                 user=target_user,
                 amount=amount,
                 account_number=acc_num,
@@ -2376,7 +2457,25 @@ def request_withdrawal(request):
             target_user.bank_phone = phone
             target_user.save()
             
-            messages.success(request, 'Withdrawal request submitted successfully.')
+            if request.user.usertype == 'superadmin':
+                from .utils import create_razorpay_x_payout
+                success, payout_res = create_razorpay_x_payout(wr)
+                if success:
+                    with transaction.atomic():
+                        wallet.balance = Decimal(str(wallet.balance)) - amount
+                        wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) + amount
+                        wallet.save()
+                        wr.status = 'approved'
+                        wr.remarks = 'Auto-approved for Superadmin'
+                        wr.save()
+                    messages.success(request, f'Withdrawal initiated successfully via RazorpayX! (Payout ID: {wr.razorpay_payout_id})')
+                else:
+                    wr.status = 'rejected'
+                    wr.remarks = f"Payout failed: {payout_res.get('message')}"
+                    wr.save()
+                    messages.error(request, f"RazorpayX Payout failed: {payout_res.get('message')}")
+            else:
+                messages.success(request, 'Withdrawal request submitted successfully.')
             
     return redirect('wallet_dashboard')
 
@@ -2386,7 +2485,7 @@ def withdrawal_requests_list(request):
         messages.error(request, 'Permission denied.')
         return redirect('wallet_dashboard')
         
-    requests = WithdrawalRequest.objects.all().order_by('-created_at')
+    requests = WithdrawalRequest.objects.filter(request_type='wallet').exclude(user__usertype='superadmin').order_by('-created_at')
     return render(request, 'cyborgapp/wallet/requests.html', {'requests': requests})
 
 @login_required(login_url='login')
@@ -2405,6 +2504,7 @@ def update_withdrawal_status(request, request_id):
              return JsonResponse({'status': 'error', 'message': 'Request already processed'}, status=400)
              
         if new_status == 'approved':
+            # Perform balance check first
             if wr.request_type in ['gst', 'expense']:
                 from .models import Lead
                 if wr.request_type == 'gst':
@@ -2416,28 +2516,38 @@ def update_withdrawal_status(request, request_id):
                     withdrawn_expense = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='expense', status='approved'))
                     current_balance = total_earned_expense - withdrawn_expense
                 
-                if current_balance >= wr.amount:
-                    wr.status = 'approved'
-                    wr.remarks = remarks
-                    wr.save()
-                    return JsonResponse({'status': 'success'})
-                else:
+                if current_balance < wr.amount:
                     return JsonResponse({'status': 'error', 'message': 'Insufficient balance in GST/Expense account.'}, status=400)
             else:
                 wallet = get_or_create_wallet(wr.user)
                 # Ensure balance is Decimal for comparison
                 current_balance = Decimal(str(wallet.balance))
-                if current_balance >= wr.amount:
-                    with transaction.atomic():
-                        wallet.balance = current_balance - Decimal(str(wr.amount))
-                        wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) + Decimal(str(wr.amount))
-                        wallet.save()
-                        wr.status = 'approved'
-                        wr.remarks = remarks
-                        wr.save()
-                    return JsonResponse({'status': 'success'})
-                else:
+                if current_balance < wr.amount:
                     return JsonResponse({'status': 'error', 'message': 'User has insufficient balance now.'}, status=400)
+
+            # Call Razorpay X Payout API
+            from .utils import create_razorpay_x_payout
+            success, payout_res = create_razorpay_x_payout(wr)
+            if not success:
+                return JsonResponse({'status': 'error', 'message': f'RazorpayX Payout failed: {payout_res}'}, status=400)
+
+            # Payout succeeded or is queued. Perform DB updates.
+            if wr.request_type in ['gst', 'expense']:
+                wr.status = 'approved'
+                wr.remarks = remarks
+                wr.save()
+                return JsonResponse({'status': 'success'})
+            else:
+                wallet = get_or_create_wallet(wr.user)
+                current_balance = Decimal(str(wallet.balance))
+                with transaction.atomic():
+                    wallet.balance = current_balance - Decimal(str(wr.amount))
+                    wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) + Decimal(str(wr.amount))
+                    wallet.save()
+                    wr.status = 'approved'
+                    wr.remarks = remarks
+                    wr.save()
+                return JsonResponse({'status': 'success'})
         elif new_status == 'rejected':
             wr.status = 'rejected'
             wr.remarks = remarks
@@ -4008,7 +4118,7 @@ def request_gst_withdrawal(request):
         elif amount <= 0:
             messages.error(request, 'Invalid amount.')
         else:
-            WithdrawalRequest.objects.create(
+            wr = WithdrawalRequest.objects.create(
                 user=request.user,
                 amount=amount,
                 request_type='gst',
@@ -4022,7 +4132,20 @@ def request_gst_withdrawal(request):
             request.user.bank_account_holder = holder
             request.user.bank_phone = phone
             request.user.save()
-            messages.success(request, 'GST withdrawal request submitted successfully.')
+
+            # Auto-approve & trigger RazorpayX payout immediately for Superadmin
+            from .utils import create_razorpay_x_payout
+            success, payout_res = create_razorpay_x_payout(wr)
+            if success:
+                wr.status = 'approved'
+                wr.remarks = 'Auto-approved for Superadmin'
+                wr.save()
+                messages.success(request, f'GST withdrawal initiated successfully via RazorpayX! (Payout ID: {wr.razorpay_payout_id})')
+            else:
+                wr.status = 'rejected'
+                wr.remarks = f"Payout failed: {payout_res.get('message')}"
+                wr.save()
+                messages.error(request, f"RazorpayX Payout failed: {payout_res.get('message')}")
             
     return redirect('superadmin_gst')
 
@@ -4055,7 +4178,7 @@ def request_expense_withdrawal(request):
         elif amount <= 0:
             messages.error(request, 'Invalid amount.')
         else:
-            WithdrawalRequest.objects.create(
+            wr = WithdrawalRequest.objects.create(
                 user=request.user,
                 amount=amount,
                 request_type='expense',
@@ -4068,6 +4191,21 @@ def request_expense_withdrawal(request):
             request.user.bank_ifsc = ifsc
             request.user.bank_account_holder = holder
             request.user.bank_phone = phone
+            request.user.save()
+
+            # Auto-approve & trigger RazorpayX payout immediately for Superadmin
+            from .utils import create_razorpay_x_payout
+            success, payout_res = create_razorpay_x_payout(wr)
+            if success:
+                wr.status = 'approved'
+                wr.remarks = 'Auto-approved for Superadmin'
+                wr.save()
+                messages.success(request, f'Expense withdrawal initiated successfully via RazorpayX! (Payout ID: {wr.razorpay_payout_id})')
+            else:
+                wr.status = 'rejected'
+                wr.remarks = f"Payout failed: {payout_res.get('message')}"
+                wr.save()
+                messages.error(request, f"RazorpayX Payout failed: {payout_res.get('message')}")
             request.user.save()
             messages.success(request, 'Expense withdrawal request submitted successfully.')
             

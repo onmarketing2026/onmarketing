@@ -460,6 +460,11 @@ class WithdrawalRequest(models.Model):
     ifsc_code = models.CharField(max_length=20, null=True, blank=True)
     account_holder = models.CharField(max_length=255, null=True, blank=True)
     phone_linked = models.CharField(max_length=20, null=True, blank=True)
+
+    # Razorpay X Payout Details
+    razorpay_payout_id = models.CharField(max_length=255, null=True, blank=True)
+    payout_status = models.CharField(max_length=50, null=True, blank=True)
+    payout_error = models.TextField(null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -81,6 +81,7 @@ urlpatterns = [
     path('installments/<int:installment_id>/pay-from-mail/', views.pay_installment_from_mail, name='pay_installment_from_mail'),
     path('installments/<int:installment_id>/verify/', views.verify_installment_payment, name='verify_installment_payment'),
     path('razorpay-webhook/', views.razorpay_webhook, name='razorpay_webhook'),
+    path('razorpayx-webhook/', views.razorpayx_webhook, name='razorpayx_webhook'),
     path('superadmin/commissions/', views.commission_settings, name='commission_settings'),
     
     # Category Management

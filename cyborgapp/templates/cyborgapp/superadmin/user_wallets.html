@@ -303,20 +303,42 @@
                         },
                         {
                             data: 'status',
-                            render: function(data) {
+                            render: function(data, type, row) {
+                                const displayStatus = row.payout_status || data;
                                 let bg = 'rgba(255, 193, 7, 0.12)';
                                 let color = '#d39e00';
-                                if (data === 'approved') {
+                                if (displayStatus === 'approved' || displayStatus === 'processed') {
                                     bg = 'rgba(25, 135, 84, 0.12)';
                                     color = '#198754';
-                                } else if (data === 'rejected') {
+                                } else if (displayStatus === 'rejected' || displayStatus === 'failed' || displayStatus === 'reversed') {
                                     bg = 'rgba(220, 53, 69, 0.12)';
                                     color = '#dc3545';
+                                } else if (displayStatus === 'processing' || displayStatus === 'queued') {
+                                    bg = 'rgba(13, 110, 253, 0.12)';
+                                    color = '#0d6efd';
+                                }
+                                let payoutHtml = '';
+                                {% if request.user.usertype == 'superadmin' %}
+                                if (row.razorpay_payout_id) {
+                                    payoutHtml += `
+                                        <div style="font-size: 0.75rem; margin-top: 4px; color: var(--text-muted); font-family: monospace;">
+                                            <strong>Payout ID:</strong> ${row.razorpay_payout_id}
+                                        </div>
+                                    `;
+                                }
+                                {% endif %}
+                                if (row.payout_error) {
+                                    payoutHtml += `
+                                        <div style="font-size: 0.65rem; color: #dc3545; margin-top: 4px; white-space: normal; max-width: 150px; line-height: 1.2;">
+                                            <strong>Error:</strong> ${row.payout_error}
+                                        </div>
+                                    `;
                                 }
                                 return `
                                     <span class="role-badge" style="background: ${bg}; color: ${color}; text-transform: capitalize;">
-                                        ${data}
+                                        ${displayStatus}
                                     </span>
+                                    ${payoutHtml}
                                 `;
                             }
                         },
