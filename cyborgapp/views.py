@@ -2468,12 +2468,12 @@ def request_withdrawal(request):
                         wr.status = 'approved'
                         wr.remarks = 'Auto-approved for Superadmin'
                         wr.save()
-                    messages.success(request, f'Withdrawal initiated successfully via RazorpayX! (Payout ID: {wr.razorpay_payout_id})')
+                    messages.success(request, 'Withdrawal initiated successfully!')
                 else:
                     wr.status = 'rejected'
                     wr.remarks = f"Payout failed: {payout_res.get('message')}"
                     wr.save()
-                    messages.error(request, f"RazorpayX Payout failed: {payout_res.get('message')}")
+                    messages.error(request, f"Payout failed: {payout_res.get('message')}")
             else:
                 messages.success(request, 'Withdrawal request submitted successfully.')
             
@@ -2491,7 +2491,7 @@ def withdrawal_requests_list(request):
 @login_required(login_url='login')
 def update_withdrawal_status(request, request_id):
     if request.user.usertype != 'superadmin':
-        return JsonResponse({'status': 'error', 'message': 'Permission denied'}, status=403)
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
         
     if request.method == 'POST':
         import json
@@ -2529,7 +2529,8 @@ def update_withdrawal_status(request, request_id):
             from .utils import create_razorpay_x_payout
             success, payout_res = create_razorpay_x_payout(wr)
             if not success:
-                return JsonResponse({'status': 'error', 'message': f'RazorpayX Payout failed: {payout_res}'}, status=400)
+                err_msg = payout_res.get('message') if isinstance(payout_res, dict) else str(payout_res)
+                return JsonResponse({'status': 'error', 'message': f'Payout failed: {err_msg}'}, status=400)
 
             # Payout succeeded or is queued. Perform DB updates.
             if wr.request_type in ['gst', 'expense']:
@@ -4140,12 +4141,12 @@ def request_gst_withdrawal(request):
                 wr.status = 'approved'
                 wr.remarks = 'Auto-approved for Superadmin'
                 wr.save()
-                messages.success(request, f'GST withdrawal initiated successfully via RazorpayX! (Payout ID: {wr.razorpay_payout_id})')
+                messages.success(request, 'GST withdrawal initiated successfully!')
             else:
                 wr.status = 'rejected'
                 wr.remarks = f"Payout failed: {payout_res.get('message')}"
                 wr.save()
-                messages.error(request, f"RazorpayX Payout failed: {payout_res.get('message')}")
+                messages.error(request, f"Payout failed: {payout_res.get('message')}")
             
     return redirect('superadmin_gst')
 
@@ -4193,21 +4194,20 @@ def request_expense_withdrawal(request):
             request.user.bank_phone = phone
             request.user.save()
 
-            # Auto-approve & trigger RazorpayX payout immediately for Superadmin
+            # Auto-approve & trigger payout immediately for Superadmin
             from .utils import create_razorpay_x_payout
             success, payout_res = create_razorpay_x_payout(wr)
             if success:
                 wr.status = 'approved'
                 wr.remarks = 'Auto-approved for Superadmin'
                 wr.save()
-                messages.success(request, f'Expense withdrawal initiated successfully via RazorpayX! (Payout ID: {wr.razorpay_payout_id})')
+                messages.success(request, 'Expense withdrawal initiated successfully!')
             else:
                 wr.status = 'rejected'
                 wr.remarks = f"Payout failed: {payout_res.get('message')}"
                 wr.save()
-                messages.error(request, f"RazorpayX Payout failed: {payout_res.get('message')}")
+                messages.error(request, f"Payout failed: {payout_res.get('message')}")
             request.user.save()
-            messages.success(request, 'Expense withdrawal request submitted successfully.')
             
     return redirect('superadmin_expenses')
 

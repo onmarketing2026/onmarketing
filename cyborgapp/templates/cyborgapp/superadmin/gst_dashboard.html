@@ -296,6 +296,21 @@
                 document.body.style.overflow = 'auto';
             }
         };
+
+        const withdrawForm = document.querySelector('#withdrawModal form');
+        if (withdrawForm) {
+            withdrawForm.addEventListener('submit', function() {
+                Swal.fire({
+                    title: 'Initiating Payout...',
+                    text: 'Please wait while processing.',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+            });
+        }
     });
 </script>
 {% endblock %}

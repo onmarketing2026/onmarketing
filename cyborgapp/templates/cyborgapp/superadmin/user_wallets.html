@@ -512,6 +512,16 @@
                 confirmButtonText: 'Confirm'
             }).then((result) => {
                 if (result.isConfirmed) {
+                    Swal.fire({
+                        title: status === 'approved' ? 'Processing Payout...' : 'Updating Request...',
+                        text: 'Please wait while we process the payout.',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
+                    });
+
                     fetch(`/wallet/requests/${id}/update/`, {
                         method: 'POST',
                         headers: {
@@ -531,6 +541,9 @@
                         } else {
                             Swal.fire('Error', data.message || 'Something went wrong', 'error');
                         }
+                    })
+                    .catch(err => {
+                        Swal.fire('Error', 'An unexpected error occurred.', 'error');
                     });
                 }
             });
