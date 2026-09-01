@@ -650,22 +650,9 @@ class GSTAndExpensesTestCase(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         
-        # Verify withdrawal request was created
+        # Verify withdrawal request was created and directly approved
         wr = WithdrawalRequest.objects.get(request_type='gst')
         self.assertEqual(wr.amount, Decimal('100.00'))
-        self.assertEqual(wr.status, 'pending')
-        
-        # Approve withdrawal request
-        import json
-        from unittest.mock import patch
-        with patch('cyborgapp.utils.create_razorpay_x_payout') as mock_payout:
-            mock_payout.return_value = (True, {})
-            client.post(f'/wallet/requests/{wr.id}/update/', json.dumps({
-                'status': 'approved',
-                'remarks': 'Approved GST withdrawal'
-            }), content_type='application/json')
-        
-        wr.refresh_from_db()
         self.assertEqual(wr.status, 'approved')
 
     def test_expenses_dashboard_access_and_withdrawal(self):
@@ -687,10 +674,59 @@ class GSTAndExpensesTestCase(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         
-        # Verify withdrawal request was created
+        # Verify withdrawal request was created and directly approved
         wr = WithdrawalRequest.objects.get(request_type='expense')
         self.assertEqual(wr.amount, Decimal('50.00'))
-        self.assertEqual(wr.status, 'pending')
+        self.assertEqual(wr.status, 'approved')
+
+    def test_associate_wallets_access(self):
+        client = Client()
+        client.login(username='superadmin@cyborg.com', password='password123')
+        
+        response = client.get('/superadmin/associate-wallets/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Company Financial Status')
+        self.assertContains(response, 'Associate Wallets Management')
+
+    def test_navbar_wallet_pending_counts(self):
+        # Create non-associate user pending request
+        wr_user = WithdrawalRequest.objects.create(
+            user=self.marketing_user,
+            amount=Decimal('500.00'),
+            account_number='654321',
+            ifsc_code='TEST0002',
+            account_holder='Mkt User',
+            status='pending',
+            request_type='wallet'
+        )
+        # Create associate pending request
+        wr_assoc = WithdrawalRequest.objects.create(
+            user=self.customer,
+            amount=Decimal('100.00'),
+            account_number='123456',
+            ifsc_code='TEST0001',
+            account_holder='Assoc',
+            status='pending',
+            request_type='wallet'
+        )
+        client = Client()
+        client.login(username='superadmin@cyborg.com', password='password123')
+        res = client.get('/superadmin/associate-wallets/')
+        self.assertEqual(res.context['global_pending_withdrawals_count'], 1)
+        self.assertEqual(res.context['global_pending_associate_withdrawals_count'], 1)
+
+    def test_customer_wallet_dashboard_cards(self):
+        client = Client()
+        client.login(username='customer@cyborg.com', password='password123')
+        
+        response = client.get('/wallet/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Current Balance')
+        self.assertContains(response, 'Total Withdrawal Earned')
+        self.assertContains(response, 'Total Earned')
+        self.assertContains(response, 'Pending Balance')
+        self.assertContains(response, 'View All Requests')
+        self.assertNotContains(response, 'Total Transactions')
 
 
 class SuperadminLeaderboardsTestCase(TestCase):
@@ -1200,7 +1236,7 @@ class LeadMailPaymentLinkTest(TestCase):
             self.assertEqual(response.url, 'https://rzp.io/i/mocked_link')
 
 
-class RazorpayXPayoutTestCase(TestCase):
+class ManualWithdrawalApprovalTestCase(TestCase):
     def setUp(self):
         self.superadmin = CustomUser.objects.create_user(
             username='superadmin_payout@cyborg.com',
@@ -1216,14 +1252,12 @@ class RazorpayXPayoutTestCase(TestCase):
             usertype='marketing',
             password='password123'
         )
-        # Give marketing user a wallet with some balance
         from cyborgapp.utils import get_or_create_wallet
         self.wallet = get_or_create_wallet(self.marketing_user)
         self.wallet.balance = Decimal('5000.00')
         self.wallet.total_earned = Decimal('5000.00')
         self.wallet.save()
 
-        # Create a pending wallet withdrawal request
         self.wr = WithdrawalRequest.objects.create(
             user=self.marketing_user,
             amount=Decimal('1000.00'),
@@ -1235,214 +1269,522 @@ class RazorpayXPayoutTestCase(TestCase):
             status='pending'
         )
 
-    def test_payout_fails_when_settings_missing(self):
-        from django.test import override_settings
-        with override_settings(
-            RAZORPAY_KEY_ID=None, RAZORPAY_KEY_SECRET=None,
-            RAZORPAY_X_KEY_ID=None, RAZORPAY_X_KEY_SECRET=None,
-            RAZORPAY_X_ACCOUNT_NUMBER=None
-        ):
-            client = Client()
-            client.login(username='superadmin_payout@cyborg.com', password='password123')
-            
-            import json
-            response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
-                'status': 'approved',
-                'remarks': 'Try approving without settings'
-            }), content_type='application/json')
-            
-            self.assertEqual(response.status_code, 400)
-            self.assertIn("Razorpay X credentials or account number settings are missing", response.json()['message'])
-            
-            # Request must remain pending
-            self.wr.refresh_from_db()
-            self.assertEqual(self.wr.status, 'pending')
-
-    def test_payout_success_flow(self):
-        from unittest.mock import patch
+    def test_superadmin_approval_deducts_wallet_balance(self):
         import json
-        
-        # Mock requests.post response for successful payout creation
-        mock_response = {
-            "id": "pout_test_12345",
-            "status": "processing",
-            "amount": 100000,
-            "currency": "INR",
-            "fund_account": {
-                "id": "fa_test_123",
-                "account_type": "bank_account",
-                "bank_account": {
-                    "name": "Marketing User Payout",
-                    "ifsc": "HDFC0000053",
-                    "account_number": "987654321012"
-                },
-                "contact": {
-                    "id": "cont_test_123",
-                    "name": "Marketing User Payout",
-                    "type": "vendor"
-                }
-            }
-        }
-        
-        with patch('requests.post') as mock_post:
-            # Setup mock to return 201 Created and json data
-            mock_post.return_value.status_code = 201
-            mock_post.return_value.json.return_value = mock_response
-            
-            client = Client()
-            client.login(username='superadmin_payout@cyborg.com', password='password123')
-            
-            response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
-                'status': 'approved',
-                'remarks': 'Approved'
-            }), content_type='application/json')
-            
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()['status'], 'success')
-            
-            # Verify request updated in DB
-            self.wr.refresh_from_db()
-            self.assertEqual(self.wr.status, 'approved')
-            self.assertEqual(self.wr.razorpay_payout_id, 'pout_test_12345')
-            self.assertEqual(self.wr.payout_status, 'processing')
-            self.assertIsNone(self.wr.payout_error)
-            
-            # Verify user wallet balance was deducted
-            self.wallet.refresh_from_db()
-            self.assertEqual(self.wallet.balance, Decimal('4000.00'))
-            self.assertEqual(self.wallet.withdrawn_amount, Decimal('1000.00'))
-
-    def test_payout_error_flow_does_not_approve(self):
-        from unittest.mock import patch
-        import json
-        
-        # Mock requests.post response for failed payout creation (low balance, invalid details, etc.)
-        mock_response = {
-            "error": {
-                "code": "BAD_REQUEST_ERROR",
-                "description": "Insufficient funds in RazorpayX account.",
-                "source": "business",
-                "step": "payout_creation",
-                "reason": "insufficient_funds"
-            }
-        }
-        
-        with patch('requests.post') as mock_post:
-            mock_post.return_value.status_code = 400
-            mock_post.return_value.json.return_value = mock_response
-            
-            client = Client()
-            client.login(username='superadmin_payout@cyborg.com', password='password123')
-            
-            response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
-                'status': 'approved',
-                'remarks': 'Approved'
-            }), content_type='application/json')
-            
-            self.assertEqual(response.status_code, 400)
-            self.assertIn("Insufficient funds in RazorpayX account", response.json()['message'])
-            
-            # Verify request remains pending in DB
-            self.wr.refresh_from_db()
-            self.assertEqual(self.wr.status, 'pending')
-            self.assertEqual(self.wr.payout_status, 'failed')
-            self.assertEqual(self.wr.payout_error, 'Insufficient funds in RazorpayX account.')
-            
-            # Verify user wallet balance NOT deducted
-            self.wallet.refresh_from_db()
-            self.assertEqual(self.wallet.balance, Decimal('5000.00'))
-            self.assertEqual(self.wallet.withdrawn_amount, Decimal('0.00'))
-
-    def test_razorpayx_webhook_processed(self):
-        import hmac
-        import hashlib
-        import json
-        
-        self.wr.razorpay_payout_id = 'pout_processed_123'
-        self.wr.status = 'approved'
-        self.wr.save()
-
-        self.wallet.balance = Decimal('4000.00')
-        self.wallet.withdrawn_amount = Decimal('1000.00')
-        self.wallet.save()
-
-        payload = {
-            "event": "payout.processed",
-            "payload": {
-                "payout": {
-                    "entity": {
-                        "id": "pout_processed_123",
-                        "status": "processed"
-                    }
-                }
-            }
-        }
-        body_bytes = json.dumps(payload).encode('utf-8')
-        sig = hmac.new(b'Onmarketing2026', body_bytes, hashlib.sha256).hexdigest()
-
         client = Client()
-        response = client.post(
-            '/razorpayx-webhook/',
-            data=body_bytes,
-            content_type='application/json',
-            HTTP_X_RAZORPAY_SIGNATURE=sig
-        )
+        client.login(username='superadmin_payout@cyborg.com', password='password123')
+        
+        response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
+            'status': 'approved',
+            'remarks': 'Manually approved by superadmin'
+        }), content_type='application/json')
+        
         self.assertEqual(response.status_code, 200)
-
+        self.assertEqual(response.json()['status'], 'success')
+        
         self.wr.refresh_from_db()
-        self.assertEqual(self.wr.payout_status, 'processed')
         self.assertEqual(self.wr.status, 'approved')
-        self.assertIsNone(self.wr.payout_error)
-
+        self.assertEqual(self.wr.remarks, 'Manually approved by superadmin')
+        
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance, Decimal('4000.00'))
         self.assertEqual(self.wallet.withdrawn_amount, Decimal('1000.00'))
 
-    def test_razorpayx_webhook_failed_refunds_wallet(self):
-        import hmac
-        import hashlib
+    def test_superadmin_rejection_leaves_wallet_balance_intact(self):
         import json
-        
-        self.wr.razorpay_payout_id = 'pout_failed_123'
-        self.wr.status = 'approved'
-        self.wr.save()
-
-        self.wallet.balance = Decimal('4000.00')
-        self.wallet.withdrawn_amount = Decimal('1000.00')
-        self.wallet.save()
-
-        payload = {
-            "event": "payout.failed",
-            "payload": {
-                "payout": {
-                    "entity": {
-                        "id": "pout_failed_123",
-                        "status": "failed",
-                        "failure_reason": "Invalid beneficiary account number"
-                    }
-                }
-            }
-        }
-        body_bytes = json.dumps(payload).encode('utf-8')
-        sig = hmac.new(b'Onmarketing2026', body_bytes, hashlib.sha256).hexdigest()
-
         client = Client()
-        response = client.post(
-            '/razorpayx-webhook/',
-            data=body_bytes,
-            content_type='application/json',
-            HTTP_X_RAZORPAY_SIGNATURE=sig
-        )
+        client.login(username='superadmin_payout@cyborg.com', password='password123')
+        
+        response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
+            'status': 'rejected',
+            'remarks': 'Rejected by superadmin'
+        }), content_type='application/json')
+        
         self.assertEqual(response.status_code, 200)
-
+        self.assertEqual(response.json()['status'], 'success')
+        
         self.wr.refresh_from_db()
-        self.assertEqual(self.wr.payout_status, 'failed')
         self.assertEqual(self.wr.status, 'rejected')
-        self.assertEqual(self.wr.payout_error, 'Invalid beneficiary account number')
-
+        
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance, Decimal('5000.00'))
         self.assertEqual(self.wallet.withdrawn_amount, Decimal('0.00'))
+
+    def test_insufficient_balance_prevents_approval(self):
+        import json
+        self.wallet.balance = Decimal('500.00')
+        self.wallet.save()
+        
+        client = Client()
+        client.login(username='superadmin_payout@cyborg.com', password='password123')
+        
+        response = client.post(f'/wallet/requests/{self.wr.id}/update/', json.dumps({
+            'status': 'approved',
+            'remarks': 'Approve'
+        }), content_type='application/json')
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('insufficient balance', response.json()['message'].lower())
+        
+        self.wr.refresh_from_db()
+        self.assertEqual(self.wr.status, 'pending')
+
+
+class AssociateCompanyLeadCompletionTestCase(TestCase):
+    def setUp(self):
+        from .models import Category, SubCategory
+        self.customer = CustomUser.objects.create_user(
+            username='assoc_customer@cyborg.com',
+            email='assoc_customer@cyborg.com',
+            password='password123',
+            usertype='customer',
+            name='Test Associate Company'
+        )
+        self.marketing_user = CustomUser.objects.create_user(
+            username='mkt_user@cyborg.com',
+            email='mkt_user@cyborg.com',
+            password='password123',
+            usertype='marketing'
+        )
+        self.cat = Category.objects.create(name='Test Category', cat_type='service')
+        self.subcat = SubCategory.objects.create(category=self.cat, name='Test Subcat')
+        
+        self.req = CustomerRequirement.objects.create(
+            customer=self.customer,
+            category=self.cat,
+            title='Test Requirement',
+            status='approved'
+        )
+        self.lead = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketing_user,
+            name='Confirmed Lead',
+            phone='1234567890',
+            status='confirmed',
+            total_amount=1000
+        )
+
+    def test_associate_company_mark_lead_completed_and_block_further_updates(self):
+        import json
+        client = Client()
+        client.login(username='assoc_customer@cyborg.com', password='password123')
+        
+        # 1. Fetch updates before completion -> can_add=True, is_completed=False
+        res = client.get(f'/leads/{self.lead.id}/associate-updates/get/')
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()['can_add'])
+        self.assertFalse(res.json()['is_completed'])
+        
+        # 2. Submit update with mark_completed=True
+        res = client.post(
+            f'/leads/{self.lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Work finished', 'mark_completed': True}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['status'], 'success')
+        self.assertTrue(res.json()['is_completed'])
+        
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.status, 'completed')
+        
+        # 3. Fetch updates after completion -> can_add=False, is_completed=True
+        res = client.get(f'/leads/{self.lead.id}/associate-updates/get/')
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.json()['can_add'])
+        self.assertTrue(res.json()['is_completed'])
+        
+        # 4. Attempting to add another update should fail with status 400
+        res = client.post(
+            f'/leads/{self.lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Trying another update'}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('already completed', res.json()['message'])
+
+    def test_associate_company_cannot_complete_non_confirmed_lead(self):
+        import json
+        pending_lead = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketing_user,
+            name='Pending Lead',
+            phone='1112223334',
+            status='pending',
+            total_amount=500
+        )
+        client = Client()
+        client.login(username='assoc_customer@cyborg.com', password='password123')
+
+        # Check get updates API -> can_mark_completed should be False
+        res = client.get(f'/leads/{pending_lead.id}/associate-updates/get/')
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.json()['can_mark_completed'])
+
+        # Attempt to mark completed -> should return HTTP 400 error
+        res = client.post(
+            f'/leads/{pending_lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Try mark complete', 'mark_completed': True}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 400)
+
+        pending_lead.refresh_from_db()
+        self.assertEqual(pending_lead.status, 'pending')
+
+    def test_associate_company_cannot_complete_lead_with_pending_installments(self):
+        import json
+        from .models import LeadInstallment
+        part_lead = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketing_user,
+            name='Part Payment Lead',
+            phone='1112223335',
+            status='confirmed',
+            payment_mode='part',
+            total_amount=1000
+        )
+        # 1st installment paid, 2nd installment pending
+        LeadInstallment.objects.create(lead=part_lead, installment_number=1, amount=500, status='paid')
+        LeadInstallment.objects.create(lead=part_lead, installment_number=2, amount=500, status='pending')
+
+        client = Client()
+        client.login(username='assoc_customer@cyborg.com', password='password123')
+
+        # Check get updates API -> can_mark_completed should be False, lead_status should be Payment Pending
+        res = client.get(f'/leads/{part_lead.id}/associate-updates/get/')
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.json()['can_mark_completed'])
+        self.assertIn('Payment Pending (so cannot change to completed)', res.json()['lead_status'])
+
+        # Attempt to mark completed -> should return HTTP 400 error
+        res = client.post(
+            f'/leads/{part_lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Try mark complete with pending installment', 'mark_completed': True}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('all installments cleared', res.json()['message'])
+
+        part_lead.refresh_from_db()
+        self.assertEqual(part_lead.status, 'confirmed')
+
+    def test_part_payment_proportional_gst_and_expense(self):
+        from .models import RequirementItem, LeadItem, LeadInstallment
+        subcat = SubCategory.objects.create(category=self.cat, name='Subcat Proportional GST')
+        req_item = RequirementItem.objects.create(
+            requirement=self.req,
+            subcategory=subcat,
+            customer_amount=Decimal('1000.00'),
+            admin_markup=Decimal('200.00'),
+            other_expenses=Decimal('100.00'),
+            gst=Decimal('18.00')
+        )
+        # Total base = 1300, total GST = 234, total amount = 1534
+        part_lead = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketing_user,
+            name='Part Lead Proportional',
+            phone='9990001112',
+            status='confirmed',
+            payment_mode='part',
+            total_amount=Decimal('1534.00')
+        )
+        LeadItem.objects.create(lead=part_lead, subcategory=subcat)
+
+        inst1 = LeadInstallment.objects.create(lead=part_lead, installment_number=1, amount=Decimal('767.00'), status='paid')
+        inst2 = LeadInstallment.objects.create(lead=part_lead, installment_number=2, amount=Decimal('767.00'), status='pending')
+
+        # 50% paid -> GST should be 117.00 (50% of 234), Expense should be 50.00 (50% of 100)
+        self.assertEqual(part_lead.get_gst_amount, Decimal('117.00'))
+        self.assertEqual(part_lead.get_expense_amount, Decimal('50.00'))
+
+        # Pay 2nd installment (100% paid)
+        inst2.status = 'paid'
+        inst2.save()
+
+        # 100% paid -> GST should be 234.00, Expense should be 100.00
+        self.assertEqual(part_lead.get_gst_amount, Decimal('234.00'))
+        self.assertEqual(part_lead.get_expense_amount, Decimal('100.00'))
+
+    def test_associate_company_notifications_visibility_and_recipients(self):
+        import json
+        superadmin = CustomUser.objects.create_user(
+            username='sa_notif@cyborg.com',
+            email='sa_notif@cyborg.com',
+            password='password123',
+            usertype='superadmin'
+        )
+        district = CustomUser.objects.create_user(
+            username='district_notif@cyborg.com',
+            email='district_notif@cyborg.com',
+            password='password123',
+            usertype='district'
+        )
+        mandalam = CustomUser.objects.create_user(
+            username='mandalam_notif@cyborg.com',
+            email='mandalam_notif@cyborg.com',
+            password='password123',
+            usertype='mandalam'
+        )
+        manager = CustomUser.objects.create_user(
+            username='manager_notif@cyborg.com',
+            email='manager_notif@cyborg.com',
+            password='password123',
+            usertype='manager',
+            assigned_district=district
+        )
+        self.marketing_user.assigned_district = district
+        self.marketing_user.assigned_mandalam = mandalam
+        self.marketing_user.save()
+
+        # Submit status completion as associate company
+        client = Client()
+        client.login(username='assoc_customer@cyborg.com', password='password123')
+        client.post(
+            f'/leads/{self.lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Completed work', 'mark_completed': True}),
+            content_type='application/json'
+        )
+
+        # Check Superadmin notifications -> actor should be company name
+        sa_client = Client()
+        sa_client.login(username='sa_notif@cyborg.com', password='password123')
+        res = sa_client.get('/api/notifications/')
+        self.assertEqual(res.status_code, 200)
+        sa_notes = res.json()['notifications']
+        self.assertTrue(len(sa_notes) > 0)
+        self.assertEqual(sa_notes[0]['actor'], 'Test Associate Company')
+
+        # Check District Franchise notifications -> actor should be "Associate Company"
+        df_client = Client()
+        df_client.login(username='district_notif@cyborg.com', password='password123')
+        res = df_client.get('/api/notifications/')
+        self.assertEqual(res.status_code, 200)
+        df_notes = res.json()['notifications']
+        self.assertTrue(len(df_notes) > 0)
+        self.assertEqual(df_notes[0]['actor'], 'Associate Company')
+
+    def test_completed_lead_gst_and_confirmed_nav_behaviour(self):
+        from .models import RequirementItem
+        superadmin = CustomUser.objects.create_user(
+            username='sa_gst_test@cyborg.com',
+            email='sa_gst_test@cyborg.com',
+            password='password123',
+            usertype='superadmin'
+        )
+        subcat = SubCategory.objects.create(category=self.cat, name='Subcat GST')
+        req_item = RequirementItem.objects.create(
+            requirement=self.req,
+            subcategory=subcat,
+            customer_amount=Decimal('1000.00'),
+            admin_markup=Decimal('200.00'),
+            other_expenses=Decimal('100.00'),
+            gst=Decimal('18.00')
+        )
+        lead_comp = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketing_user,
+            name='Completed Lead GST',
+            phone='9998887776',
+            status='completed',
+            total_amount=Decimal('1534.00'),
+            payment_mode='single'
+        )
+        from .models import LeadItem
+        LeadItem.objects.create(lead=lead_comp, subcategory=subcat)
+
+        client = Client()
+        client.login(username='sa_gst_test@cyborg.com', password='password123')
+
+        # 1. Verify completed lead IS included in confirmed leads list
+        res_conf_nav = client.get('/leads/confirmed/')
+        self.assertEqual(res_conf_nav.status_code, 200)
+        self.assertIn(lead_comp, res_conf_nav.context['leads'])
+
+        # 2. Verify completed lead is NOT in main leads list
+        res_main_nav = client.get('/leads/')
+        self.assertEqual(res_main_nav.status_code, 200)
+        self.assertNotIn(lead_comp, res_main_nav.context['leads'])
+
+        # 3. Verify completed lead IS included in GST & Expense calculations
+        res_gst = client.get('/superadmin/gst/')
+        self.assertEqual(res_gst.status_code, 200)
+        self.assertTrue(res_gst.context['total_earned'] >= Decimal('234.00')) # 1300 * 18%
+
+        res_exp = client.get('/superadmin/expenses/')
+        self.assertEqual(res_exp.status_code, 200)
+        self.assertTrue(res_exp.context['total_earned'] >= Decimal('100.00'))
+
+    def test_associate_company_wallet_split_and_completion_transfer(self):
+        from .models import RequirementItem, LeadItem, Wallet, AssociateWalletLog
+        from .utils import distribute_product_sale_commission
+
+        assoc_user = CustomUser.objects.create_user(
+            username='assoc_split_test@cyborg.com',
+            email='assoc_split_test@cyborg.com',
+            password='password123',
+            usertype='customer',
+            name='Test Associate Split Co'
+        )
+
+        cat = Category.objects.create(name='Cat Split Test')
+        req = CustomerRequirement.objects.create(
+            customer=assoc_user,
+            title='Split Test Project',
+            category=cat
+        )
+        subcat = SubCategory.objects.create(category=cat, name='Subcat Split')
+        req_item = RequirementItem.objects.create(
+            requirement=req,
+            subcategory=subcat,
+            customer_amount=Decimal('2000.00'),
+            admin_markup=Decimal('0.00'),
+            other_expenses=Decimal('0.00'),
+            gst=Decimal('0.00')
+        )
+        lead = Lead.objects.create(
+            requirement=req,
+            marketing_user=self.marketing_user,
+            name='Split Lead',
+            phone='1234567890',
+            status='confirmed',
+            total_amount=Decimal('2000.00'),
+            payment_mode='single'
+        )
+        LeadItem.objects.create(lead=lead, subcategory=subcat)
+
+        # Distribute commission
+        distribute_product_sale_commission(lead)
+
+        wallet = Wallet.objects.get(user=assoc_user)
+        # Check total_earned is 2000
+        self.assertEqual(wallet.total_earned, Decimal('2000.00'))
+        # Check 50% added to current balance (1000)
+        self.assertEqual(wallet.balance, Decimal('1000.00'))
+        # Check 50% added to total withdrawal earned (1000)
+        self.assertEqual(wallet.total_withdrawal_earned, Decimal('1000.00'))
+        # Check 50% added to pending balance (1000)
+        self.assertEqual(wallet.pending_balance, Decimal('1000.00'))
+
+        # Check AssociateWalletLog records created
+        wd_log = AssociateWalletLog.objects.get(user=assoc_user, lead=lead, log_type='withdrawal')
+        self.assertEqual(wd_log.amount, Decimal('1000.00'))
+        self.assertIn('reflected to withdrawal balance', wd_log.description)
+
+        pending_log = AssociateWalletLog.objects.get(user=assoc_user, lead=lead, log_type='pending')
+        self.assertEqual(pending_log.amount, Decimal('1000.00'))
+        self.assertIn('reflected to pending balance', pending_log.description)
+
+        # Now mark lead completed via lead_add_associate_update
+        import json
+        client = Client()
+        client.login(username='assoc_split_test@cyborg.com', password='password123')
+        res = client.post(
+            f'/leads/{lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Finished work', 'mark_completed': True}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 200)
+
+        wallet.refresh_from_db()
+        # Pending balance should be 0
+        self.assertEqual(wallet.pending_balance, Decimal('0.00'))
+        # Current balance should be 2000
+        self.assertEqual(wallet.balance, Decimal('2000.00'))
+        # Total withdrawal earned should be 2000
+        self.assertEqual(wallet.total_withdrawal_earned, Decimal('2000.00'))
+        # Total earned remains 2000
+        self.assertEqual(wallet.total_earned, Decimal('2000.00'))
+
+        # Verify transfer log created
+        transfer_pending_log = AssociateWalletLog.objects.filter(
+            user=assoc_user, lead=lead, log_type='pending', description__contains='transferred to withdrawal balance'
+        ).first()
+        self.assertIsNotNone(transfer_pending_log)
+        self.assertEqual(transfer_pending_log.amount, Decimal('1000.00'))
+
+        transfer_wd_log = AssociateWalletLog.objects.filter(
+            user=assoc_user, lead=lead, log_type='withdrawal', description__contains='credited after completion'
+        ).first()
+        self.assertIsNotNone(transfer_wd_log)
+        self.assertEqual(transfer_wd_log.amount, Decimal('1000.00'))
+
+    def test_dynamic_associate_company_withdrawal_percentage(self):
+        from .models import RequirementItem, LeadItem, Wallet, AssociateWalletLog
+        from .utils import distribute_product_sale_commission
+
+        # Create Associate Company with custom initial_withdrawal_percentage = 60.00
+        assoc_user = CustomUser.objects.create_user(
+            username='assoc_dynamic_test@cyborg.com',
+            email='assoc_dynamic_test@cyborg.com',
+            password='password123',
+            usertype='customer',
+            name='Test Dynamic Split Co',
+            initial_withdrawal_percentage=Decimal('60.00')
+        )
+
+        cat = Category.objects.create(name='Cat Dynamic Test')
+        req = CustomerRequirement.objects.create(
+            customer=assoc_user,
+            title='Dynamic Split Test Project',
+            category=cat
+        )
+        subcat = SubCategory.objects.create(category=cat, name='Subcat Dynamic')
+        RequirementItem.objects.create(
+            requirement=req,
+            subcategory=subcat,
+            customer_amount=Decimal('2000.00'),
+            admin_markup=Decimal('0.00'),
+            other_expenses=Decimal('0.00'),
+            gst=Decimal('0.00')
+        )
+        lead = Lead.objects.create(
+            requirement=req,
+            marketing_user=self.marketing_user,
+            name='Dynamic Split Lead',
+            phone='1234567890',
+            status='confirmed',
+            total_amount=Decimal('2000.00'),
+            payment_mode='single'
+        )
+        LeadItem.objects.create(lead=lead, subcategory=subcat)
+
+        # Distribute commission
+        distribute_product_sale_commission(lead)
+
+        wallet = Wallet.objects.get(user=assoc_user)
+        # Check total_earned is 2000
+        self.assertEqual(wallet.total_earned, Decimal('2000.00'))
+        # 60% of 2000 = 1200 added to current balance
+        self.assertEqual(wallet.balance, Decimal('1200.00'))
+        # 60% of 2000 = 1200 added to total withdrawal earned
+        self.assertEqual(wallet.total_withdrawal_earned, Decimal('1200.00'))
+        # 40% of 2000 = 800 added to pending balance
+        self.assertEqual(wallet.pending_balance, Decimal('800.00'))
+
+        # Check AssociateWalletLog records created
+        wd_log = AssociateWalletLog.objects.get(user=assoc_user, lead=lead, log_type='withdrawal')
+        self.assertEqual(wd_log.amount, Decimal('1200.00'))
+
+        pending_log = AssociateWalletLog.objects.get(user=assoc_user, lead=lead, log_type='pending')
+        self.assertEqual(pending_log.amount, Decimal('800.00'))
+
+        # Complete lead and verify remaining 800 (40%) moves to withdrawal balance
+        import json
+        client = Client()
+        client.login(username='assoc_dynamic_test@cyborg.com', password='password123')
+        res = client.post(
+            f'/leads/{lead.id}/associate-updates/add/',
+            json.dumps({'update_text': 'Completed work', 'mark_completed': True}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 200)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.pending_balance, Decimal('0.00'))
+        self.assertEqual(wallet.balance, Decimal('2000.00'))
+        self.assertEqual(wallet.total_withdrawal_earned, Decimal('2000.00'))
 
 
 

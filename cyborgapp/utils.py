@@ -14,6 +14,8 @@ def add_to_wallet(user, amount, transaction_type, reference_id, description):
         amount_decimal = Decimal(str(amount))
         wallet.total_earned = Decimal(str(wallet.total_earned)) + amount_decimal
         wallet.balance = Decimal(str(wallet.balance)) + amount_decimal
+        if user and user.usertype == 'customer':
+            wallet.total_withdrawal_earned = Decimal(str(wallet.total_withdrawal_earned)) + amount_decimal
         wallet.save()
         
         CommissionTransaction.objects.create(
@@ -66,13 +68,56 @@ def distribute_product_sale_commission(lead, installment=None):
 
     # 1. Pay the Customer their base amount
     if total_customer_amount > 0:
-        add_to_wallet(
-            user=lead.requirement.customer,
-            amount=total_customer_amount,
-            transaction_type='sale',
-            reference_id=str(lead.id),
-            description=f"Payment for project: {lead.requirement.title} (Lead: {lead.name}){item_summary}{inst_summary}"
-        )
+        customer = lead.requirement.customer
+        if customer and customer.usertype == 'customer':
+            pct = customer.initial_withdrawal_percentage if customer.initial_withdrawal_percentage is not None else Decimal('50.00')
+            pct_decimal = Decimal(str(pct))
+            withdrawable_amount = (total_customer_amount * (pct_decimal / Decimal('100.00'))).quantize(Decimal('0.01'))
+            pending_amount = total_customer_amount - withdrawable_amount
+
+            with transaction.atomic():
+                wallet = get_or_create_wallet(customer)
+                wallet.total_earned = Decimal(str(wallet.total_earned)) + total_customer_amount
+                wallet.balance = Decimal(str(wallet.balance)) + withdrawable_amount
+                wallet.total_withdrawal_earned = Decimal(str(wallet.total_withdrawal_earned)) + withdrawable_amount
+                wallet.pending_balance = Decimal(str(wallet.pending_balance)) + pending_amount
+                wallet.save()
+
+                # Account History (full amount entry)
+                CommissionTransaction.objects.create(
+                    user=customer,
+                    amount=total_customer_amount,
+                    transaction_type='sale',
+                    reference_id=lead.id,
+                    description=f"Payment for project: {lead.requirement.title} (Lead: {lead.name}){item_summary}{inst_summary}"
+                )
+
+                from .models import AssociateWalletLog
+                if withdrawable_amount > 0:
+                    AssociateWalletLog.objects.create(
+                        user=customer,
+                        lead=lead,
+                        amount=withdrawable_amount,
+                        log_type='withdrawal',
+                        description=f"₹{withdrawable_amount:,.2f} has reflected to withdrawal balance from lead: {lead.name} ({lead.requirement.title}){inst_summary}"
+                    )
+
+                if pending_amount > 0:
+                    AssociateWalletLog.objects.create(
+                        user=customer,
+                        lead=lead,
+                        amount=pending_amount,
+                        log_type='pending',
+                        description=f"₹{pending_amount:,.2f} has reflected to pending balance from lead: {lead.name} ({lead.requirement.title}){inst_summary}"
+                    )
+        else:
+            add_to_wallet(
+                user=customer,
+                amount=total_customer_amount,
+                transaction_type='sale',
+                reference_id=str(lead.id),
+                description=f"Payment for project: {lead.requirement.title} (Lead: {lead.name}){item_summary}{inst_summary}"
+            )
 
     if total_markup_pool <= 0:
         return
@@ -197,7 +242,7 @@ def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
     # either created by the fc_user themselves, or created by marketing users under them.
     for sub in mandatory_subs:
         leads_qs = Lead.objects.filter(
-            status='confirmed'
+            status__in=['confirmed', 'completed']
         ).filter(
             Q(marketing_user=fc_user) | Q(marketing_user__assigned_mandalam=fc_user)
         ).filter(
@@ -238,7 +283,7 @@ def trigger_lead_incentives(lead):
     
     confirmed_count = Lead.objects.filter(
         marketing_user=marketing_user,
-        status='confirmed'
+        status__in=['confirmed', 'completed']
     ).annotate(
         has_pending=Exists(pending_installments)
     ).filter(

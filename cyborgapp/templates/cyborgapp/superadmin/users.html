@@ -401,6 +401,12 @@
                     </select>
                 </div>
 
+                <div class="form-group" id="customer-withdrawal-group" style="display: none;">
+                    <label>Initial Withdrawal Percentage (%) <span style="color: red;">*</span></label>
+                    <input type="number" step="0.01" min="0" max="100" id="initial_withdrawal_percentage" name="initial_withdrawal_percentage" class="form-control" value="50.00" placeholder="e.g. 50">
+                    <small style="color: var(--text-muted); margin-top: 5px; display: block;">Percentage of lead commission released to withdrawal balance upon confirmation. (Default: 50%)</small>
+                </div>
+
                 <div id="hierarchy-section">
                     {% if request.user.usertype == 'superadmin' %}
                     <div class="form-group" id="district-group">
@@ -658,8 +664,9 @@
                                         data-district="${row.assigned_district_id}"
                                         data-mandalam="${row.assigned_mandalam_id}"
                                         data-accessible-districts="${row.accessible_districts}"
-                                 data-assigned-fcs="${row.assigned_facilitation_centers || ''}"
-                                         data-assigned-fc-names='${JSON.stringify(row.assigned_fc_names || [])}'>
+                                        data-initial-withdrawal="${row.initial_withdrawal_percentage || '50.00'}"
+                                        data-assigned-fcs="${row.assigned_facilitation_centers || ''}"
+                                        data-assigned-fc-names='${JSON.stringify(row.assigned_fc_names || [])}'>
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                                 <form action="/superadmin/users/${row.id}/delete/" method="POST" style="display:inline;" class="delete-form">
@@ -927,6 +934,7 @@
             let showDistrict = false;
             let showMandalam = false;
             let showAccessibleDistricts = false;
+            let showCustomerWithdrawal = false;
             let showStaffFc = false;
 
             if (currentUserType === 'superadmin') {
@@ -936,6 +944,7 @@
                     showMandalam = true;
                 } else if (role === 'customer') {
                     showAccessibleDistricts = true;
+                    showCustomerWithdrawal = true;
                 } else if (role === 'staff') {
                     showStaffFc = true;
                 }
@@ -945,10 +954,16 @@
                 }
                 if (role === 'customer') {
                     showAccessibleDistricts = true;
+                    showCustomerWithdrawal = true;
                 }
             }
 
             const staffFcGroup = document.getElementById('staff-fc-group');
+            const customerWithdrawalGroup = document.getElementById('customer-withdrawal-group');
+
+            if (customerWithdrawalGroup) {
+                customerWithdrawalGroup.style.display = showCustomerWithdrawal ? 'block' : 'none';
+            }
 
             if (showDistrict || showMandalam || showAccessibleDistricts || showStaffFc) {
                 hierarchySection.style.display = 'block';
@@ -1159,6 +1174,7 @@
             emailInput.style.backgroundColor = "";
             emailInput.style.borderColor = "";
             document.getElementById('emailError').style.display = 'none';
+            document.getElementById('initial_withdrawal_percentage').value = '50.00';
             submitBtn.disabled = false;
             submitBtn.style.opacity = '1';
             
@@ -1196,6 +1212,7 @@
             const districtId = this.getAttribute('data-district');
             const mandalamId = this.getAttribute('data-mandalam');
             const accessibleDistricts = this.getAttribute('data-accessible-districts');
+            const initialWithdrawal = this.getAttribute('data-initial-withdrawal') || '50.00';
             const assignedFcsStr = this.getAttribute('data-assigned-fcs') || '';
 
             // Track which staff is being edited so we exclude their own FCs from "already taken"
@@ -1209,6 +1226,7 @@
             document.getElementById('userId').value = id;
             document.getElementById('name').value = name;
             document.getElementById('email').value = email;
+            document.getElementById('initial_withdrawal_percentage').value = initialWithdrawal;
             
             emailInput.readOnly = false;
             emailInput.style.backgroundColor = "";

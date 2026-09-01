@@ -9,8 +9,10 @@ def wallet_context(request):
 
     if request.user.is_authenticated:
         if request.user.usertype == 'superadmin':
-            pending_count = WithdrawalRequest.objects.filter(status='pending').count()
+            pending_count = WithdrawalRequest.objects.filter(status='pending').exclude(user__usertype='customer').count()
+            associate_pending_count = WithdrawalRequest.objects.filter(status='pending', user__usertype='customer').count()
             context['global_pending_withdrawals_count'] = pending_count
+            context['global_pending_associate_withdrawals_count'] = associate_pending_count
 
         elif request.user.usertype == 'staff':
             # Handle clear_fc flag

@@ -30,6 +30,14 @@ class CustomUser(AbstractUser):
     # For Staff to monitor multiple Fecilitation Centers
     assigned_facilitation_centers = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='staff_users')
 
+    # Initial withdrawal percentage for Associate Company
+    initial_withdrawal_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=50.00,
+        help_text="Initial withdrawal percentage for Associate Company on lead confirmation"
+    )
+
     # Bank Account Details (Stored for pre-filling)
     bank_account_number = models.CharField(max_length=50, null=True, blank=True)
     bank_ifsc = models.CharField(max_length=20, null=True, blank=True)
@@ -69,10 +77,10 @@ class SubCategory(models.Model):
             requirement_item__subcategory=self,
             requirement_item__requirement__status='approved'
         ).exists()
-        # Locked if any confirmed lead exists against this subcategory
+        # Locked if any confirmed or completed lead exists against this subcategory
         has_leads = LeadItem.objects.filter(
             subcategory=self,
-            lead__status='confirmed'
+            lead__status__in=['confirmed', 'completed']
         ).exists()
         return assigned or has_leads
 
@@ -194,7 +202,7 @@ class RequirementItem(models.Model):
         return LeadItem.objects.filter(
             subcategory=self.subcategory,
             lead__requirement=self.requirement,
-            lead__status='confirmed'
+            lead__status__in=['confirmed', 'completed']
         ).aggregate(Sum('count'))['count__sum'] or 0
 
     @property
@@ -219,6 +227,7 @@ class Lead(models.Model):
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
+        ('completed', 'Completed'),
     )
     LEVEL_CHOICES = (
         ('marketing', 'Marketing'),
@@ -249,7 +258,7 @@ class Lead(models.Model):
 
     @property
     def get_total_amount(self):
-        if self.status == 'confirmed' and self.total_amount > 0:
+        if self.status in ['confirmed', 'completed'] and self.total_amount > 0:
             return self.total_amount
             
         total = 0
@@ -284,25 +293,34 @@ class Lead(models.Model):
 
     @property
     def get_expense_amount(self):
-        total = 0
+        from decimal import Decimal
+        total = Decimal('0.00')
         for item in self.items.all():
             req_item = self.requirement.items.filter(subcategory=item.subcategory).first()
             if req_item:
                 qty = item.count if self.requirement.category and self.requirement.category.cat_type == 'count' else 1
-                total += req_item.other_expenses * (qty or 1)
+                total += req_item.other_expenses * Decimal(str(qty or 1))
+        if self.payment_mode == 'part' and self.get_total_amount > Decimal('0.00'):
+            paid_amount = sum((inst.amount for inst in self.installments.filter(status='paid')), Decimal('0.00'))
+            ratio = paid_amount / Decimal(str(self.get_total_amount))
+            return total * ratio
         return total
 
     @property
     def get_gst_amount(self):
         from decimal import Decimal
-        total = 0
+        total = Decimal('0.00')
         for item in self.items.all():
             req_item = self.requirement.items.filter(subcategory=item.subcategory).first()
             if req_item:
                 qty = item.count if self.requirement.category and self.requirement.category.cat_type == 'count' else 1
                 base = req_item.customer_amount + req_item.admin_markup + req_item.other_expenses
                 gst_amt = base * (req_item.gst / Decimal('100.00'))
-                total += gst_amt * (qty or 1)
+                total += gst_amt * Decimal(str(qty or 1))
+        if self.payment_mode == 'part' and self.get_total_amount > Decimal('0.00'):
+            paid_amount = sum((inst.amount for inst in self.installments.filter(status='paid')), Decimal('0.00'))
+            ratio = paid_amount / Decimal(str(self.get_total_amount))
+            return total * ratio
         return total
 
     @property
@@ -320,7 +338,7 @@ class Lead(models.Model):
     @property
     def has_any_payment(self):
         if self.payment_mode == 'single':
-            return self.status == 'confirmed'
+            return self.status in ['confirmed', 'completed']
         elif self.payment_mode == 'part':
             return self.installments.filter(status='paid').exists()
         return False
@@ -388,6 +406,8 @@ class RegistrationCommission(models.Model):
 class Wallet(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='wallet')
     total_earned = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_withdrawal_earned = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    pending_balance = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     withdrawn_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     balance = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -395,6 +415,21 @@ class Wallet(models.Model):
 
     def __str__(self):
         return f"{self.user.name}'s Wallet - {self.balance}"
+
+class AssociateWalletLog(models.Model):
+    LOG_TYPES = (
+        ('withdrawal', 'Withdrawal History'),
+        ('pending', 'Pending History'),
+    )
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='associate_wallet_logs')
+    lead = models.ForeignKey('Lead', on_delete=models.SET_NULL, null=True, blank=True)
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    log_type = models.CharField(max_length=20, choices=LOG_TYPES)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.name} - {self.get_log_type_display()} - ₹{self.amount}"
 
 class CommissionTransaction(models.Model):
     TRANSACTION_TYPES = (
@@ -461,11 +496,6 @@ class WithdrawalRequest(models.Model):
     account_holder = models.CharField(max_length=255, null=True, blank=True)
     phone_linked = models.CharField(max_length=20, null=True, blank=True)
 
-    # Razorpay X Payout Details
-    razorpay_payout_id = models.CharField(max_length=255, null=True, blank=True)
-    payout_status = models.CharField(max_length=50, null=True, blank=True)
-    payout_error = models.TextField(null=True, blank=True)
-    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -494,7 +524,7 @@ class DistrictRequirementAssignment(models.Model):
         qs = LeadItem.objects.filter(
             subcategory=self.requirement_item.subcategory,
             lead__requirement=self.requirement_item.requirement,
-            lead__status='confirmed',
+            lead__status__in=['confirmed', 'completed'],
             lead__marketing_user__in=marketing_users
         )
         if self.requirement_item.requirement.category and self.requirement_item.requirement.category.cat_type == 'count':
@@ -532,7 +562,7 @@ class RequirementAssignment(models.Model):
         qs = LeadItem.objects.filter(
             subcategory=self.requirement_item.subcategory,
             lead__requirement=self.requirement_item.requirement,
-            lead__status='confirmed',
+            lead__status__in=['confirmed', 'completed'],
             lead__marketing_user__in=marketing_users
         )
         if self.requirement_item.requirement.category and self.requirement_item.requirement.category.cat_type == 'count':
@@ -612,10 +642,10 @@ def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
         if not fc:
             continue
 
-        # Count confirmed leads for this subcategory for this FC
+        # Count confirmed or completed leads for this subcategory for this FC
         from django.db.models import Q
         leads_qs = Lead.objects.filter(
-            status='confirmed'
+            status__in=['confirmed', 'completed']
         ).filter(
             Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
         ).filter(
@@ -630,7 +660,7 @@ def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
             for other_sub in mandatory_subs:
                 if other_sub != sub:
                     other_cnt = Lead.objects.filter(
-                        status='confirmed'
+                        status__in=['confirmed', 'completed']
                     ).filter(
                         Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc)
                     ).filter(

@@ -2,19 +2,19 @@ from django.contrib import admin
 from .models import (
     CustomUser, Category, SubCategory, CustomerRequirement,
     RequirementItem, Lead, LeadItem, LeadUpdate, LeadAssociateUpdate,
-    CommissionSetting, RegistrationCommission, Wallet, CommissionTransaction,
-    WithdrawalRequest, RequirementAssignment, LeadInstallment, Incentive
+    CommissionSetting, RegistrationCommission, Wallet, AssociateWalletLog, CommissionTransaction,
+    WithdrawalRequest, RequirementAssignment, DistrictRequirementAssignment, LeadInstallment, Incentive, Notification
 )
 
 @admin.register(CustomUser)
 class CustomUserAdmin(admin.ModelAdmin):
-    list_display = ('username', 'name', 'email', 'usertype', 'is_active')
+    list_display = ('username', 'name', 'email', 'usertype', 'initial_withdrawal_percentage', 'is_active')
     list_filter = ('usertype', 'is_active')
     search_fields = ('username', 'name', 'email')
     
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Personal Info', {'fields': ('name', 'email', 'usertype', 'pass_word')}),
+        ('Personal Info', {'fields': ('name', 'email', 'usertype', 'pass_word', 'initial_withdrawal_percentage')}),
         ('Assignments', {'fields': ('assigned_district', 'assigned_mandalam', 'created_by', 'accessible_districts', 'assigned_facilitation_centers')}),
         ('Bank Account Details', {'fields': ('bank_account_number', 'bank_ifsc', 'bank_account_holder', 'bank_phone')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
@@ -69,8 +69,14 @@ class RegistrationCommissionAdmin(admin.ModelAdmin):
 
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):
-    list_display = ('user', 'balance', 'total_earned', 'withdrawn_amount')
+    list_display = ('user', 'balance', 'pending_balance', 'total_earned', 'total_withdrawal_earned', 'withdrawn_amount')
     search_fields = ('user__name', 'user__username')
+
+@admin.register(AssociateWalletLog)
+class AssociateWalletLogAdmin(admin.ModelAdmin):
+    list_display = ('user', 'lead', 'log_type', 'amount', 'created_at')
+    list_filter = ('log_type', 'created_at')
+    search_fields = ('user__name', 'user__username', 'description')
 
 @admin.register(CommissionTransaction)
 class CommissionTransactionAdmin(admin.ModelAdmin):
@@ -93,6 +99,12 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
         }),
         ('Metadata', {'fields': ('created_at', 'updated_at')}),
     )
+
+@admin.register(DistrictRequirementAssignment)
+class DistrictRequirementAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('requirement_item', 'district', 'assigned_count', 'assigned_by', 'created_at')
+    list_filter = ('district', 'assigned_by')
+    search_fields = ('requirement_item__requirement__title', 'district__name')
 
 @admin.register(RequirementAssignment)
 class RequirementAssignmentAdmin(admin.ModelAdmin):
@@ -117,3 +129,9 @@ class IncentiveAdmin(admin.ModelAdmin):
     list_display = ('incentive_type', 'lead_from', 'lead_to', 'district_franchise_incentive', 'feciliattion_center_incentive', 'digital_franchise_incentive', 'is_active', 'created_by', 'created_at')
     list_filter = ('incentive_type', 'is_active', 'created_by')
     search_fields = ('incentive_type',)
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('recipient', 'actor', 'verb', 'is_read', 'created_at')
+    list_filter = ('is_read', 'created_at')
+    search_fields = ('recipient__name', 'verb')

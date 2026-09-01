@@ -17,34 +17,42 @@ def create_lead_notification(actor, lead, verb):
     for sa in superadmins:
         recipients.add(sa)
         
-    # 2. Marketing user who owns the lead (if the actor is not that marketing user)
-    m_user = lead.marketing_user
-    if m_user:
-        if m_user != actor:
+    if lead:
+        # 2. Marketing user who owns the lead (Digital Franchise)
+        m_user = lead.marketing_user
+        if m_user:
             recipients.add(m_user)
             
-        # 3. District franchise assigned to the marketing user
-        if m_user.assigned_district:
-            recipients.add(m_user.assigned_district)
-            
-        # 4. Mandalam franchise (facilitation center) assigned to the marketing user
-        if m_user.assigned_mandalam:
-            recipients.add(m_user.assigned_mandalam)
-            
-        # 5. Creator of the marketing user
-        if m_user.created_by:
-            recipients.add(m_user.created_by)
+            # 3. District franchise assigned to marketing user or creator
+            if m_user.assigned_district:
+                recipients.add(m_user.assigned_district)
+            elif m_user.created_by and m_user.created_by.assigned_district:
+                recipients.add(m_user.created_by.assigned_district)
+                
+            # 4. Mandalam franchise (facilitation center) assigned to marketing user or creator
+            if m_user.assigned_mandalam:
+                recipients.add(m_user.assigned_mandalam)
+            elif m_user.created_by and m_user.created_by.assigned_mandalam:
+                recipients.add(m_user.created_by.assigned_mandalam)
+                
+            # 5. Creator of the marketing user
+            if m_user.created_by:
+                recipients.add(m_user.created_by)
 
-    # 6. Managers assigned to the same district
-    if m_user and m_user.assigned_district:
-        managers = CustomUser.objects.filter(usertype='manager', assigned_district=m_user.assigned_district)
-        for mgr in managers:
-            recipients.add(mgr)
+            # 6. Managers assigned to the district
+            dist = m_user.assigned_district
+            if not dist and m_user.created_by:
+                dist = m_user.created_by.assigned_district
+            if dist:
+                managers = CustomUser.objects.filter(usertype='manager', assigned_district=dist)
+                for mgr in managers:
+                    recipients.add(mgr)
 
     # Remove the actor themselves from recipients
     recipients.discard(actor)
     
     # Create notification objects
+    from .models import Notification
     for recipient in recipients:
         Notification.objects.create(
             recipient=recipient,
@@ -231,8 +239,8 @@ def superadmin_dashboard(request):
     stats = {}
     
     if user.usertype == 'superadmin':
-        # Total Sales: Confirmed leads total amount (static field)
-        stats['total_sales'] = Lead.objects.filter(status='confirmed').aggregate(
+        # Total Sales: Confirmed or completed leads total amount (static field)
+        stats['total_sales'] = Lead.objects.filter(status__in=['confirmed', 'completed']).aggregate(
             total=Sum('total_amount')
         )['total'] or 0
         
@@ -271,7 +279,7 @@ def superadmin_dashboard(request):
         current_month = today_date.month
         
         stats['monthly_sales'] = Lead.objects.filter(
-            status='confirmed',
+            status__in=['confirmed', 'completed'],
             created_at__year=current_year,
             created_at__month=current_month
         ).aggregate(total=Sum('total_amount'))['total'] or 0
@@ -294,7 +302,7 @@ def superadmin_dashboard(request):
         target_district = user if user.usertype == 'district' else user.assigned_district
         # Total Sales: Leads added by users in this district (marketers, mandalams, or district himself)
         confirmed_leads = Lead.objects.filter(
-            status='confirmed'
+            status__in=['confirmed', 'completed']
         ).filter(
             Q(marketing_user__assigned_district=target_district) | Q(marketing_user=target_district)
         )
@@ -309,7 +317,7 @@ def superadmin_dashboard(request):
     elif user.usertype == 'mandalam':
         # Total Sales: Leads added by users in this mandalam (marketers or mandalam himself)
         confirmed_leads = Lead.objects.filter(
-            status='confirmed'
+            status__in=['confirmed', 'completed']
         ).filter(
             Q(marketing_user__assigned_mandalam=user) | Q(marketing_user=user)
         )
@@ -330,7 +338,7 @@ def superadmin_dashboard(request):
         ).distinct()
         for sub in assigned_mandatory_subs:
             leads_qs = Lead.objects.filter(
-                status='confirmed'
+                status__in=['confirmed', 'completed']
             ).filter(
                 Q(marketing_user=user) | Q(marketing_user__assigned_mandalam=user)
             ).filter(
@@ -353,7 +361,7 @@ def superadmin_dashboard(request):
         
     elif user.usertype == 'marketing':
         # Total Sales: Leads added by this marketing user
-        confirmed_leads = Lead.objects.filter(status='confirmed', marketing_user=user)
+        confirmed_leads = Lead.objects.filter(status__in=['confirmed', 'completed'], marketing_user=user)
         stats['total_sales'] = confirmed_leads.aggregate(
             total=Sum('total_amount')
         )['total'] or 0
@@ -384,7 +392,7 @@ def superadmin_dashboard_chart_data(request):
             raw_date = request.GET.get('date', today.strftime('%Y-%m-%d'))
             filter_date = datetime.datetime.strptime(raw_date, '%Y-%m-%d').date()
 
-            leads_qs   = Lead.objects.filter(status='confirmed', created_at__date=filter_date)
+            leads_qs   = Lead.objects.filter(status__in=['confirmed', 'completed'], created_at__date=filter_date)
             comm_qs    = CommissionTransaction.objects.exclude(
                              user__usertype__in=['superadmin', 'customer']
                          ).filter(created_at__date=filter_date)
@@ -398,7 +406,7 @@ def superadmin_dashboard_chart_data(request):
             # Accept ?year=YYYY, default to current year
             filter_year = int(request.GET.get('year', today.year))
 
-            leads_qs   = Lead.objects.filter(status='confirmed', created_at__year=filter_year)
+            leads_qs   = Lead.objects.filter(status__in=['confirmed', 'completed'], created_at__year=filter_year)
             comm_qs    = CommissionTransaction.objects.exclude(
                              user__usertype__in=['superadmin', 'customer']
                          ).filter(created_at__year=filter_year)
@@ -414,7 +422,7 @@ def superadmin_dashboard_chart_data(request):
             filter_year  = int(request.GET.get('year',  today.year))
 
             leads_qs   = Lead.objects.filter(
-                             status='confirmed',
+                             status__in=['confirmed', 'completed'],
                              created_at__year=filter_year,
                              created_at__month=filter_month
                          )
@@ -683,7 +691,8 @@ def superadmin_users(request):
                 'accessible_districts': acc_dists,
                 'assigned_facilitation_centers': assigned_fcs,
                 'assigned_fc_names': assigned_fc_names,
-                'target_status': target_status
+                'target_status': target_status,
+                'initial_withdrawal_percentage': str(u.initial_withdrawal_percentage) if u.initial_withdrawal_percentage is not None else '50.00'
             })
             
         return JsonResponse({
@@ -781,6 +790,12 @@ def superadmin_user_create(request):
                 district_ids = request.POST.getlist('accessible_districts')
                 if district_ids:
                     user.accessible_districts.set(district_ids)
+                init_withdrawal = request.POST.get('initial_withdrawal_percentage')
+                if init_withdrawal is not None and init_withdrawal.strip() != '':
+                    try:
+                        user.initial_withdrawal_percentage = Decimal(init_withdrawal.strip())
+                    except Exception:
+                        user.initial_withdrawal_percentage = Decimal('50.00')
                         
             # Handle assigned facilitation centers for Staff
             if usertype == 'staff':
@@ -788,8 +803,6 @@ def superadmin_user_create(request):
                 if fc_ids:
                     user.assigned_facilitation_centers.set(fc_ids)
 
-            user.save()
-            
             user.save()
             messages.success(request, 'User created successfully!')
             return redirect(f"/superadmin/users/?usertype={usertype}")
@@ -868,6 +881,12 @@ def superadmin_user_edit(request, user_id):
         if user.usertype == 'customer':
             district_ids = request.POST.getlist('accessible_districts')
             user.accessible_districts.set(district_ids)
+            init_withdrawal = request.POST.get('initial_withdrawal_percentage')
+            if init_withdrawal is not None and init_withdrawal.strip() != '':
+                try:
+                    user.initial_withdrawal_percentage = Decimal(init_withdrawal.strip())
+                except Exception:
+                    user.initial_withdrawal_percentage = Decimal('50.00')
             
         # Handle assigned facilitation centers for Staff
         if user.usertype == 'staff':
@@ -1170,7 +1189,7 @@ def assign_mandalams(request, item_id):
         qs = LeadItem.objects.filter(
             subcategory=requirement_item.subcategory,
             lead__requirement=requirement_item.requirement,
-            lead__status='confirmed',
+            lead__status__in=['confirmed', 'completed'],
             lead__marketing_user__in=marketing_users
         )
         if requirement_item.requirement.category and requirement_item.requirement.category.cat_type == 'count':
@@ -1918,79 +1937,7 @@ def razorpay_webhook(request):
     return HttpResponse(status=405)
 
 
-@csrf_exempt
-def razorpayx_webhook(request):
-    if request.method == 'POST':
-        import hmac
-        import hashlib
-        from django.conf import settings
-        from django.http import HttpResponse
-        import json
-        from decimal import Decimal
-        from django.db import transaction
-        from .utils import get_or_create_wallet
-        from .models import WithdrawalRequest, CustomUser
-        
-        webhook_signature = request.headers.get('X-Razorpay-Signature')
-        webhook_secret = getattr(settings, 'RAZORPAY_X_WEBHOOK_SECRET', None) or getattr(settings, 'RAZORPAY_WEBHOOK_SECRET', None)
-        
-        if not webhook_signature or not webhook_secret:
-            return HttpResponse(status=400)
-            
-        try:
-            expected_signature = hmac.new(
-                webhook_secret.encode('utf-8'),
-                request.body,
-                hashlib.sha256
-            ).hexdigest()
-            
-            if not hmac.compare_digest(expected_signature, webhook_signature):
-                return HttpResponse(status=400)
-        except Exception:
-            return HttpResponse(status=400)
-            
-        try:
-            payload = json.loads(request.body.decode('utf-8'))
-            event = payload.get('event')
-            payout_entity = payload.get('payload', {}).get('payout', {}).get('entity', {})
-            payout_id = payout_entity.get('id')
-            payout_status = payout_entity.get('status')
-            
-            if payout_id:
-                wr = WithdrawalRequest.objects.filter(razorpay_payout_id=payout_id).first()
-                if wr:
-                    wr.payout_status = payout_status
-                    
-                    if event == 'payout.processed':
-                        wr.payout_error = None
-                        wr.save()
-                    elif event in ['payout.failed', 'payout.reversed', 'payout.rejected']:
-                        failure_reason = payout_entity.get('failure_reason', 'Payout failed or was reversed.')
-                        wr.payout_error = failure_reason
-                        
-                        if wr.status == 'approved':
-                            with transaction.atomic():
-                                wr.status = 'rejected'
-                                wr.remarks = f"Payout failed: {failure_reason}"
-                                wr.save()
-                                
-                                if wr.request_type == 'wallet':
-                                    wallet = get_or_create_wallet(wr.user)
-                                    wallet.balance = Decimal(str(wallet.balance)) + Decimal(str(wr.amount))
-                                    wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) - Decimal(str(wr.amount))
-                                    wallet.save()
-                        else:
-                            wr.status = 'rejected'
-                            wr.remarks = f"Payout failed: {failure_reason}"
-                            wr.save()
-                    else:
-                        wr.save()
-                        
-            return HttpResponse(status=200)
-        except Exception as e:
-            return HttpResponse(status=500)
-            
-    return HttpResponse(status=405)
+
 
 
 @login_required(login_url='login')
@@ -2080,6 +2027,96 @@ def wallet_dashboard(request, user_id=None):
             'data': data
         })
 
+    # AJAX for Withdrawal History log (Associate Company)
+    if request.GET.get('table') == 'withdrawal_history' or (request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.GET.get('table') == 'withdrawal_history'):
+        draw = int(request.GET.get('draw', 1))
+        start = int(request.GET.get('start', 0))
+        length = int(request.GET.get('length', 10))
+        search_value = request.GET.get('search[value]', '')
+
+        from .models import AssociateWalletLog
+        logs = AssociateWalletLog.objects.filter(user=target_user, log_type='withdrawal')
+
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        if from_date:
+            try:
+                logs = logs.filter(created_at__date__gte=from_date)
+            except Exception:
+                pass
+        if to_date:
+            try:
+                logs = logs.filter(created_at__date__lte=to_date)
+            except Exception:
+                pass
+
+        records_total = logs.count()
+        if search_value:
+            from django.db.models import Q
+            logs = logs.filter(Q(description__icontains=search_value))
+        records_filtered = logs.count()
+
+        logs = logs.order_by('-created_at')[start:start+length]
+        data = []
+        for l in logs:
+            data.append({
+                'type': 'Withdrawal Credit',
+                'amount': float(l.amount),
+                'description': l.description,
+                'date_formatted': l.created_at.strftime('%b %d, %Y %H:%M')
+            })
+        return JsonResponse({
+            'draw': draw,
+            'recordsTotal': records_total,
+            'recordsFiltered': records_filtered,
+            'data': data
+        })
+
+    # AJAX for Pending History log (Associate Company)
+    if request.GET.get('table') == 'pending_history' or (request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.GET.get('table') == 'pending_history'):
+        draw = int(request.GET.get('draw', 1))
+        start = int(request.GET.get('start', 0))
+        length = int(request.GET.get('length', 10))
+        search_value = request.GET.get('search[value]', '')
+
+        from .models import AssociateWalletLog
+        logs = AssociateWalletLog.objects.filter(user=target_user, log_type='pending')
+
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        if from_date:
+            try:
+                logs = logs.filter(created_at__date__gte=from_date)
+            except Exception:
+                pass
+        if to_date:
+            try:
+                logs = logs.filter(created_at__date__lte=to_date)
+            except Exception:
+                pass
+
+        records_total = logs.count()
+        if search_value:
+            from django.db.models import Q
+            logs = logs.filter(Q(description__icontains=search_value))
+        records_filtered = logs.count()
+
+        logs = logs.order_by('-created_at')[start:start+length]
+        data = []
+        for l in logs:
+            data.append({
+                'type': 'Pending Log',
+                'amount': float(l.amount),
+                'description': l.description,
+                'date_formatted': l.created_at.strftime('%b %d, %Y %H:%M')
+            })
+        return JsonResponse({
+            'draw': draw,
+            'recordsTotal': records_total,
+            'recordsFiltered': records_filtered,
+            'data': data
+        })
+
     if request.GET.get('table') == 'requests' or (request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.GET.get('table') == 'requests'):
         draw = int(request.GET.get('draw', 1))
         start = int(request.GET.get('start', 0))
@@ -2093,7 +2130,6 @@ def wallet_dashboard(request, user_id=None):
             from django.db.models import Q
             reqs = reqs.filter(
                 Q(status__icontains=search_value) |
-                Q(payout_status__icontains=search_value) |
                 Q(account_number__icontains=search_value) |
                 Q(account_holder__icontains=search_value)
             )
@@ -2122,9 +2158,6 @@ def wallet_dashboard(request, user_id=None):
                 'id': r.id,
                 'amount': float(r.amount),
                 'status': r.status,
-                'payout_status': r.payout_status or r.status,
-                'razorpay_payout_id': r.razorpay_payout_id or '',
-                'payout_error': r.payout_error or '',
                 'remarks': r.remarks or '',
                 'created_at_formatted': r.created_at.strftime('%b %d, %Y'),
                 'account_number': r.account_number or 'N/A',
@@ -2182,7 +2215,7 @@ def export_wallets_csv(request):
     if request.user.usertype != 'superadmin':
         return HttpResponse("Forbidden", status=403)
         
-    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager'])
+    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff', 'customer'])
     
     # Apply date filtration
     from_date = request.GET.get('from_date')
@@ -2240,7 +2273,7 @@ def superadmin_user_wallets(request):
         length = int(request.GET.get('length', 10))
         search_value = request.GET.get('search[value]', '')
         
-        reqs = WithdrawalRequest.objects.filter(request_type='wallet').exclude(user__usertype='superadmin')
+        reqs = WithdrawalRequest.objects.filter(request_type='wallet').exclude(user__usertype__in=['superadmin', 'customer'])
         records_total = reqs.count()
         
         if search_value:
@@ -2286,9 +2319,6 @@ def superadmin_user_wallets(request):
                 'ifsc_code': r.ifsc_code or 'N/A',
                 'account_holder': r.account_holder or 'N/A',
                 'phone_linked': r.phone_linked or 'N/A',
-                'razorpay_payout_id': r.razorpay_payout_id or '',
-                'payout_status': r.payout_status or '',
-                'payout_error': r.payout_error or '',
             })
             
         return JsonResponse({
@@ -2304,7 +2334,7 @@ def superadmin_user_wallets(request):
         length = int(request.GET.get('length', 10))
         search_value = request.GET.get('search[value]', '')
         
-        users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff'])
+        users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff', 'customer'])
         records_total = users.count()
         
         if search_value:
@@ -2357,7 +2387,7 @@ def superadmin_user_wallets(request):
             'data': data
         })
         
-    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff']).order_by('name')
+    users = CustomUser.objects.exclude(usertype__in=['superadmin', 'manager', 'staff', 'customer']).order_by('name')
     user_data = []
     
     for user in users:
@@ -2369,13 +2399,220 @@ def superadmin_user_wallets(request):
             'pending_amount': pending_amount
         })
         
-    all_withdrawal_requests = WithdrawalRequest.objects.all().order_by('-created_at')
-    pending_count = WithdrawalRequest.objects.filter(status='pending').count()
+    all_withdrawal_requests = WithdrawalRequest.objects.filter(request_type='wallet').exclude(user__usertype__in=['superadmin', 'customer']).order_by('-created_at')
+    pending_count = WithdrawalRequest.objects.filter(request_type='wallet', status='pending').exclude(user__usertype__in=['superadmin', 'customer']).count()
     
     return render(request, 'cyborgapp/superadmin/user_wallets.html', {
         'user_data': user_data,
         'all_withdrawal_requests': all_withdrawal_requests,
-        'pending_count': pending_count
+        'pending_count': pending_count,
+        'table_title': 'User Financial Status',
+        'page_title': 'User Wallets Management',
+        'export_url': '/superadmin/user-wallets/export-csv/'
+    })
+
+
+@login_required(login_url='login')
+def export_associate_wallets_csv(request):
+    if request.user.usertype != 'superadmin':
+        return HttpResponse("Forbidden", status=403)
+        
+    users = CustomUser.objects.filter(usertype='customer')
+    
+    # Apply date filtration
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    if from_date:
+        try:
+            users = users.filter(date_joined__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            users = users.filter(date_joined__date__lte=to_date)
+        except Exception:
+            pass
+            
+    users = users.order_by('name')
+    
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not users.exists()})
+        
+    queryset = users.iterator(chunk_size=2000)
+    
+    def csv_generator():
+        echo_buffer = Echo()
+        writer = csv.writer(echo_buffer)
+        
+        yield writer.writerow(['Name', 'Email', 'Total Earned (Rs)', 'Withdrawn (Rs)', 'Withdrawal Balance (Rs)', 'Pending Wallet (Rs)', 'Pending Request (Rs)'])
+        
+        for u in queryset:
+            w = get_or_create_wallet(u)
+            pending_req = WithdrawalRequest.objects.filter(user=u, status='pending').aggregate(total=models.Sum('amount'))['total'] or 0
+            yield writer.writerow([
+                u.name,
+                u.email,
+                float(w.total_earned),
+                float(w.withdrawn_amount),
+                float(w.balance),
+                float(w.pending_balance),
+                float(pending_req)
+            ])
+            
+    response = StreamingHttpResponse(csv_generator(), content_type="text/csv")
+    response['Content-Disposition'] = 'attachment; filename="company_financial_status.csv"'
+    return response
+
+
+@login_required(login_url='login')
+def superadmin_associate_wallets(request):
+    if request.user.usertype != 'superadmin':
+        return redirect('dashboard')
+        
+    # Check if AJAX DataTable requests
+    if request.GET.get('table') == 'requests' or (request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.GET.get('table') == 'requests'):
+        draw = int(request.GET.get('draw', 1))
+        start = int(request.GET.get('start', 0))
+        length = int(request.GET.get('length', 10))
+        search_value = request.GET.get('search[value]', '')
+        
+        reqs = WithdrawalRequest.objects.filter(request_type='wallet', user__usertype='customer')
+        records_total = reqs.count()
+        
+        if search_value:
+            from django.db.models import Q
+            reqs = reqs.filter(
+                Q(user__name__icontains=search_value) |
+                Q(user__usertype__icontains=search_value) |
+                Q(status__icontains=search_value) |
+                Q(account_number__icontains=search_value) |
+                Q(account_holder__icontains=search_value)
+            )
+            
+        records_filtered = reqs.count()
+        
+        # Sorting
+        order_column_index = int(request.GET.get('order[0][column]', 0))
+        order_dir = request.GET.get('order[0][dir]', 'asc')
+        
+        columns_map = {
+            0: 'user__name',
+            1: 'amount',
+            2: 'status',
+            3: 'created_at',
+        }
+        sort_field = columns_map.get(order_column_index, 'created_at')
+        if order_dir == 'desc':
+            sort_field = f'-{sort_field}'
+            
+        reqs = reqs.order_by(sort_field)
+        reqs_slice = reqs[start:start+length]
+        
+        data = []
+        for r in reqs_slice:
+            data.append({
+                'id': r.id,
+                'user_name': r.user.name,
+                'user_usertype': r.user.get_usertype_display(),
+                'amount': float(r.amount),
+                'status': r.status,
+                'remarks': r.remarks or '',
+                'created_at_formatted': r.created_at.strftime('%b %d, %Y'),
+                'account_number': r.account_number or 'N/A',
+                'ifsc_code': r.ifsc_code or 'N/A',
+                'account_holder': r.account_holder or 'N/A',
+                'phone_linked': r.phone_linked or 'N/A',
+            })
+            
+        return JsonResponse({
+            'draw': draw,
+            'recordsTotal': records_total,
+            'recordsFiltered': records_filtered,
+            'data': data
+        })
+
+    if request.GET.get('table') == 'wallets' or (request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.GET.get('draw')):
+        draw = int(request.GET.get('draw', 1))
+        start = int(request.GET.get('start', 0))
+        length = int(request.GET.get('length', 10))
+        search_value = request.GET.get('search[value]', '')
+        
+        users = CustomUser.objects.filter(usertype='customer')
+        records_total = users.count()
+        
+        if search_value:
+            from django.db.models import Q
+            users = users.filter(
+                Q(name__icontains=search_value) |
+                Q(email__icontains=search_value) |
+                Q(usertype__icontains=search_value)
+            )
+            
+        records_filtered = users.count()
+        
+        # Sorting
+        order_column_index = int(request.GET.get('order[0][column]', 0))
+        order_dir = request.GET.get('order[0][dir]', 'asc')
+        
+        columns_map = {
+            0: 'name',
+            1: 'usertype',
+            2: 'wallet__total_earned',
+            3: 'wallet__withdrawn_amount',
+            4: 'wallet__balance',
+        }
+        sort_field = columns_map.get(order_column_index, 'name')
+        if order_dir == 'desc':
+            sort_field = f'-{sort_field}'
+            
+        users = users.order_by(sort_field)
+        users_slice = users[start:start+length]
+        
+        data = []
+        for u in users_slice:
+            w = get_or_create_wallet(u)
+            pending = WithdrawalRequest.objects.filter(user=u, status='pending').aggregate(total=models.Sum('amount'))['total'] or 0
+            data.append({
+                'id': u.id,
+                'name': u.name,
+                'email': u.email,
+                'usertype_display': u.get_usertype_display(),
+                'total_earned': float(w.total_earned),
+                'withdrawn_amount': float(w.withdrawn_amount),
+                'balance': float(w.balance),
+                'pending_amount': float(pending)
+            })
+            
+        return JsonResponse({
+            'draw': draw,
+            'recordsTotal': records_total,
+            'recordsFiltered': records_filtered,
+            'data': data
+        })
+        
+    users = CustomUser.objects.filter(usertype='customer').order_by('name')
+    user_data = []
+    
+    for user in users:
+        wallet = get_or_create_wallet(user)
+        pending_amount = WithdrawalRequest.objects.filter(user=user, status='pending').aggregate(total=models.Sum('amount'))['total'] or 0
+        user_data.append({
+            'user': user,
+            'wallet': wallet,
+            'pending_amount': pending_amount
+        })
+        
+    all_withdrawal_requests = WithdrawalRequest.objects.filter(user__usertype='customer').order_by('-created_at')
+    pending_count = WithdrawalRequest.objects.filter(user__usertype='customer', status='pending').count()
+    
+    return render(request, 'cyborgapp/superadmin/user_wallets.html', {
+        'user_data': user_data,
+        'all_withdrawal_requests': all_withdrawal_requests,
+        'pending_count': pending_count,
+        'is_associate_page': True,
+        'table_title': 'Company Financial Status',
+        'page_title': 'Associate Wallets Management',
+        'export_url': '/superadmin/associate-wallets/export-csv/'
     })
 
 @login_required(login_url='login')
@@ -2384,35 +2621,58 @@ def get_user_transactions(request, user_id):
         return JsonResponse({'status': 'error', 'message': 'Permission denied'}, status=403)
         
     user = get_object_or_404(CustomUser, id=user_id)
-    transactions = CommissionTransaction.objects.filter(user=user)
+    table_type = request.GET.get('table', 'account')
     
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
-    
-    if from_date:
-        try:
-            transactions = transactions.filter(created_at__date__gte=from_date)
-        except Exception:
-            pass
-    if to_date:
-        try:
-            transactions = transactions.filter(created_at__date__lte=to_date)
-        except Exception:
-            pass
-            
-    transactions = transactions.order_by('-created_at')
-    
+
     data = []
-    for tx in transactions:
-        desc = tx.description
-        if tx.transaction_type in ['sale', 'commission'] and tx.reference_id:
-            desc = f"[Lead #{tx.reference_id}] {desc}"
-        data.append({
-            'type': tx.get_transaction_type_display(),
-            'amount': str(tx.amount),
-            'description': desc,
-            'date': tx.created_at.strftime('%b %d, %Y %H:%M')
-        })
+    if table_type in ['withdrawal', 'pending']:
+        from .models import AssociateWalletLog
+        logs = AssociateWalletLog.objects.filter(user=user, log_type=table_type)
+        if from_date:
+            try:
+                logs = logs.filter(created_at__date__gte=from_date)
+            except Exception:
+                pass
+        if to_date:
+            try:
+                logs = logs.filter(created_at__date__lte=to_date)
+            except Exception:
+                pass
+        logs = logs.order_by('-created_at')
+        for l in logs:
+            data.append({
+                'type': 'Withdrawal Credit' if table_type == 'withdrawal' else 'Pending Log',
+                'amount': str(l.amount),
+                'description': l.description,
+                'date': l.created_at.strftime('%b %d, %Y %H:%M')
+            })
+    else:
+        transactions = CommissionTransaction.objects.filter(user=user)
+        if from_date:
+            try:
+                transactions = transactions.filter(created_at__date__gte=from_date)
+            except Exception:
+                pass
+        if to_date:
+            try:
+                transactions = transactions.filter(created_at__date__lte=to_date)
+            except Exception:
+                pass
+                
+        transactions = transactions.order_by('-created_at')
+        for tx in transactions:
+            desc = tx.description
+            if tx.transaction_type in ['sale', 'commission'] and tx.reference_id:
+                desc = f"[Lead #{tx.reference_id}] {desc}"
+            data.append({
+                'type': tx.get_transaction_type_display(),
+                'amount': str(tx.amount),
+                'description': desc,
+                'date': tx.created_at.strftime('%b %d, %Y %H:%M')
+            })
+
     return JsonResponse({'status': 'success', 'transactions': data, 'user_name': user.name})
 
 @login_required(login_url='login')
@@ -2457,25 +2717,7 @@ def request_withdrawal(request):
             target_user.bank_phone = phone
             target_user.save()
             
-            if request.user.usertype == 'superadmin':
-                from .utils import create_razorpay_x_payout
-                success, payout_res = create_razorpay_x_payout(wr)
-                if success:
-                    with transaction.atomic():
-                        wallet.balance = Decimal(str(wallet.balance)) - amount
-                        wallet.withdrawn_amount = Decimal(str(wallet.withdrawn_amount)) + amount
-                        wallet.save()
-                        wr.status = 'approved'
-                        wr.remarks = 'Auto-approved for Superadmin'
-                        wr.save()
-                    messages.success(request, 'Withdrawal initiated successfully!')
-                else:
-                    wr.status = 'rejected'
-                    wr.remarks = f"Payout failed: {payout_res.get('message')}"
-                    wr.save()
-                    messages.error(request, f"Payout failed: {payout_res.get('message')}")
-            else:
-                messages.success(request, 'Withdrawal request submitted successfully.')
+            messages.success(request, 'Withdrawal request submitted successfully.')
             
     return redirect('wallet_dashboard')
 
@@ -2508,11 +2750,11 @@ def update_withdrawal_status(request, request_id):
             if wr.request_type in ['gst', 'expense']:
                 from .models import Lead
                 if wr.request_type == 'gst':
-                    total_earned_gst = sum(lead.get_gst_amount for lead in Lead.objects.filter(status='confirmed'))
+                    total_earned_gst = sum(lead.get_gst_amount for lead in Lead.objects.filter(status__in=['confirmed', 'completed']))
                     withdrawn_gst = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='gst', status='approved'))
                     current_balance = total_earned_gst - withdrawn_gst
                 else:
-                    total_earned_expense = sum(lead.get_expense_amount for lead in Lead.objects.filter(status='confirmed'))
+                    total_earned_expense = sum(lead.get_expense_amount for lead in Lead.objects.filter(status__in=['confirmed', 'completed']))
                     withdrawn_expense = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='expense', status='approved'))
                     current_balance = total_earned_expense - withdrawn_expense
                 
@@ -2525,14 +2767,6 @@ def update_withdrawal_status(request, request_id):
                 if current_balance < wr.amount:
                     return JsonResponse({'status': 'error', 'message': 'User has insufficient balance now.'}, status=400)
 
-            # Call Razorpay X Payout API
-            from .utils import create_razorpay_x_payout
-            success, payout_res = create_razorpay_x_payout(wr)
-            if not success:
-                err_msg = payout_res.get('message') if isinstance(payout_res, dict) else str(payout_res)
-                return JsonResponse({'status': 'error', 'message': f'Payout failed: {err_msg}'}, status=400)
-
-            # Payout succeeded or is queued. Perform DB updates.
             if wr.request_type in ['gst', 'expense']:
                 wr.status = 'approved'
                 wr.remarks = remarks
@@ -2730,7 +2964,7 @@ def lead_list(request):
         return qs.annotate(
             installment_pending=Exists(pending_inst_sq)
         ).exclude(
-            status='confirmed',
+            status__in=['confirmed', 'completed'],
             installment_pending=False
         ).annotate(
             is_controlled=Case(
@@ -2742,6 +2976,7 @@ def lead_list(request):
                 When(status='pending', then=Value(0)),
                 When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
                 When(status='confirmed', then=Value(2)),
+                When(status='completed', then=Value(2)),
                 default=Value(2),
                 output_field=IntegerField()
             )
@@ -2840,13 +3075,14 @@ def confirmed_lead_list(request):
                 When(status='pending', then=Value(0)),
                 When(status='confirmed', payment_mode='part', installment_pending=True, then=Value(1)),
                 When(status='confirmed', then=Value(2)),
-                default=Value(2),
+                When(status='completed', then=Value(3)),
+                default=Value(3),
                 output_field=IntegerField()
             )
         ).order_by('display_order', '-created_at')
 
-    # Filter only status='confirmed' leads, requiring at least first installment paid if it is a part payment
-    base_qs = Lead.objects.filter(status='confirmed').filter(
+    # Filter status='confirmed' or 'completed' leads for Confirmed Leads nav, requiring at least first installment paid if it is a part payment
+    base_qs = Lead.objects.filter(status__in=['confirmed', 'completed']).filter(
         Q(payment_mode='single') | 
         Q(payment_mode='part', installments__installment_number=1, installments__status='paid')
     ).distinct()
@@ -3608,12 +3844,30 @@ def lead_get_associate_updates(request, lead_id):
             'created_at': u.created_at.strftime('%b %d, %Y %H:%M')
         })
         
-    can_add = (request.user.usertype == 'customer' and lead.requirement.customer == request.user)
+    can_add = (request.user.usertype == 'customer' and lead.requirement.customer == request.user and lead.status != 'completed')
+    can_mark_completed = (
+        request.user.usertype == 'customer' and 
+        lead.requirement.customer == request.user and 
+        lead.status == 'confirmed' and 
+        not lead.installment_pending
+    )
     
+    if lead.status == 'completed':
+        display_status = 'Completed'
+    elif lead.status == 'confirmed' and lead.installment_pending:
+        display_status = 'Payment Pending (so cannot change to completed)'
+    elif lead.status == 'confirmed':
+        display_status = 'Confirmed'
+    else:
+        display_status = lead.status.capitalize() if lead.status else 'Pending'
+
     return JsonResponse({
         'status': 'success',
         'updates': updates,
-        'can_add': can_add
+        'can_add': can_add,
+        'can_mark_completed': can_mark_completed,
+        'lead_status': display_status,
+        'is_completed': lead.status == 'completed'
     })
 
 @login_required(login_url='login')
@@ -3624,13 +3878,24 @@ def lead_add_associate_update(request, lead_id):
     if request.user.usertype != 'customer' or lead.requirement.customer != request.user:
         return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
         
+    if lead.status == 'completed':
+        return JsonResponse({'status': 'error', 'message': 'This lead is already completed. No further updates can be added.'}, status=400)
+        
     if request.method == 'POST':
         import json
         data = json.loads(request.body)
-        update_text = data.get('update_text')
+        update_text = data.get('update_text', '').strip()
+        mark_completed = data.get('mark_completed', False) or data.get('status') == 'completed'
         
-        if not update_text:
+        if mark_completed:
+            if lead.status != 'confirmed' or lead.installment_pending:
+                return JsonResponse({'status': 'error', 'message': 'Only fully paid confirmed leads (with all installments cleared) can be marked as completed.'}, status=400)
+
+        if mark_completed and not update_text:
+            update_text = "Lead status marked as Completed by Associate Company."
+        elif not update_text:
             return JsonResponse({'status': 'error', 'message': 'Update text is required.'}, status=400)
+
         custom_date = data.get('custom_date')
         custom_time = data.get('custom_time')
         created_at = None
@@ -3643,6 +3908,61 @@ def lead_add_associate_update(request, lead_id):
                 created_at = make_aware(naive_dt)
             except Exception:
                 pass
+
+        if mark_completed:
+            lead.status = 'completed'
+            lead.save()
+
+            # Transfer pending balance to withdrawal balance for associate company
+            customer = lead.requirement.customer
+            if customer and customer.usertype == 'customer':
+                from .models import AssociateWalletLog, Wallet
+                from django.db import transaction
+                from decimal import Decimal
+                from django.db.models import Sum
+
+                with transaction.atomic():
+                    pending_logs = AssociateWalletLog.objects.filter(
+                        user=customer,
+                        lead=lead,
+                        log_type='pending',
+                        description__contains='has reflected to pending balance'
+                    )
+                    already_transferred = AssociateWalletLog.objects.filter(
+                        user=customer,
+                        lead=lead,
+                        description__contains='transferred to withdrawal balance'
+                    ).exists()
+
+                    if not already_transferred:
+                        pending_total = pending_logs.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                        if pending_total > 0:
+                            wallet = get_or_create_wallet(customer)
+                            wallet.pending_balance = max(Decimal('0.00'), Decimal(str(wallet.pending_balance)) - pending_total)
+                            wallet.balance = Decimal(str(wallet.balance)) + pending_total
+                            wallet.total_withdrawal_earned = Decimal(str(wallet.total_withdrawal_earned)) + pending_total
+                            wallet.save()
+
+                            # Log to Pending History
+                            AssociateWalletLog.objects.create(
+                                user=customer,
+                                lead=lead,
+                                amount=pending_total,
+                                log_type='pending',
+                                description=f"₹{pending_total:,.2f} transferred to withdrawal balance upon completion of lead: {lead.name} ({lead.requirement.title})"
+                            )
+
+                            # Log to Withdrawal History
+                            AssociateWalletLog.objects.create(
+                                user=customer,
+                                lead=lead,
+                                amount=pending_total,
+                                log_type='withdrawal',
+                                description=f"₹{pending_total:,.2f} credited after completion of lead: {lead.name} ({lead.requirement.title})"
+                            )
+
+            if "[Status changed to Completed]" not in update_text:
+                update_text += " [Status changed to Completed]"
 
         from .models import LeadAssociateUpdate
         if created_at:
@@ -3659,9 +3979,14 @@ def lead_add_associate_update(request, lead_id):
                 update_text=update_text
             )
         # Trigger Notification
-        create_lead_notification(request.user, lead, f"added an associate update for '{lead.name}'")
+        msg_action = "marked lead as Completed" if mark_completed else f"added an associate update for '{lead.name}'"
+        create_lead_notification(request.user, lead, msg_action)
 
-        return JsonResponse({'status': 'success', 'message': 'Associate update added successfully.'})
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Lead marked as Completed successfully.' if mark_completed else 'Associate update added successfully.',
+            'is_completed': lead.status == 'completed'
+        })
         
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
 
@@ -4016,7 +4341,7 @@ def superadmin_gst(request):
     from .models import Lead, WithdrawalRequest
     
     # Calculate total earned gst
-    confirmed_leads = Lead.objects.filter(status='confirmed').order_by('-created_at')
+    confirmed_leads = Lead.objects.filter(status__in=['confirmed', 'completed']).prefetch_related('installments', 'items', 'requirement__items', 'requirement__category').order_by('-created_at')
     total_earned_gst = sum(lead.get_gst_amount for lead in confirmed_leads)
     
     # Calculate withdrawn gst
@@ -4033,9 +4358,17 @@ def superadmin_gst(request):
     for lead in confirmed_leads:
         gst_amt = lead.get_gst_amount
         if gst_amt > 0:
+            inst_list = list(lead.installments.all()) if lead.payment_mode == 'part' else []
+            total_inst = len(inst_list)
+            pending_inst = sum(1 for i in inst_list if i.status == 'pending')
+            paid_inst = sum(1 for i in inst_list if i.status == 'paid')
             lead_items.append({
                 'lead': lead,
                 'amount': gst_amt,
+                'is_part_payment': lead.payment_mode == 'part',
+                'total_installments': total_inst,
+                'pending_installments': pending_inst,
+                'paid_installments': paid_inst,
             })
             
     context = {
@@ -4058,7 +4391,7 @@ def superadmin_expenses(request):
     from .models import Lead, WithdrawalRequest
     
     # Calculate total earned expenses
-    confirmed_leads = Lead.objects.filter(status='confirmed').order_by('-created_at')
+    confirmed_leads = Lead.objects.filter(status__in=['confirmed', 'completed']).prefetch_related('installments', 'items', 'requirement__items', 'requirement__category').order_by('-created_at')
     total_earned_expense = sum(lead.get_expense_amount for lead in confirmed_leads)
     
     # Calculate withdrawn expenses
@@ -4075,9 +4408,17 @@ def superadmin_expenses(request):
     for lead in confirmed_leads:
         expense_amt = lead.get_expense_amount
         if expense_amt > 0:
+            inst_list = list(lead.installments.all()) if lead.payment_mode == 'part' else []
+            total_inst = len(inst_list)
+            pending_inst = sum(1 for i in inst_list if i.status == 'pending')
+            paid_inst = sum(1 for i in inst_list if i.status == 'paid')
             lead_items.append({
                 'lead': lead,
                 'amount': expense_amt,
+                'is_part_payment': lead.payment_mode == 'part',
+                'total_installments': total_inst,
+                'pending_installments': pending_inst,
+                'paid_installments': paid_inst,
             })
             
     context = {
@@ -4110,7 +4451,7 @@ def request_gst_withdrawal(request):
             amount = Decimal('0')
             
         from .models import Lead, WithdrawalRequest
-        total_earned_gst = sum(lead.get_gst_amount for lead in Lead.objects.filter(status='confirmed'))
+        total_earned_gst = sum(lead.get_gst_amount for lead in Lead.objects.filter(status__in=['confirmed', 'completed']))
         withdrawn_gst = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='gst', status='approved'))
         balance_gst = total_earned_gst - withdrawn_gst
         
@@ -4123,6 +4464,8 @@ def request_gst_withdrawal(request):
                 user=request.user,
                 amount=amount,
                 request_type='gst',
+                status='approved',
+                remarks='Approved by Superadmin',
                 account_number=acc_num,
                 ifsc_code=ifsc,
                 account_holder=holder,
@@ -4134,19 +4477,7 @@ def request_gst_withdrawal(request):
             request.user.bank_phone = phone
             request.user.save()
 
-            # Auto-approve & trigger RazorpayX payout immediately for Superadmin
-            from .utils import create_razorpay_x_payout
-            success, payout_res = create_razorpay_x_payout(wr)
-            if success:
-                wr.status = 'approved'
-                wr.remarks = 'Auto-approved for Superadmin'
-                wr.save()
-                messages.success(request, 'GST withdrawal initiated successfully!')
-            else:
-                wr.status = 'rejected'
-                wr.remarks = f"Payout failed: {payout_res.get('message')}"
-                wr.save()
-                messages.error(request, f"Payout failed: {payout_res.get('message')}")
+            messages.success(request, 'GST withdrawal created successfully.')
             
     return redirect('superadmin_gst')
 
@@ -4170,7 +4501,7 @@ def request_expense_withdrawal(request):
             amount = Decimal('0')
             
         from .models import Lead, WithdrawalRequest
-        total_earned_expense = sum(lead.get_expense_amount for lead in Lead.objects.filter(status='confirmed'))
+        total_earned_expense = sum(lead.get_expense_amount for lead in Lead.objects.filter(status__in=['confirmed', 'completed']))
         withdrawn_expense = sum(r.amount for r in WithdrawalRequest.objects.filter(request_type='expense', status='approved'))
         balance_expense = total_earned_expense - withdrawn_expense
         
@@ -4183,6 +4514,8 @@ def request_expense_withdrawal(request):
                 user=request.user,
                 amount=amount,
                 request_type='expense',
+                status='approved',
+                remarks='Approved by Superadmin',
                 account_number=acc_num,
                 ifsc_code=ifsc,
                 account_holder=holder,
@@ -4194,20 +4527,7 @@ def request_expense_withdrawal(request):
             request.user.bank_phone = phone
             request.user.save()
 
-            # Auto-approve & trigger payout immediately for Superadmin
-            from .utils import create_razorpay_x_payout
-            success, payout_res = create_razorpay_x_payout(wr)
-            if success:
-                wr.status = 'approved'
-                wr.remarks = 'Auto-approved for Superadmin'
-                wr.save()
-                messages.success(request, 'Expense withdrawal initiated successfully!')
-            else:
-                wr.status = 'rejected'
-                wr.remarks = f"Payout failed: {payout_res.get('message')}"
-                wr.save()
-                messages.error(request, f"Payout failed: {payout_res.get('message')}")
-            request.user.save()
+            messages.success(request, 'Expense withdrawal created successfully.')
             
     return redirect('superadmin_expenses')
 
@@ -4657,11 +4977,25 @@ def get_notifications(request):
     
     data = []
     for note in notes:
-        actor_name = note.actor.name or note.actor.username if note.actor else "System"
+        if note.actor and note.actor.usertype == 'customer':
+            if request.user.usertype == 'superadmin':
+                actor_name = note.actor.name or note.actor.username
+            else:
+                actor_name = "Associate Company"
+        else:
+            actor_name = note.actor.name or note.actor.username if note.actor else "System"
+
+        verb_text = note.verb
+        if note.actor and note.actor.usertype == 'customer' and request.user.usertype != 'superadmin':
+            if note.actor.name and note.actor.name in verb_text:
+                verb_text = verb_text.replace(note.actor.name, "Associate Company")
+            if note.actor.username and note.actor.username in verb_text:
+                verb_text = verb_text.replace(note.actor.username, "Associate Company")
+
         data.append({
             'id': note.id,
             'actor': actor_name,
-            'verb': note.verb,
+            'verb': verb_text,
             'is_read': note.is_read,
             'created_at': note.created_at.strftime('%b %d, %Y %I:%M %p'),
             'lead_id': note.lead.id if note.lead else None
@@ -4718,9 +5052,9 @@ def download_invoice(request, lead_id):
         messages.error(request, 'Permission denied.')
         return redirect('leads_list')
 
-    # ── only issue invoices for confirmed (paid) leads with at least one payment ──
-    if lead.status != 'confirmed' or not lead.has_any_payment:
-        messages.error(request, 'Invoice is only available for confirmed leads with at least one payment.')
+    # ── only issue invoices for confirmed/completed (paid) leads with at least one payment ──
+    if lead.status not in ['confirmed', 'completed'] or not lead.has_any_payment:
+        messages.error(request, 'Invoice is only available for confirmed/completed leads with at least one payment.')
         return redirect('leads_list')
 
     from .invoice_utils import build_invoice_pdf
@@ -4751,8 +5085,8 @@ def send_invoice_email_view(request, lead_id):
     if not allowed:
         return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
 
-    if lead.status != 'confirmed' or not lead.has_any_payment:
-        return JsonResponse({'status': 'error', 'message': 'Invoice only available for confirmed leads with at least one payment.'}, status=400)
+    if lead.status not in ['confirmed', 'completed'] or not lead.has_any_payment:
+        return JsonResponse({'status': 'error', 'message': 'Invoice only available for confirmed/completed leads with at least one payment.'}, status=400)
 
     if not lead.email:
         return JsonResponse({'status': 'error', 'message': 'This lead has no email address on record.'}, status=400)

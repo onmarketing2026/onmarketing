@@ -52,6 +52,7 @@ urlpatterns = [
     
     path('wallet/', views.wallet_dashboard, name='wallet_dashboard'),
     path('superadmin/user-wallets/', views.superadmin_user_wallets, name='superadmin_user_wallets'),
+    path('superadmin/associate-wallets/', views.superadmin_associate_wallets, name='superadmin_associate_wallets'),
     path('superadmin/user-wallets/<int:user_id>/', views.wallet_dashboard, name='superadmin_user_view_wallet'),
     path('superadmin/user-wallets/<int:user_id>/transactions/', views.get_user_transactions, name='get_user_transactions'),
     path('wallet/withdraw/', views.request_withdrawal, name='request_withdrawal'),
@@ -60,6 +61,7 @@ urlpatterns = [
     path('wallet/requests/<int:request_id>/delete/', views.delete_withdrawal_request, name='delete_withdrawal_request'),
     path('wallet/export-commissions-csv/', views.export_commissions_csv, name='export_commissions_csv'),
     path('superadmin/user-wallets/export-csv/', views.export_wallets_csv, name='export_wallets_csv'),
+    path('superadmin/associate-wallets/export-csv/', views.export_associate_wallets_csv, name='export_associate_wallets_csv'),
     path('superadmin/withdrawal-requests/export-csv/', views.export_withdrawal_requests_csv, name='export_withdrawal_requests_csv'),
     path('superadmin/gst/', views.superadmin_gst, name='superadmin_gst'),
     path('superadmin/expenses/', views.superadmin_expenses, name='superadmin_expenses'),
@@ -81,7 +83,6 @@ urlpatterns = [
     path('installments/<int:installment_id>/pay-from-mail/', views.pay_installment_from_mail, name='pay_installment_from_mail'),
     path('installments/<int:installment_id>/verify/', views.verify_installment_payment, name='verify_installment_payment'),
     path('razorpay-webhook/', views.razorpay_webhook, name='razorpay_webhook'),
-    path('razorpayx-webhook/', views.razorpayx_webhook, name='razorpayx_webhook'),
     path('superadmin/commissions/', views.commission_settings, name='commission_settings'),
     
     # Category Management
