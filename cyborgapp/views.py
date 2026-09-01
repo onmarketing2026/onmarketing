@@ -1727,9 +1727,6 @@ def requirement_edit(request, req_id):
                 image = request.FILES.get(f'image_{sub_id}')
                 if not image and old_item:
                     image = old_item.image
-                # Keep existing youtube_link if user left the field blank
-                if not yt_link and old_item and old_item.youtube_link:
-                    yt_link = old_item.youtube_link
 
                 RequirementItem.objects.create(
                     requirement=requirement,
