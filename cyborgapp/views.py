@@ -2056,10 +2056,17 @@ def wallet_dashboard(request, user_id=None):
         logs = logs.order_by('-created_at')[start:start+length]
         data = []
         for l in logs:
+            desc = l.description or ''
+            if l.lead_id:
+                import re
+                desc = re.sub(r'\s*\(Lead ID:\s*#\d+,\s*', ' (', desc)
+                desc = re.sub(r'\s*\(Lead ID:\s*#\d+\)', '', desc)
+                if not desc.startswith('[Lead #'):
+                    desc = f"[Lead #{l.lead_id}] {desc}"
             data.append({
                 'type': 'Withdrawal Credit',
                 'amount': float(l.amount),
-                'description': l.description,
+                'description': desc,
                 'date_formatted': l.created_at.strftime('%b %d, %Y %H:%M')
             })
         return JsonResponse({
@@ -2101,10 +2108,17 @@ def wallet_dashboard(request, user_id=None):
         logs = logs.order_by('-created_at')[start:start+length]
         data = []
         for l in logs:
+            desc = l.description or ''
+            if l.lead_id:
+                import re
+                desc = re.sub(r'\s*\(Lead ID:\s*#\d+,\s*', ' (', desc)
+                desc = re.sub(r'\s*\(Lead ID:\s*#\d+\)', '', desc)
+                if not desc.startswith('[Lead #'):
+                    desc = f"[Lead #{l.lead_id}] {desc}"
             data.append({
                 'type': 'Pending Log',
                 'amount': float(l.amount),
-                'description': l.description,
+                'description': desc,
                 'date_formatted': l.created_at.strftime('%b %d, %Y %H:%M')
             })
         return JsonResponse({
@@ -2639,10 +2653,17 @@ def get_user_transactions(request, user_id):
                 pass
         logs = logs.order_by('-created_at')
         for l in logs:
+            desc = l.description or ''
+            if l.lead_id:
+                import re
+                desc = re.sub(r'\s*\(Lead ID:\s*#\d+,\s*', ' (', desc)
+                desc = re.sub(r'\s*\(Lead ID:\s*#\d+\)', '', desc)
+                if not desc.startswith('[Lead #'):
+                    desc = f"[Lead #{l.lead_id}] {desc}"
             data.append({
                 'type': 'Withdrawal Credit' if table_type == 'withdrawal' else 'Pending Log',
                 'amount': str(l.amount),
-                'description': l.description,
+                'description': desc,
                 'date': l.created_at.strftime('%b %d, %Y %H:%M')
             })
     else:
@@ -3946,7 +3967,7 @@ def lead_add_associate_update(request, lead_id):
                                 lead=lead,
                                 amount=pending_total,
                                 log_type='pending',
-                                description=f"₹{pending_total:,.2f} transferred to withdrawal balance upon completion of lead: {lead.name} ({lead.requirement.title})"
+                                description=f"[Lead #{lead.id}] ₹{pending_total:,.2f} transferred to withdrawal balance upon completion of lead: {lead.name} ({lead.requirement.title})"
                             )
 
                             # Log to Withdrawal History
@@ -3955,7 +3976,7 @@ def lead_add_associate_update(request, lead_id):
                                 lead=lead,
                                 amount=pending_total,
                                 log_type='withdrawal',
-                                description=f"₹{pending_total:,.2f} credited after completion of lead: {lead.name} ({lead.requirement.title})"
+                                description=f"[Lead #{lead.id}] ₹{pending_total:,.2f} credited after completion of lead: {lead.name} ({lead.requirement.title})"
                             )
 
             if "[Status changed to Completed]" not in update_text:
@@ -5242,7 +5263,7 @@ def target_achievement_list(request):
 
 @login_required(login_url='login')
 def incentive_list(request):
-    allowed_types = ['superadmin', 'district', 'manager', 'mandalam', 'marketing']
+    allowed_types = ['superadmin', 'district', 'mandalam', 'marketing']
     if request.user.usertype not in allowed_types:
         messages.error(request, 'Permission denied.')
         return redirect('superadmin_dashboard')

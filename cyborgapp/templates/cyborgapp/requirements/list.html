@@ -625,9 +625,7 @@
                                                     ${item.subcategory_name}
                                                 </span>
                                                 ${countSection}
-                                                <span style="font-size: 0.72rem; font-weight: 700; color: #b8912d; margin-top: 2px;">
-                                                    <i class="fa-solid fa-coins"></i> Commission (1 Qty): ₹${item.my_commission.toFixed(2)}
-                                                </span>
+                                                ${userUsertype !== 'manager' ? `<span style="font-size: 0.72rem; font-weight: 700; color: #b8912d; margin-top: 2px;"><i class="fa-solid fa-coins"></i> Commission (1 Qty): ₹${item.my_commission.toFixed(2)}</span>` : ''}
                                             </div>
                                         </div>
                                         <div style="display: flex; flex-direction: column; align-items: flex-end;">

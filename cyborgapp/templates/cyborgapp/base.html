@@ -712,7 +712,7 @@
             </a>
             {% endif %}
 
-            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' or request.user.usertype == 'mandalam' or request.user.usertype == 'marketing' %}
+            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'mandalam' or request.user.usertype == 'marketing' %}
             <a href="{% url 'incentive_list' %}" class="menu-item {% if request.resolver_match.url_name == 'incentive_list' %}active{% endif %}">
                 <i class="fa-solid fa-gift"></i>
                 Incentives

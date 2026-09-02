@@ -99,7 +99,7 @@ def distribute_product_sale_commission(lead, installment=None):
                         lead=lead,
                         amount=withdrawable_amount,
                         log_type='withdrawal',
-                        description=f"₹{withdrawable_amount:,.2f} has reflected to withdrawal balance from lead: {lead.name} ({lead.requirement.title}){inst_summary}"
+                        description=f"[Lead #{lead.id}] ₹{withdrawable_amount:,.2f} has reflected to withdrawal balance from lead: {lead.name} ({lead.requirement.title}){inst_summary}"
                     )
 
                 if pending_amount > 0:
@@ -108,7 +108,7 @@ def distribute_product_sale_commission(lead, installment=None):
                         lead=lead,
                         amount=pending_amount,
                         log_type='pending',
-                        description=f"₹{pending_amount:,.2f} has reflected to pending balance from lead: {lead.name} ({lead.requirement.title}){inst_summary}"
+                        description=f"[Lead #{lead.id}] ₹{pending_amount:,.2f} has reflected to pending balance from lead: {lead.name} ({lead.requirement.title}){inst_summary}"
                     )
         else:
             add_to_wallet(
