@@ -242,7 +242,7 @@
         </div>
         {% endif %}
 
-        {% if 'active_incentives_count' in stats %}
+        {% if 'active_incentives_count' in stats and request.user.usertype != 'manager' %}
         <a href="{% url 'incentive_list' %}" style="text-decoration: none; color: inherit; display: flex; align-items: stretch;">
             <div class="stat-card" style="cursor: pointer; width: 100%;">
                 <div class="stat-icon" style="background: linear-gradient(135deg, rgba(203, 161, 53, 0.2) 0%, rgba(203, 161, 53, 0.05) 100%); color: #cba135; box-shadow: 0 4px 10px rgba(203, 161, 53, 0.15);">

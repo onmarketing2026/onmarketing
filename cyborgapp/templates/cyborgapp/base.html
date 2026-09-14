@@ -105,7 +105,10 @@
             flex-direction: column;
             transition: all 0.3s ease;
             position: fixed;
+            top: 0;
+            left: 0;
             height: 100vh;
+            height: 100dvh;
             z-index: 1000;
         }
 
@@ -114,6 +117,7 @@
             display: flex;
             align-items: center;
             border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
         }
 
         .sidebar-brand img {
@@ -179,6 +183,8 @@
         .sidebar-footer {
             padding: 20px 30px;
             border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+            background-color: var(--sidebar-bg);
         }
 
         .logout-btn {
@@ -191,7 +197,11 @@
         }
 
         .logout-btn i {
-            margin-right: 10px;
+            width: 24px;
+            font-size: 1.1rem;
+            margin-right: 15px;
+            color: #dc3545;
+            transition: color 0.2s ease;
         }
 
         .logout-btn:hover {
@@ -589,10 +599,12 @@
                 <i class="fa-solid fa-chart-pie"></i>
                 Dashboard
             </a>
+            {% if request.user.usertype != 'manager' or request.user.get_manager_permissions.can_access_requirements %}
             <a href="{% url 'requirement_list' %}" class="menu-item {% if request.resolver_match.url_name == 'requirement_list' or request.resolver_match.url_name == 'requirement_detail' %}active{% endif %}">
                 <i class="fa-solid fa-clipboard-list"></i>
                 {% if request.user.usertype == 'customer' %}Requirements{% else %}Company Requirements{% endif %}
             </a>
+            {% endif %}
             {% if request.user.usertype == 'superadmin' or request.user.usertype == 'customer' %}
             <a href="{% url 'category_list' %}" class="menu-item {% if request.resolver_match.url_name == 'category_list' %}active{% endif %}">
                 <i class="fa-solid fa-tags"></i>
@@ -600,6 +612,7 @@
             </a>
             {% endif %}
             {% if request.user.usertype != 'customer' and request.user.usertype != 'marketing' %}
+            {% if request.user.usertype != 'manager' or request.user.get_manager_permissions.df_can_view or request.user.get_manager_permissions.fc_can_view %}
             <div class="menu-dropdown-wrapper {% if request.resolver_match.url_name == 'superadmin_users' %}open{% endif %}">
                 <a href="javascript:void(0);" class="menu-item menu-dropdown-toggle">
                     <i class="fa-solid fa-users"></i>
@@ -620,14 +633,14 @@
                     </a>
                     {% endif %}
                     
-                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' and request.user.get_manager_permissions.fc_can_view %}
                     <a href="{% url 'superadmin_users' %}?usertype=mandalam" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'mandalam' %}active{% endif %}">
                         <i class="fa-solid fa-circle"></i>
                         Fecilitation Center
                     </a>
                     {% endif %}
 
-                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' or request.user.usertype == 'mandalam' or request.user.usertype == 'staff' %}
+                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'mandalam' or request.user.usertype == 'staff' or request.user.usertype == 'manager' and request.user.get_manager_permissions.df_can_view %}
                     <a href="{% url 'superadmin_users' %}?usertype=marketing" class="menu-item submenu-item {% if request.resolver_match.url_name == 'superadmin_users' and request.GET.usertype == 'marketing' %}active{% endif %}">
                         <i class="fa-solid fa-circle"></i>
                         Digital Franchise
@@ -650,16 +663,19 @@
                 </div>
             </div>
             {% endif %}
-            {% if request.user.usertype != 'customer' %}
+            {% endif %}
+            {% if request.user.usertype != 'customer' and request.user.usertype != 'manager' or request.user.usertype == 'manager' and request.user.get_manager_permissions.leads_access != 'none' %}
             <a href="{% url 'lead_list' %}" class="menu-item {% if request.resolver_match.url_name == 'lead_list' %}active{% endif %}">
                 <i class="fa-solid fa-bullseye"></i>
                 Leads
             </a>
             {% endif %}
+            {% if request.user.usertype != 'manager' or request.user.get_manager_permissions.confirmed_leads_access != 'none' %}
             <a href="{% url 'confirmed_lead_list' %}" class="menu-item {% if request.resolver_match.url_name == 'confirmed_lead_list' %}active{% endif %}">
                 <i class="fa-solid fa-circle-check"></i>
                 Confirmed Leads
             </a>
+            {% endif %}
 
             {% if request.user.usertype == 'superadmin' %}
             <a href="{% url 'commission_settings' %}" class="menu-item {% if request.resolver_match.url_name == 'commission_settings' %}active{% endif %}">

@@ -63,6 +63,9 @@
     .btn-invoice-premium { background: rgba(13, 202, 240, 0.1); color: #0dcaf0; }
     .btn-invoice-premium:hover { background: #0dcaf0; color: white; transform: scale(1.1); }
 
+    .btn-feedback-premium { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
+    .btn-feedback-premium:hover { background: #ff9800; color: white; transform: scale(1.1); }
+
     .update-item {
 </style>
 {% endblock %}
@@ -89,6 +92,11 @@
                     <a href="{% url 'superadmin_export_leads' %}" id="btnExportLeads" class="btn-create-premium" style="background: linear-gradient(135deg, #198754, #107c41); text-decoration: none;">
                         <i class="fa-solid fa-file-excel"></i> Export
                     </a>
+                {% endif %}
+                {% if request.user.usertype == 'superadmin' %}
+                <a href="{% url 'export_feedback_leads_csv' %}" id="btnExportFeedbackLeads" class="btn-create-premium" style="background: linear-gradient(135deg, #0d6efd, #0a58ca); text-decoration: none;" title="Export Feedback Leads">
+                    <i class="fa-solid fa-comments"></i> Export Feedback Leads
+                </a>
                 {% endif %}
                 {% if request.user.usertype == 'marketing' and not is_confirmed_tab %}
                     <button class="btn-create-premium" id="openAddLeadModal">
@@ -165,14 +173,14 @@
                     {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
                         <td>
                             <span style="background: var(--role-bg-extra-light); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--role-color);">
-                                {{ lead.marketing_user.assigned_mandalam.name|default:"-" }}
+                                {{ lead.get_mandalam.name|default:"-" }}
                             </span>
                         </td>
                     {% endif %}
                     {% if request.user.usertype == 'superadmin' %}
                         <td>
                             <span style="background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-main);">
-                                {{ lead.marketing_user.assigned_district.name|default:"-" }}
+                                {{ lead.get_district.name|default:"-" }}
                             </span>
                         </td>
                     {% endif %}
@@ -211,6 +219,11 @@
                                 <button class="action-btn-circle btn-history-premium assoc-updates-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" title="Associate Updates">
                                     <i class="fa-solid fa-comment-dots"></i>
                                 </button>
+                                {% if request.user.usertype == 'district' or request.user.usertype == 'superadmin' %}
+                                <button class="action-btn-circle btn-feedback-premium district-feedback-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-level="{{ lead.current_level }}" title="District Feedback">
+                                    <i class="fa-solid fa-comments"></i>
+                                </button>
+                                {% endif %}
                                 {% if lead.has_any_payment and request.user.usertype != 'customer' %}
                                 <button class="action-btn-circle btn-invoice-premium invoice-action-btn"
                                         data-lead-id="{{ lead.id }}"
@@ -244,6 +257,11 @@
                                 <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-status="{{ lead.status }}" data-level="{{ lead.current_level }}" title="Status & Timeline">
                                     <i class="fa-solid fa-clock-rotate-left"></i>
                                 </button>
+                                {% if request.user.usertype == 'district' or request.user.usertype == 'superadmin' %}
+                                <button class="action-btn-circle btn-feedback-premium district-feedback-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-level="{{ lead.current_level }}" title="District Feedback">
+                                    <i class="fa-solid fa-comments"></i>
+                                </button>
+                                {% endif %}
                                 <button class="action-btn-circle btn-share-premium share-lead-btn" data-id="{{ lead.id }}" data-email="{{ lead.email|default:'' }}" title="Share Details & Payment Link">
                                     <i class="fa-solid fa-paper-plane"></i>
                                 </button>
@@ -507,6 +525,68 @@
             </div>
         </div>
     </div>
+
+    <!-- District Feedback Modal -->
+    <div id="districtFeedbackModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
+        <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 550px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
+            <span class="close-modal" id="closeDistrictFeedbackModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
+            <h2 style="margin-bottom: 10px; font-size: 1.5rem; display: flex; align-items: center; gap: 10px;">
+                <i class="fa-solid fa-comments" style="color: #ff9800;"></i> District Feedback
+            </h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted);">Lead feedback for <span id="districtFeedbackLeadName" style="font-weight: 700; color: var(--text-main);"></span></p>
+
+            {% if request.user.usertype == 'manager' %}
+            <div id="managerDistrictFeedbackMsg" style="margin-bottom: 20px; padding: 12px 15px; background: rgba(220, 53, 69, 0.08); color: #dc3545; border-radius: 8px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(220, 53, 69, 0.2);">
+                <i class="fa-solid fa-triangle-exclamation" style="margin-right: 5px;"></i> Managers are not permitted to add feedback. Only District Franchise users can submit feedback.
+            </div>
+            {% elif request.user.usertype == 'superadmin' %}
+            <div id="superadminDistrictFeedbackMsg" style="margin-bottom: 20px; padding: 12px 15px; background: rgba(13, 110, 253, 0.08); color: #0d6efd; border-radius: 8px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(13, 110, 253, 0.2);">
+                <i class="fa-solid fa-eye" style="margin-right: 5px;"></i> Viewing District Feedback submitted by District Franchise (Read-only).
+            </div>
+            {% endif %}
+
+            <div id="districtFeedbackNotReachedMsg" style="display: none; margin-bottom: 20px; padding: 12px 15px; background: rgba(255, 193, 7, 0.15); color: #856404; border-radius: 8px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(255, 193, 7, 0.3);">
+                <i class="fa-solid fa-lock" style="margin-right: 5px;"></i> Feedback can only be added when the lead reaches District Franchise level.
+            </div>
+
+            <!-- Add District Feedback Section -->
+            <div id="districtAddFeedbackSection" style="display: none; margin-bottom: 30px; padding-bottom: 25px; border-bottom: 1px solid var(--border-color);">
+                <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main); font-weight: bold;">Add New Feedback</h4>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <textarea id="districtFeedbackText" class="form-control" placeholder="Enter detailed feedback for this lead..." style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; min-height: 90px; font-size: 0.9rem;"></textarea>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Feedback Date <span style="color:#dc3545;">*</span></label>
+                        <input type="date" id="districtFeedbackDate" class="form-control" required style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Feedback Time <span style="color:#dc3545;">*</span></label>
+                        <input type="time" id="districtFeedbackTime" class="form-control" required style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
+                    </div>
+                </div>
+                <button type="button" id="saveDistrictFeedbackBtn" style="width: 100%; background: linear-gradient(135deg, #ff9800, #ed6c02); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 0.95rem;">
+                    <i class="fa-solid fa-paper-plane" style="margin-right: 5px;"></i> Submit District Feedback
+                </button>
+            </div>
+
+            <!-- Feedback Timeline -->
+            <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main); font-weight: bold;">Feedback History</h4>
+            <div id="districtFeedbackListContainer" style="margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; background: #fff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                <table id="districtFeedbackTable" style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="text-align: left; padding: 12px 15px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color);">Feedback Details</th>
+                            <th style="text-align: left; padding: 12px 15px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color); width: 160px;">Submitted By / Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="districtFeedbackList" style="font-size: 0.85rem;">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 {% endblock %}
 
 {% block extra_js %}
@@ -713,10 +793,11 @@
                 leadItemsSection.style.display = 'none';
             }
         };
-        leadForm.addEventListener('submit', function(e) {
+        leadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
             const selectedItems = leadForm.querySelectorAll('input[name="selected_items"]:checked');
             if (selectedItems.length === 0) {
-                e.preventDefault();
                 Swal.fire({
                     icon: 'error',
                     title: 'Selection Required',
@@ -764,7 +845,44 @@
                     }
                 }
             });
-            if (!valid) e.preventDefault();
+            if (!valid) return;
+
+            // Check pending lead for same email & subcategories under this requirement
+            const emailInput = document.getElementById('leadEmail') || leadForm.querySelector('input[name="email"]');
+            const emailVal = emailInput ? emailInput.value.trim() : '';
+
+            let reqId = '';
+            if (leadRequirement && leadRequirement.value) {
+                reqId = leadRequirement.value;
+            } else {
+                const actionMatch = leadForm.action.match(/\/requirements\/(\d+)\/lead\/create/);
+                if (actionMatch) reqId = actionMatch[1];
+            }
+
+            const subIds = Array.from(selectedItems).map(cb => cb.value).join(',');
+            const isEditMode = leadForm.action.includes('/edit/');
+            const leadIdMatch = leadForm.action.match(/\/leads\/(\d+)\/edit/);
+            const excludeLeadId = (isEditMode && leadIdMatch) ? leadIdMatch[1] : '';
+
+            if (emailVal && reqId && subIds) {
+                try {
+                    const checkRes = await fetch(`/leads/check-pending-email/?email=${encodeURIComponent(emailVal)}&requirement_id=${reqId}&subcategories=${subIds}&exclude_lead_id=${excludeLeadId}`);
+                    const checkData = await checkRes.json();
+                    if (checkData.blocked) {
+                        const subNames = checkData.blocked_subcategories.join(', ');
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Pending Lead Exists',
+                            html: `A lead with email <strong>${emailVal}</strong> for subcategory <strong>${subNames}</strong> is currently in <strong>Pending</strong> status under this requirement.<br><br>Cannot add/update a lead for this subcategory until its status changes.`
+                        });
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Pending email check error:', err);
+                }
+            }
+
+            leadForm.submit();
         });
 
         const editBtns = document.querySelectorAll('.edit-lead-btn');
@@ -787,8 +905,9 @@
                 const isControlled = this.getAttribute('data-is-controlled') === 'true';
                 const controlledBy = this.getAttribute('data-controlled-by') || '';
                 const controlledByMsg = document.getElementById('leadControlledByMsg');
+                const isManagerViewOnly = {% if request.user.usertype == 'manager' %}{% if is_confirmed_tab %}{% if request.user.get_manager_permissions.confirmed_leads_access == 'view' %}true{% else %}false{% endif %}{% else %}{% if request.user.get_manager_permissions.leads_access == 'view' %}true{% else %}false{% endif %}{% endif %}{% else %}false{% endif %};
 
-                if (status === 'confirmed' || currentUserUsertype === 'staff') {
+                if (status === 'confirmed' || currentUserUsertype === 'staff' || isManagerViewOnly) {
                     leadModalTitle.textContent = "View Lead Details";
                     submitBtn.style.display = 'none';
                     inputs.forEach(input => input.disabled = true);
@@ -1240,7 +1359,7 @@
                         document.getElementById('reqRejectedMsgTitle').textContent = "Facilitation Center Not Assigned!";
                         document.getElementById('reqRejectedMsgBody').textContent = "This requirement is not assigned to the Facilitation Center. Currently cannot update.";
                         reqRejectedMsg.style.display = 'block';
-                    } else if (!data.can_update || currentUserUsertype === 'staff') {
+                    } else if (!data.can_update || currentUserUsertype === 'staff' || ({% if request.user.usertype == 'manager' and request.user.get_manager_permissions.leads_access == 'view' %}true{% else %}false{% endif %})) {
                         lockedLevelName.textContent = formatLevelName(data.current_level);
                         noPermissionMsg.style.display = 'block';
                     } else {
@@ -1740,6 +1859,231 @@
             });
         }
 
+        const exportFeedbackBtn = document.getElementById('btnExportFeedbackLeads');
+        if (exportFeedbackBtn) {
+            exportFeedbackBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const fromVal = document.getElementById('export_from_date').value;
+                const toVal = document.getElementById('export_to_date').value;
+                let baseUrl = this.getAttribute('href').split('?')[0];
+                const params = [];
+                if (fromVal) params.push(`from_date=${fromVal}`);
+                if (toVal) params.push(`to_date=${toVal}`);
+                
+                let checkUrl = baseUrl + '?check_empty=true';
+                if (params.length > 0) {
+                    checkUrl += '&' + params.join('&');
+                }
+                
+                fetch(checkUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.empty) {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'No Feedback Leads',
+                                text: 'There are no leads with feedback to export in the selected range.',
+                                confirmButtonColor: 'var(--role-color, #6f42c1)'
+                            });
+                        } else {
+                            let downloadUrl = baseUrl;
+                            if (params.length > 0) {
+                                downloadUrl += '?' + params.join('&');
+                            }
+                            window.location.href = downloadUrl;
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'An error occurred while checking feedback lead data.',
+                            confirmButtonColor: 'var(--role-color, #6f42c1)'
+                        });
+                    });
+            });
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        /* ── District Feedback Modal & Logic ── */
+        let currentDistrictFeedbackLeadId = null;
+        const districtFeedbackModal = document.getElementById('districtFeedbackModal');
+        const closeDistrictFeedbackModal = document.getElementById('closeDistrictFeedbackModal');
+        const districtFeedbackList = document.getElementById('districtFeedbackList');
+        const districtFeedbackLeadName = document.getElementById('districtFeedbackLeadName');
+        const districtAddFeedbackSection = document.getElementById('districtAddFeedbackSection');
+        const districtFeedbackNotReachedMsg = document.getElementById('districtFeedbackNotReachedMsg');
+        const saveDistrictFeedbackBtn = document.getElementById('saveDistrictFeedbackBtn');
+
+        if (closeDistrictFeedbackModal) {
+            closeDistrictFeedbackModal.onclick = function() {
+                if (districtFeedbackModal) districtFeedbackModal.style.display = 'none';
+            };
+        }
+
+        $(document).on('click', '.district-feedback-btn', function() {
+            currentDistrictFeedbackLeadId = this.getAttribute('data-id');
+            const leadName = this.getAttribute('data-name');
+            if (districtFeedbackLeadName) districtFeedbackLeadName.textContent = leadName;
+
+            // Pre-fill current date and time on modal load
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+
+            $('#districtFeedbackText').val('');
+            $('#districtFeedbackDate').val(`${yyyy}-${mm}-${dd}`);
+            $('#districtFeedbackTime').val(`${hh}:${min}`);
+
+            fetch(`/leads/${currentDistrictFeedbackLeadId}/district-feedback/get/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        if (data.can_add) {
+                            if (districtAddFeedbackSection) districtAddFeedbackSection.style.display = 'block';
+                            if (districtFeedbackNotReachedMsg) districtFeedbackNotReachedMsg.style.display = 'none';
+                        } else {
+                            if (districtAddFeedbackSection) districtAddFeedbackSection.style.display = 'none';
+                            if (districtFeedbackNotReachedMsg && data.user_type === 'district' && data.current_level !== 'district') {
+                                districtFeedbackNotReachedMsg.style.display = 'block';
+                            } else if (districtFeedbackNotReachedMsg) {
+                                districtFeedbackNotReachedMsg.style.display = 'none';
+                            }
+                        }
+
+                        if (districtFeedbackList) {
+                            districtFeedbackList.innerHTML = '';
+                            if (!data.feedbacks || data.feedbacks.length === 0) {
+                                districtFeedbackList.innerHTML = `
+                                    <tr>
+                                        <td colspan="2" style="padding: 20px; text-align: center; color: var(--text-muted);">No district feedback added yet.</td>
+                                    </tr>
+                                `;
+                            } else {
+                                data.feedbacks.forEach(fb => {
+                                    const tr = document.createElement('tr');
+                                    tr.style.borderBottom = '1px solid var(--border-color)';
+                                    tr.innerHTML = `
+                                        <td style="padding: 12px 15px; color: var(--text-main); font-size: 0.9rem; line-height: 1.4;">
+                                            ${escapeHtml(fb.feedback_text)}
+                                        </td>
+                                        <td style="padding: 12px 15px; color: var(--text-muted); font-size: 0.8rem; vertical-align: top;">
+                                            <div style="font-weight: 700; color: #ff9800;">${escapeHtml(fb.district_user_name)}</div>
+                                            <div>${escapeHtml(fb.created_at)}</div>
+                                        </td>
+                                    `;
+                                    districtFeedbackList.appendChild(tr);
+                                });
+                            }
+                        }
+                        if (districtFeedbackModal) districtFeedbackModal.style.display = 'block';
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: data.message || 'Failed to load district feedback.'
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Failed to load district feedback.'
+                    });
+                });
+        });
+
+        if (saveDistrictFeedbackBtn) {
+            saveDistrictFeedbackBtn.addEventListener('click', function() {
+                const feedbackText = document.getElementById('districtFeedbackText').value.trim();
+                const customDate = document.getElementById('districtFeedbackDate').value;
+                const customTime = document.getElementById('districtFeedbackTime').value;
+
+                if (!feedbackText) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Required',
+                        text: 'Please enter feedback text.'
+                    });
+                    return;
+                }
+
+                if (!customDate || !customTime) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Required',
+                        text: 'Please select both Feedback Date and Feedback Time.'
+                    });
+                    return;
+                }
+
+                saveDistrictFeedbackBtn.disabled = true;
+                saveDistrictFeedbackBtn.textContent = 'Submitting...';
+
+                const csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+                fetch(`/leads/${currentDistrictFeedbackLeadId}/district-feedback/add/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf ? csrf.value : (typeof getCookie === 'function' ? getCookie('csrftoken') : '')
+                    },
+                    body: JSON.stringify({
+                        feedback_text: feedbackText,
+                        custom_date: customDate,
+                        custom_time: customTime
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    saveDistrictFeedbackBtn.disabled = false;
+                    saveDistrictFeedbackBtn.innerHTML = '<i class="fa-solid fa-paper-plane" style="margin-right: 5px;"></i> Submit District Feedback';
+
+                    if (data.status === 'success') {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: data.message || 'District feedback added successfully.',
+                            timer: 1500,
+                            showConfirmButton: false
+                        }).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Failed',
+                            text: data.message || 'Failed to submit feedback.'
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    saveDistrictFeedbackBtn.disabled = false;
+                    saveDistrictFeedbackBtn.innerHTML = '<i class="fa-solid fa-paper-plane" style="margin-right: 5px;"></i> Submit District Feedback';
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'An unexpected error occurred while saving feedback.'
+                    });
+                });
+            });
+        }
+
         const clearLeadsDatesBtn = document.getElementById('clear_leads_dates');
         if (clearLeadsDatesBtn) {
             clearLeadsDatesBtn.addEventListener('click', function() {
@@ -1752,6 +2096,7 @@
             if (e.target == leadModal) leadModal.style.display = 'none';
             if (e.target == historyModal) historyModal.style.display = 'none';
             if (e.target == assocUpdatesModal) assocUpdatesModal.style.display = 'none';
+            if (e.target == districtFeedbackModal) districtFeedbackModal.style.display = 'none';
         };
 
         /* ── Invoice action handler ── */

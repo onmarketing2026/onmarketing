@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     CustomUser, Category, SubCategory, CustomerRequirement,
-    RequirementItem, Lead, LeadItem, LeadUpdate, LeadAssociateUpdate,
+    RequirementItem, Lead, LeadItem, LeadUpdate, LeadAssociateUpdate, DistrictFeedback, ManagerPermission,
     CommissionSetting, RegistrationCommission, Wallet, AssociateWalletLog, CommissionTransaction,
     WithdrawalRequest, RequirementAssignment, DistrictRequirementAssignment, LeadInstallment, Incentive, Notification
 )
@@ -135,3 +135,14 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ('recipient', 'actor', 'verb', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
     search_fields = ('recipient__name', 'verb')
+
+@admin.register(DistrictFeedback)
+class DistrictFeedbackAdmin(admin.ModelAdmin):
+    list_display = ('lead', 'district_user', 'created_at')
+    search_fields = ('lead__name', 'district_user__name', 'district_user__username', 'feedback_text')
+    list_filter = ('created_at',)
+
+@admin.register(ManagerPermission)
+class ManagerPermissionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'can_access_requirements', 'df_can_view', 'fc_can_view', 'leads_access', 'confirmed_leads_access')
+    search_fields = ('user__name', 'user__username')

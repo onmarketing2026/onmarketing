@@ -9,6 +9,7 @@
     <link rel="icon" type="image/jpeg" href="{% static 'img/logo.jpeg' %}">
     
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
             --primary-gold: #cba135;
@@ -40,7 +41,7 @@
             overflow-x: hidden;
             overflow-y: auto;
             position: relative;
-            padding: 20px 0;
+            padding: 20px 15px;
         }
 
         /* Light animated background */
@@ -67,13 +68,24 @@
             opacity: 0.6;
         }
 
+        .login-wrapper {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 1000px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: auto;
+        }
+
         .login-container {
             position: relative;
             z-index: 1;
             display: flex;
-            width: 1000px;
-            max-width: 90%;
-            height: 600px;
+            width: 100%;
+            max-width: 1000px;
+            min-height: 580px;
             border-radius: 20px;
             overflow: hidden;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08), 0 0 40px rgba(203, 161, 53, 0.15);
@@ -124,7 +136,8 @@
 
         .login-branding img {
             width: 100%;
-            max-width: 350px;
+            max-width: 320px;
+            height: auto;
             z-index: 2;
             filter: drop-shadow(0 10px 20px rgba(0,0,0,0.1));
             transition: transform 0.5s ease, filter 0.5s ease;
@@ -137,7 +150,7 @@
 
         .login-form-container {
             flex: 1;
-            padding: 60px;
+            padding: 50px 45px;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -145,13 +158,13 @@
         }
 
         .login-header {
-            margin-bottom: 40px;
+            margin-bottom: 35px;
         }
 
         .login-header h2 {
-            font-size: 2.2rem;
+            font-size: 2rem;
             font-weight: 700;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             color: #1a1a1a;
             letter-spacing: 0.5px;
         }
@@ -163,7 +176,7 @@
         }
 
         .form-group {
-            margin-bottom: 25px;
+            margin-bottom: 22px;
             position: relative;
         }
 
@@ -172,14 +185,14 @@
             margin-bottom: 8px;
             font-size: 0.85rem;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.2px;
             color: var(--text-muted);
             font-weight: 600;
         }
 
         .form-control {
             width: 100%;
-            padding: 15px 20px;
+            padding: 14px 18px;
             background: var(--input-bg);
             border: 1px solid var(--input-border);
             border-radius: 8px;
@@ -188,10 +201,11 @@
             transition: all 0.3s ease;
             outline: none;
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+            -webkit-appearance: none;
         }
 
         .form-control::placeholder {
-            color: rgba(0, 0, 0, 0.3);
+            color: rgba(0, 0, 0, 0.35);
         }
 
         .form-control:focus {
@@ -200,12 +214,18 @@
             background: #ffffff;
         }
 
+        .toggle-password:hover {
+            color: var(--primary-gold) !important;
+        }
+
         .form-options {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 35px;
-            font-size: 0.85rem;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 30px;
+            font-size: 0.875rem;
         }
 
         .checkbox-container {
@@ -215,6 +235,7 @@
             color: var(--text-muted);
             font-weight: 500;
             transition: color 0.3s;
+            user-select: none;
         }
 
         .checkbox-container:hover {
@@ -228,12 +249,13 @@
         .checkmark {
             width: 18px;
             height: 18px;
-            border: 1px solid rgba(0,0,0,0.2);
+            border: 1px solid rgba(0,0,0,0.25);
             background-color: #fff;
             border-radius: 4px;
             margin-right: 10px;
             position: relative;
             transition: all 0.2s ease;
+            flex-shrink: 0;
         }
 
         .checkbox-container input:checked ~ .checkmark {
@@ -272,7 +294,7 @@
 
         .btn-submit {
             width: 100%;
-            padding: 16px;
+            padding: 15px;
             background: linear-gradient(135deg, var(--primary-gold) 0%, #b8912d 100%);
             color: #ffffff;
             border: none;
@@ -286,6 +308,7 @@
             position: relative;
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(203, 161, 53, 0.3);
+            touch-action: manipulation;
         }
 
         .btn-submit::after {
@@ -313,24 +336,171 @@
             box-shadow: 0 2px 10px rgba(203, 161, 53, 0.3);
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
+        /* Footer styling */
+        .login-footer {
+            position: relative;
+            z-index: 1;
+            margin-top: 25px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            width: 100%;
+            max-width: 1000px;
+            padding: 0 10px;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px 16px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .footer-links a {
+            color: var(--primary-gold);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary-gold-hover);
+            text-decoration: underline;
+        }
+
+        .footer-divider {
+            opacity: 0.4;
+            color: var(--text-muted);
+        }
+
+        /* Responsive Media Queries */
+        @media (max-width: 900px) {
             .login-container {
-                flex-direction: column;
-                height: auto;
-                max-width: 450px;
-                margin: 20px;
-            }
-            .login-branding {
-                padding: 40px 20px;
-                border-right: none;
-                border-bottom: 1px solid var(--border-gold);
+                max-width: 720px;
             }
             .login-form-container {
                 padding: 40px 30px;
             }
+            .login-branding {
+                padding: 30px;
+            }
             .login-branding img {
-                max-width: 220px;
+                max-width: 240px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 12px;
+            }
+
+            .login-container {
+                flex-direction: column;
+                height: auto;
+                min-height: auto;
+                max-width: 460px;
+                border-radius: 16px;
+            }
+
+            .login-branding {
+                padding: 30px 20px;
+                border-right: none;
+                border-bottom: 1px solid var(--border-gold);
+            }
+
+            .login-branding img {
+                max-width: 180px;
+            }
+
+            .login-form-container {
+                padding: 30px 24px;
+            }
+
+            .login-header {
+                margin-bottom: 25px;
+                text-align: center;
+            }
+
+            .login-header h2 {
+                font-size: 1.65rem;
+            }
+
+            .login-header p {
+                font-size: 0.9rem;
+            }
+
+            .form-group {
+                margin-bottom: 18px;
+            }
+
+            .form-options {
+                margin-bottom: 25px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 15px 10px;
+            }
+
+            .login-container {
+                border-radius: 14px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06), 0 0 20px rgba(203, 161, 53, 0.1);
+            }
+
+            .login-branding {
+                padding: 24px 16px;
+            }
+
+            .login-branding img {
+                max-width: 150px;
+            }
+
+            .login-form-container {
+                padding: 24px 16px;
+            }
+
+            .login-header h2 {
+                font-size: 1.45rem;
+            }
+
+            .form-control {
+                padding: 12px 14px;
+                font-size: 1rem; /* 16px prevents mobile browser zoom */
+            }
+
+            .form-options {
+                flex-direction: row;
+                justify-content: space-between;
+                font-size: 0.825rem;
+            }
+
+            .btn-submit {
+                padding: 14px;
+                font-size: 0.925rem;
+                letter-spacing: 1.5px;
+            }
+
+            .footer-links {
+                gap: 6px 12px;
+                font-size: 0.8rem;
+            }
+
+            .footer-divider {
+                display: inline;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .form-options {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .footer-divider {
+                display: none;
             }
         }
     </style>
@@ -339,57 +509,114 @@
     <div class="bg-overlay"></div>
     <div class="bg-particles"></div>
     
-    <div class="login-container">
-        <div class="login-branding">
-            <div class="glow"></div>
-            <!-- Please ensure the logo is saved as static/img/logo.jpeg -->
-            <img src="{% static 'img/logo.jpeg' %}" alt="ON CYBORG Logo" onerror="this.src='https://via.placeholder.com/300x300/ffffff/cba135?text=ON+CYBORG'">
-        </div>
-        <div class="login-form-container">
-            <div class="login-header">
-                <h2>Welcome Back</h2>
-                <p>Initialize connection to your terminal.</p>
+    <div class="login-wrapper">
+        <div class="login-container">
+            <div class="login-branding">
+                <div class="glow"></div>
+                <!-- Please ensure the logo is saved as static/img/logo.jpeg -->
+                <img src="{% static 'img/logo.jpeg' %}" alt="ON CYBORG Logo" onerror="this.src='https://via.placeholder.com/300x300/ffffff/cba135?text=ON+CYBORG'">
             </div>
-            <form action="" method="POST">
-                {% csrf_token %}
-                <div class="form-group">
-                    <label for="username">Username / Email <span style="color: red;">*</span></label>
-                    <input type="text" id="username" name="username" class="form-control" placeholder="Enter your identifier" required>
+            <div class="login-form-container">
+                <div class="login-header">
+                    <h2>Welcome Back</h2>
+                    <p>Initialize connection to your terminal.</p>
                 </div>
-                <div class="form-group">
-                    <label for="password">Security Key <span style="color: red;">*</span></label>
-                    <input type="password" id="password" name="password" class="form-control" placeholder="Enter security key" required>
-                </div>
-                <div class="form-options">
-                    <label class="checkbox-container">
-                        <input type="checkbox" name="remember">
-                        <span class="checkmark"></span>
-                        Remember me
-                    </label>
-                    <a href="{% url 'password_reset' %}" class="forgot-password">Forgot password?</a>
-                </div>
-                <button type="submit" class="btn-submit">Authenticate</button>
-            </form>
+                <form action="" method="POST">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="username">Username / Email <span style="color: red;">*</span></label>
+                        <input type="text" id="username" name="username" class="form-control" placeholder="Enter your identifier" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Security Key <span style="color: red;">*</span></label>
+                        <div style="position: relative;">
+                            <input type="password" id="password" name="password" class="form-control" placeholder="Enter security key" autocomplete="new-password" required style="padding-right: 45px;">
+                            <i class="fa-solid fa-eye toggle-password" id="togglePassword" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted); font-size: 1rem; z-index: 10; transition: color 0.2s ease;"></i>
+                        </div>
+                    </div>
+                    <div class="form-options">
+                        <label class="checkbox-container">
+                            <input type="checkbox" name="remember">
+                            <span class="checkmark"></span>
+                            Remember me
+                        </label>
+                        <a href="{% url 'password_reset' %}" class="forgot-password">Forgot password?</a>
+                    </div>
+                    <button type="submit" class="btn-submit">Authenticate</button>
+                </form>
+            </div>
         </div>
-    </div>
 
-    <footer style="position: relative; z-index: 1; margin-top: 25px; text-align: center; font-size: 0.85rem; color: var(--text-muted); font-family: 'Outfit', sans-serif;">
-        <p style="margin-bottom: 8px;">&copy; 2026 Onfully Marketing Ltd. All rights reserved.</p>
-        <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; align-items: center;">
-            <a href="{% url 'terms' %}" style="color: var(--primary-gold); text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='var(--primary-gold-hover)'" onmouseout="this.style.color='var(--primary-gold)'">Terms & Conditions</a>
-            <span style="opacity: 0.5;">|</span>
-            <a href="{% url 'privacy' %}" style="color: var(--primary-gold); text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='var(--primary-gold-hover)'" onmouseout="this.style.color='var(--primary-gold)'">Privacy Policy</a>
-            <span style="opacity: 0.5;">|</span>
-            <a href="{% url 'refund' %}" style="color: var(--primary-gold); text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='var(--primary-gold-hover)'" onmouseout="this.style.color='var(--primary-gold)'">Refund & Cancellation Policy</a>
-            <span style="opacity: 0.5;">|</span>
-            <a href="{% url 'contact' %}" style="color: var(--primary-gold); text-decoration: none; font-weight: 600; transition: color 0.3s;" onmouseover="this.style.color='var(--primary-gold-hover)'" onmouseout="this.style.color='var(--primary-gold)'">Contact Us</a>
-        </div>
-    </footer>
+        <footer class="login-footer">
+            <p style="margin-bottom: 6px;">&copy; 2026 Onfully Marketing Ltd. All rights reserved.</p>
+            <div class="footer-links">
+                <a href="{% url 'terms' %}">Terms & Conditions</a>
+                <span class="footer-divider">|</span>
+                <a href="{% url 'privacy' %}">Privacy Policy</a>
+                <span class="footer-divider">|</span>
+                <a href="{% url 'refund' %}">Refund & Cancellation Policy</a>
+                <span class="footer-divider">|</span>
+                <a href="{% url 'contact' %}">Contact Us</a>
+            </div>
+        </footer>
+    </div>
     
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
+        function getCsrfCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function syncCsrfTokenAndClearPassword() {
+            const passwordInput = document.getElementById('password');
+            if (passwordInput) {
+                passwordInput.value = '';
+            }
+            const activeCsrfToken = getCsrfCookie('csrftoken');
+            const csrfHiddenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            if (activeCsrfToken && csrfHiddenInput) {
+                csrfHiddenInput.value = activeCsrfToken;
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
+            syncCsrfTokenAndClearPassword();
+
+            // Toggle Security Key Password Visibility
+            const togglePassword = document.getElementById('togglePassword');
+            const passwordInput = document.getElementById('password');
+            if (togglePassword && passwordInput) {
+                togglePassword.addEventListener('click', function() {
+                    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                    passwordInput.setAttribute('type', type);
+                    this.classList.toggle('fa-eye');
+                    this.classList.toggle('fa-eye-slash');
+                });
+            }
+
+            const form = document.querySelector('form');
+            if (form) {
+                form.addEventListener('submit', function() {
+                    const activeCsrfToken = getCsrfCookie('csrftoken');
+                    const csrfHiddenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+                    if (activeCsrfToken && csrfHiddenInput) {
+                        csrfHiddenInput.value = activeCsrfToken;
+                    }
+                });
+            }
+
             // SweetAlert for Django Messages
             const Toast = Swal.mixin({
                 toast: true,
@@ -407,6 +634,11 @@
                     });
                 {% endfor %}
             {% endif %}
+        });
+
+        // Sync CSRF token and clear password on browser back/forward navigation
+        window.addEventListener('pageshow', function(event) {
+            syncCsrfTokenAndClearPassword();
         });
     </script>
 </body>

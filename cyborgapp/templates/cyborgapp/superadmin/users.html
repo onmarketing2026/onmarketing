@@ -305,8 +305,12 @@
     <div class="table-container">
         <div class="table-header">
             <h3>Registered Users</h3>
-            {% if request.user.usertype == 'superadmin' or selected_usertype != 'manager' %}
+            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'mandalam' %}
             <button class="btn-add" id="openCreateModalBtn"><i class="fa-solid fa-plus"></i> Add New User</button>
+            {% elif request.user.usertype == 'manager' %}
+                {% if selected_usertype == 'marketing' and request.user.get_manager_permissions.df_can_create or selected_usertype == 'mandalam' and request.user.get_manager_permissions.fc_can_create %}
+                <button class="btn-add" id="openCreateModalBtn"><i class="fa-solid fa-plus"></i> Add New User</button>
+                {% endif %}
             {% endif %}
         </div>
         <div style="padding: 20px;">
@@ -392,9 +396,13 @@
                             {% if not selected_usertype or selected_usertype == 'mandalam' %}<option value="mandalam">Fecilitation Center</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'marketing' %}<option value="marketing">Digital Franchise</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'staff' %}<option value="staff">Staff</option>{% endif %}
-                        {% elif request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                        {% elif request.user.usertype == 'district' %}
+                            {% if not selected_usertype or selected_usertype == 'manager' %}<option value="manager">Manager</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'mandalam' %}<option value="mandalam">Fecilitation Center</option>{% endif %}
                             {% if not selected_usertype or selected_usertype == 'marketing' %}<option value="marketing">Digital Franchise</option>{% endif %}
+                        {% elif request.user.usertype == 'manager' %}
+                            {% if selected_usertype == 'mandalam' or not selected_usertype %}{% if request.user.get_manager_permissions.fc_can_create %}<option value="mandalam">Fecilitation Center</option>{% endif %}{% endif %}
+                            {% if selected_usertype == 'marketing' or not selected_usertype %}{% if request.user.get_manager_permissions.df_can_create %}<option value="marketing">Digital Franchise</option>{% endif %}{% endif %}
                         {% elif request.user.usertype == 'mandalam' %}
                             {% if not selected_usertype or selected_usertype == 'marketing' %}<option value="marketing">Digital Franchise</option>{% endif %}
                         {% endif %}
@@ -471,9 +479,80 @@
                             <div id="staffSelectedFcTags" style="display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; background: rgba(111,66,193,0.05); border: 1px solid rgba(111,66,193,0.15); border-radius: 8px; min-height: 40px;">
                                 <small style="color: var(--text-muted);">None selected yet.</small>
                             </div>
-                            <!-- Hidden inputs will be injected here by JS -->
                             <div id="staffFcHiddenInputs"></div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Manager Permissions Section -->
+                <div id="manager-permissions-section" style="display: none; border: 1px solid var(--border-color, #e0e0e0); border-radius: 8px; padding: 15px; margin-top: 15px; background: var(--bg-hover, #f8f9fa);">
+                    <h6 style="font-weight: 700; margin-bottom: 12px; color: var(--primary-gold, #c59b27); border-bottom: 1px solid #ddd; padding-bottom: 6px;">
+                        <i class="fa-solid fa-user-shield"></i> Manager Access Permissions
+                    </h6>
+                    
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+                            <input type="checkbox" name="mgr_can_access_requirements" id="mgr_can_access_requirements" style="width: 18px; height: 18px;">
+                            <span>Allow Access to Company Requirements</span>
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 5px;">Users: Digital Franchise Access (CRUD)</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 15px; background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_df_can_view" id="mgr_df_can_view" style="width: 16px; height: 16px;"> View
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_df_can_create" id="mgr_df_can_create" style="width: 16px; height: 16px;"> Add
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_df_can_edit" id="mgr_df_can_edit" style="width: 16px; height: 16px;"> Edit
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_df_can_delete" id="mgr_df_can_delete" style="width: 16px; height: 16px;"> Delete
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 5px;">Users: Facilitation Center Access (CRUD)</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 15px; background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_fc_can_view" id="mgr_fc_can_view" style="width: 16px; height: 16px;"> View
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_fc_can_create" id="mgr_fc_can_create" style="width: 16px; height: 16px;"> Add
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_fc_can_edit" id="mgr_fc_can_edit" style="width: 16px; height: 16px;"> Edit
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="checkbox" name="mgr_fc_can_delete" id="mgr_fc_can_delete" style="width: 16px; height: 16px;"> Delete
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 5px;">Leads Section Access</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 15px; background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="radio" name="mgr_leads_access" value="none" id="mgr_leads_access_none" checked style="width: 16px; height: 16px;"> No Access
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="radio" name="mgr_leads_access" value="view" id="mgr_leads_access_view" style="width: 16px; height: 16px;"> View Only
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="radio" name="mgr_leads_access" value="action" id="mgr_leads_access_action" style="width: 16px; height: 16px;"> Action & View (Full Access)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+                            <input type="checkbox" name="mgr_confirmed_leads_access" id="mgr_confirmed_leads_access" style="width: 18px; height: 18px;">
+                            <span>Allow Access to Confirmed Leads</span>
+                        </label>
                     </div>
                 </div>
 
@@ -650,31 +729,55 @@
                     orderable: false,
                     render: function(data, type, row) {
                         const loggedInUsertype = "{{ request.user.usertype }}";
+                        let canEdit = true;
+                        let canDelete = true;
                         
-                        if (row.usertype === 'manager' && loggedInUsertype === 'district') {
+                        if (loggedInUsertype === 'manager') {
+                            {% if request.user.usertype == 'manager' %}
+                            const dfCanEdit = {% if request.user.get_manager_permissions.df_can_edit %}true{% else %}false{% endif %};
+                            const dfCanDelete = {% if request.user.get_manager_permissions.df_can_delete %}true{% else %}false{% endif %};
+                            const fcCanEdit = {% if request.user.get_manager_permissions.fc_can_edit %}true{% else %}false{% endif %};
+                            const fcCanDelete = {% if request.user.get_manager_permissions.fc_can_delete %}true{% else %}false{% endif %};
+                            
+                            if (row.usertype === 'marketing') {
+                                canEdit = dfCanEdit;
+                                canDelete = dfCanDelete;
+                            } else if (row.usertype === 'mandalam') {
+                                canEdit = fcCanEdit;
+                                canDelete = fcCanDelete;
+                            }
+                            {% endif %}
+                        }
+                        
+                        if (!canEdit && !canDelete) {
                             return `<span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">View Only</span>`;
                         }
-                        return `
-                            <div class="action-btns">
-                                <button type="button" class="edit-btn" 
-                                        data-id="${row.id}" 
-                                        data-name="${row.name}" 
-                                        data-email="${row.email}" 
-                                        data-usertype="${row.usertype}"
-                                        data-district="${row.assigned_district_id}"
-                                        data-mandalam="${row.assigned_mandalam_id}"
-                                        data-accessible-districts="${row.accessible_districts}"
-                                        data-initial-withdrawal="${row.initial_withdrawal_percentage || '50.00'}"
-                                        data-assigned-fcs="${row.assigned_facilitation_centers || ''}"
-                                        data-assigned-fc-names='${JSON.stringify(row.assigned_fc_names || [])}'>
-                                    <i class="fa-solid fa-pen"></i>
-                                </button>
-                                <form action="/superadmin/users/${row.id}/delete/" method="POST" style="display:inline;" class="delete-form">
-                                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-                                    <button type="button" class="delete-btn"><i class="fa-solid fa-trash"></i></button>
-                                </form>
-                            </div>
-                        `;
+
+                        const editBtnHtml = canEdit ? `
+                            <button type="button" class="edit-btn" 
+                                    data-id="${row.id}" 
+                                    data-name="${row.name}" 
+                                    data-email="${row.email}" 
+                                    data-usertype="${row.usertype}"
+                                    data-district="${row.assigned_district_id}"
+                                    data-mandalam="${row.assigned_mandalam_id}"
+                                    data-accessible-districts="${row.accessible_districts}"
+                                    data-initial-withdrawal="${row.initial_withdrawal_percentage || '50.00'}"
+                                    data-assigned-fcs="${row.assigned_facilitation_centers || ''}"
+                                    data-assigned-fc-names='${JSON.stringify(row.assigned_fc_names || [])}'
+                                    data-mgr-permissions='${JSON.stringify(row.manager_permissions || {})}'>
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                        ` : '';
+
+                        const deleteBtnHtml = canDelete ? `
+                            <form action="/superadmin/users/${row.id}/delete/" method="POST" style="display:inline;" class="delete-form">
+                                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                                <button type="button" class="delete-btn"><i class="fa-solid fa-trash"></i></button>
+                            </form>
+                        ` : '';
+
+                        return `<div class="action-btns">${editBtnHtml}${deleteBtnHtml}</div>`;
                     }
                 }
             ],
@@ -930,6 +1033,8 @@
         function toggleHierarchy() {
             const role = usertypeSelect.value;
             const currentUserType = '{{ request.user.usertype }}';
+            const userIdElem = document.getElementById('userId');
+            const isEdit = !!(userIdElem && userIdElem.value);
             
             let showDistrict = false;
             let showMandalam = false;
@@ -948,8 +1053,9 @@
                 } else if (role === 'staff') {
                     showStaffFc = true;
                 }
-            } else if (currentUserType === 'district' || currentUserType === 'manager') {
+            } else if (currentUserType === 'district' || currentUserType === 'manager' || currentUserType === 'mandalam') {
                 if (role === 'marketing') {
+                    // Non-superadmin can view FC assignment when creating or editing DF (read-only on edit)
                     showMandalam = true;
                 }
                 if (role === 'customer') {
@@ -960,9 +1066,24 @@
 
             const staffFcGroup = document.getElementById('staff-fc-group');
             const customerWithdrawalGroup = document.getElementById('customer-withdrawal-group');
+            const managerPermissionsSection = document.getElementById('manager-permissions-section');
+            const mandalamSelect = document.getElementById('assigned_mandalam');
 
             if (customerWithdrawalGroup) {
                 customerWithdrawalGroup.style.display = showCustomerWithdrawal ? 'block' : 'none';
+            }
+
+            if (managerPermissionsSection) {
+                managerPermissionsSection.style.display = (role === 'manager') ? 'block' : 'none';
+            }
+
+            // Disable assigned_mandalam dropdown if non-superadmin is editing an existing DF
+            if (mandalamSelect) {
+                if (currentUserType !== 'superadmin' && isEdit && role === 'marketing') {
+                    mandalamSelect.disabled = true;
+                } else {
+                    mandalamSelect.disabled = false;
+                }
             }
 
             if (showDistrict || showMandalam || showAccessibleDistricts || showStaffFc) {
@@ -1160,47 +1281,65 @@
         });
 
         // Open Create Modal
-        btnCreate.onclick = function() {
-            userForm.reset();
-            userForm.action = "{% url 'superadmin_user_create' %}";
-            modalTitle.textContent = "Add New User";
-            submitBtn.textContent = "Create User";
-            passwordInput.required = true;
-            passwordHelp.style.display = 'none';
-            passwordContainer.style.display = 'block';
-            changePasswordGroup.style.display = 'none';
-            changePasswordCheckbox.checked = false;
-            emailInput.readOnly = false;
-            emailInput.style.backgroundColor = "";
-            emailInput.style.borderColor = "";
-            document.getElementById('emailError').style.display = 'none';
-            document.getElementById('initial_withdrawal_percentage').value = '50.00';
-            submitBtn.disabled = false;
-            submitBtn.style.opacity = '1';
-            
-            {% if selected_usertype %}
-            usertypeSelect.value = "{{ selected_usertype }}";
-            {% endif %}
-            
-            // Reset staff FC selection
-            selectedFcs = {};
-            currentEditingStaffId = ''; // creating a new user, no exclusion
-            renderSelectedFcs();
-            if (staffDistrictSelect) staffDistrictSelect.value = '';
-            if (staffFcListGroup) staffFcListGroup.style.display = 'none';
-            const staffFcSearchInput = document.getElementById('staffFcSearchInput');
-            if (staffFcSearchInput) staffFcSearchInput.value = '';
+        if (btnCreate) {
+            btnCreate.onclick = function() {
+                userForm.reset();
+                userForm.action = "{% url 'superadmin_user_create' %}";
+                modalTitle.textContent = "Add New User";
+                submitBtn.textContent = "Create User";
+                passwordInput.required = true;
+                passwordHelp.style.display = 'none';
+                passwordContainer.style.display = 'block';
+                changePasswordGroup.style.display = 'none';
+                changePasswordCheckbox.checked = false;
+                emailInput.readOnly = false;
+                emailInput.style.backgroundColor = "";
+                emailInput.style.borderColor = "";
+                const emailErr = document.getElementById('emailError');
+                if (emailErr) emailErr.style.display = 'none';
+                const initWithdrawal = document.getElementById('initial_withdrawal_percentage');
+                if (initWithdrawal) initWithdrawal.value = '50.00';
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                
+                // Manager Permission resets (all unticked / no access by default)
+                if (document.getElementById('mgr_can_access_requirements')) document.getElementById('mgr_can_access_requirements').checked = false;
+                if (document.getElementById('mgr_df_can_view')) document.getElementById('mgr_df_can_view').checked = false;
+                if (document.getElementById('mgr_df_can_create')) document.getElementById('mgr_df_can_create').checked = false;
+                if (document.getElementById('mgr_df_can_edit')) document.getElementById('mgr_df_can_edit').checked = false;
+                if (document.getElementById('mgr_df_can_delete')) document.getElementById('mgr_df_can_delete').checked = false;
+                if (document.getElementById('mgr_fc_can_view')) document.getElementById('mgr_fc_can_view').checked = false;
+                if (document.getElementById('mgr_fc_can_create')) document.getElementById('mgr_fc_can_create').checked = false;
+                if (document.getElementById('mgr_fc_can_edit')) document.getElementById('mgr_fc_can_edit').checked = false;
+                if (document.getElementById('mgr_fc_can_delete')) document.getElementById('mgr_fc_can_delete').checked = false;
+                const radNone = document.getElementById('mgr_leads_access_none');
+                if (radNone) radNone.checked = true;
+                if (document.getElementById('mgr_confirmed_leads_access')) document.getElementById('mgr_confirmed_leads_access').checked = false;
 
-            const districtSearch = document.getElementById('districtSearch');
-            if (districtSearch) {
-                districtSearch.value = '';
-                const labels = document.querySelectorAll('#districtCheckboxesContainer .district-label');
-                labels.forEach(label => label.style.display = 'flex');
+                {% if selected_usertype %}
+                usertypeSelect.value = "{{ selected_usertype }}";
+                {% endif %}
+                
+                // Reset staff FC selection
+                selectedFcs = {};
+                currentEditingStaffId = ''; // creating a new user, no exclusion
+                renderSelectedFcs();
+                if (staffDistrictSelect) staffDistrictSelect.value = '';
+                if (staffFcListGroup) staffFcListGroup.style.display = 'none';
+                const staffFcSearchInput = document.getElementById('staffFcSearchInput');
+                if (staffFcSearchInput) staffFcSearchInput.value = '';
+
+                const districtSearch = document.getElementById('districtSearch');
+                if (districtSearch) {
+                    districtSearch.value = '';
+                    const labels = document.querySelectorAll('#districtCheckboxesContainer .district-label');
+                    labels.forEach(label => label.style.display = 'flex');
+                }
+
+                toggleHierarchy();
+                $(userForm).find('select').trigger('change');
+                modal.style.display = "block";
             }
-
-            toggleHierarchy();
-            $(userForm).find('select').trigger('change');
-            modal.style.display = "block";
         }
 
         // Open Edit Modal using Event Delegation
@@ -1223,25 +1362,58 @@
             modalTitle.textContent = "Edit User";
             submitBtn.textContent = "Update User";
             
-            document.getElementById('userId').value = id;
-            document.getElementById('name').value = name;
-            document.getElementById('email').value = email;
-            document.getElementById('initial_withdrawal_percentage').value = initialWithdrawal;
+            const userIdElem = document.getElementById('userId');
+            if (userIdElem) userIdElem.value = id;
+
+            const nameElem = document.getElementById('name');
+            if (nameElem) nameElem.value = name;
+
+            const emailElem = document.getElementById('email');
+            if (emailElem) emailElem.value = email;
+
+            const initWithdrawalElem = document.getElementById('initial_withdrawal_percentage');
+            if (initWithdrawalElem) initWithdrawalElem.value = initialWithdrawal;
             
-            emailInput.readOnly = false;
-            emailInput.style.backgroundColor = "";
-            emailInput.style.borderColor = "";
-            document.getElementById('emailError').style.display = 'none';
-            submitBtn.disabled = false;
-            submitBtn.style.opacity = '1';
+            if (emailInput) {
+                emailInput.readOnly = false;
+                emailInput.style.backgroundColor = "";
+                emailInput.style.borderColor = "";
+            }
+
+            const emailErr = document.getElementById('emailError');
+            if (emailErr) emailErr.style.display = 'none';
+
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+            }
             
-            usertypeSelect.value = usertype;
+            if (usertypeSelect) usertypeSelect.value = usertype;
             
-            passwordInput.required = false;
-            passwordHelp.style.display = 'inline';
-            passwordContainer.style.display = 'none';
-            changePasswordGroup.style.display = 'block';
-            changePasswordCheckbox.checked = false;
+            if (passwordInput) passwordInput.required = false;
+            if (passwordHelp) passwordHelp.style.display = 'inline';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            if (changePasswordGroup) changePasswordGroup.style.display = 'block';
+            if (changePasswordCheckbox) changePasswordCheckbox.checked = false;
+
+            // Populate Manager permissions
+            let mgrPerms = {};
+            try { mgrPerms = JSON.parse(this.getAttribute('data-mgr-permissions') || '{}'); } catch(e) {}
+            if (document.getElementById('mgr_can_access_requirements')) document.getElementById('mgr_can_access_requirements').checked = (mgrPerms.can_access_requirements !== false);
+            if (document.getElementById('mgr_df_can_view')) document.getElementById('mgr_df_can_view').checked = (mgrPerms.df_can_view !== false);
+            if (document.getElementById('mgr_df_can_create')) document.getElementById('mgr_df_can_create').checked = (mgrPerms.df_can_create !== false);
+            if (document.getElementById('mgr_df_can_edit')) document.getElementById('mgr_df_can_edit').checked = (mgrPerms.df_can_edit !== false);
+            if (document.getElementById('mgr_df_can_delete')) document.getElementById('mgr_df_can_delete').checked = (mgrPerms.df_can_delete !== false);
+            if (document.getElementById('mgr_fc_can_view')) document.getElementById('mgr_fc_can_view').checked = (mgrPerms.fc_can_view !== false);
+            if (document.getElementById('mgr_fc_can_create')) document.getElementById('mgr_fc_can_create').checked = (mgrPerms.fc_can_create === true);
+            if (document.getElementById('mgr_fc_can_edit')) document.getElementById('mgr_fc_can_edit').checked = (mgrPerms.fc_can_edit === true);
+            if (document.getElementById('mgr_fc_can_delete')) document.getElementById('mgr_fc_can_delete').checked = (mgrPerms.fc_can_delete === true);
+            const leadsAccessVal = mgrPerms.leads_access || 'none';
+            const targetRad = document.querySelector(`input[name="mgr_leads_access"][value="${leadsAccessVal}"]`);
+            if (targetRad) targetRad.checked = true;
+            if (document.getElementById('mgr_confirmed_leads_access')) {
+                document.getElementById('mgr_confirmed_leads_access').checked = (mgrPerms.confirmed_leads_access && mgrPerms.confirmed_leads_access !== 'none');
+            }
 
             districtCheckboxes.forEach(cb => cb.checked = false);
             if (accessibleDistricts) {
@@ -1281,10 +1453,10 @@
                 labels.forEach(label => label.style.display = 'flex');
             }
 
-            if (districtId) {
+            if (districtId && document.getElementById('assigned_district')) {
                 document.getElementById('assigned_district').value = districtId;
             }
-            if (mandalamId) {
+            if (mandalamId && document.getElementById('assigned_mandalam')) {
                 document.getElementById('assigned_mandalam').value = mandalamId;
             }
 
@@ -1331,6 +1503,56 @@
                         label.style.display = 'none';
                     }
                 });
+            });
+        }
+
+        // Auto-toggle logic for Digital Franchise CRUD access
+        ['mgr_df_can_create', 'mgr_df_can_edit', 'mgr_df_can_delete'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function() {
+                    if (this.checked) {
+                        const viewEl = document.getElementById('mgr_df_can_view');
+                        if (viewEl) viewEl.checked = true;
+                    }
+                });
+            }
+        });
+
+        const dfViewEl = document.getElementById('mgr_df_can_view');
+        if (dfViewEl) {
+            dfViewEl.addEventListener('change', function() {
+                if (!this.checked) {
+                    ['mgr_df_can_create', 'mgr_df_can_edit', 'mgr_df_can_delete'].forEach(function(id) {
+                        const childEl = document.getElementById(id);
+                        if (childEl) childEl.checked = false;
+                    });
+                }
+            });
+        }
+
+        // Auto-toggle logic for Facilitation Center CRUD access
+        ['mgr_fc_can_create', 'mgr_fc_can_edit', 'mgr_fc_can_delete'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function() {
+                    if (this.checked) {
+                        const viewEl = document.getElementById('mgr_fc_can_view');
+                        if (viewEl) viewEl.checked = true;
+                    }
+                });
+            }
+        });
+
+        const fcViewEl = document.getElementById('mgr_fc_can_view');
+        if (fcViewEl) {
+            fcViewEl.addEventListener('change', function() {
+                if (!this.checked) {
+                    ['mgr_fc_can_create', 'mgr_fc_can_edit', 'mgr_fc_can_delete'].forEach(function(id) {
+                        const childEl = document.getElementById(id);
+                        if (childEl) childEl.checked = false;
+                    });
+                }
             });
         }
     });

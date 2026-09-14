@@ -127,15 +127,9 @@ def distribute_product_sale_commission(lead, installment=None):
     settings = {s.usertype: s.percentage for s in settings_objs}
     
     marketing_user = lead.marketing_user
-    fc_user = None
-    if marketing_user:
-        if marketing_user.usertype == 'mandalam':
-            fc_user = marketing_user
-        elif marketing_user.usertype == 'marketing':
-            fc_user = marketing_user.assigned_mandalam
-
-    mandalam_user = marketing_user.assigned_mandalam if marketing_user else None
-    district_user = marketing_user.assigned_district if marketing_user else None
+    mandalam_user = lead.assigned_mandalam if lead.assigned_mandalam else (marketing_user.assigned_mandalam if marketing_user else None)
+    district_user = lead.assigned_district if lead.assigned_district else (marketing_user.assigned_district if marketing_user else None)
+    fc_user = mandalam_user if mandalam_user else (marketing_user if marketing_user and marketing_user.usertype == 'mandalam' else None)
     superadmin = CustomUser.objects.filter(usertype='superadmin').first()
 
     # Determine if target is achieved by the associated FC
@@ -244,7 +238,7 @@ def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
         leads_qs = Lead.objects.filter(
             status__in=['confirmed', 'completed']
         ).filter(
-            Q(marketing_user=fc_user) | Q(marketing_user__assigned_mandalam=fc_user)
+            Q(marketing_user=fc_user) | Q(assigned_mandalam=fc_user) | Q(marketing_user__assigned_mandalam=fc_user)
         ).filter(
             items__subcategory=sub
         )

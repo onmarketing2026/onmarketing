@@ -69,6 +69,8 @@ urlpatterns = [
     path('superadmin/expenses/withdraw/', views.request_expense_withdrawal, name='request_expense_withdrawal'),
 
     path('leads/', views.lead_list, name='lead_list'),
+    path('leads/check-pending-email/', views.check_lead_pending_email, name='check_lead_pending_email'),
+    path('leads/export-feedback-csv/', views.export_feedback_leads_csv, name='export_feedback_leads_csv'),
     path('superadmin/leads/export/', views.superadmin_export_leads, name='superadmin_export_leads'),
     path('leads/confirmed/', views.confirmed_lead_list, name='confirmed_lead_list'),
     path('superadmin/confirmed-leads/export/', views.superadmin_export_confirmed_leads, name='superadmin_export_confirmed_leads'),
@@ -77,6 +79,8 @@ urlpatterns = [
     path('leads/<int:lead_id>/updates/get/', views.lead_get_updates, name='lead_get_updates'),
     path('leads/<int:lead_id>/associate-updates/get/', views.lead_get_associate_updates, name='lead_get_associate_updates'),
     path('leads/<int:lead_id>/associate-updates/add/', views.lead_add_associate_update, name='lead_add_associate_update'),
+    path('leads/<int:lead_id>/district-feedback/get/', views.lead_get_district_feedback, name='lead_get_district_feedback'),
+    path('leads/<int:lead_id>/district-feedback/add/', views.lead_add_district_feedback, name='lead_add_district_feedback'),
     path('leads/<int:lead_id>/share/', views.share_lead_payment, name='share_lead_payment'),
     path('leads/<int:lead_id>/pay-from-mail/', views.pay_lead_from_mail, name='pay_lead_from_mail'),
     path('installments/<int:installment_id>/pay/', views.pay_installment, name='pay_installment'),

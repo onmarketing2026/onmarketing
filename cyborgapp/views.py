@@ -48,9 +48,23 @@ def create_lead_notification(actor, lead, verb):
                 for mgr in managers:
                     recipients.add(mgr)
 
-    # Remove the actor themselves from recipients
-    recipients.discard(actor)
-    
+    # Filter recipients: remove actor and check Manager permissions
+    filtered_recipients = set()
+    for r in recipients:
+        if r == actor:
+            continue
+        if r.usertype == 'manager':
+            perm = r.get_manager_permissions()
+            is_confirmed = (lead and lead.status in ['confirmed', 'completed'])
+            if is_confirmed:
+                if perm.confirmed_leads_access == 'none':
+                    continue
+            else:
+                if perm.leads_access == 'none':
+                    continue
+        filtered_recipients.add(r)
+    recipients = filtered_recipients
+
     # Create notification objects
     from .models import Notification
     for recipient in recipients:
@@ -143,7 +157,11 @@ def login_view(request):
         else:
             messages.error(request, 'Invalid credentials.')
             
-    return render(request, 'cyborgapp/login.html')
+    response = render(request, 'cyborgapp/login.html')
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
+    return response
 
 def terms_view(request):
     return render(request, 'cyborgapp/public/terms.html')
@@ -304,7 +322,7 @@ def superadmin_dashboard(request):
         confirmed_leads = Lead.objects.filter(
             status__in=['confirmed', 'completed']
         ).filter(
-            Q(marketing_user__assigned_district=target_district) | Q(marketing_user=target_district)
+            Q(assigned_district=target_district) | Q(marketing_user__assigned_district=target_district) | Q(marketing_user=target_district)
         )
         stats['total_sales'] = confirmed_leads.aggregate(
             total=Sum('total_amount')
@@ -312,14 +330,15 @@ def superadmin_dashboard(request):
         stats['total_franchise'] = CustomUser.objects.filter(
             usertype='marketing', assigned_district=target_district, is_active=True
         ).count()
-        stats['active_incentives_count'] = Incentive.objects.filter(is_active=True).count()
+        if user.usertype != 'manager':
+            stats['active_incentives_count'] = Incentive.objects.filter(is_active=True).count()
         
     elif user.usertype == 'mandalam':
         # Total Sales: Leads added by users in this mandalam (marketers or mandalam himself)
         confirmed_leads = Lead.objects.filter(
             status__in=['confirmed', 'completed']
         ).filter(
-            Q(marketing_user__assigned_mandalam=user) | Q(marketing_user=user)
+            Q(assigned_mandalam=user) | Q(marketing_user__assigned_mandalam=user) | Q(marketing_user=user)
         )
         stats['total_sales'] = confirmed_leads.aggregate(
             total=Sum('total_amount')
@@ -571,6 +590,14 @@ def superadmin_users(request):
         if selected_usertype == 'manager':
             selected_usertype = None
 
+    # Manager access permission check for sub-navs
+    if current_user.usertype == 'manager':
+        perm = current_user.get_manager_permissions()
+        if selected_usertype == 'marketing' and not perm.df_can_view:
+            users = CustomUser.objects.none()
+        elif selected_usertype == 'mandalam' and not perm.fc_can_view:
+            users = CustomUser.objects.none()
+
     if selected_usertype:
         users = users.filter(usertype=selected_usertype)
 
@@ -602,29 +629,19 @@ def superadmin_users(request):
         
         if order_column_index_str is not None:
             order_column_index = int(order_column_index_str)
-            # Map column index to field.
-            # Superadmin sees a Password column at index 4, pushing Created By to index 5.
-            # All other users don't have that column, so Created By is at index 4.
             if current_user.usertype == 'superadmin':
                 columns_map = {
                     0: 'name',
                     1: 'email',
                     2: 'usertype',
-                    # 3: Hierarchy  (non-orderable)
-                    # 4: Password   (non-orderable)
                     5: 'created_by__name',
-                    # 6: Status     (non-orderable)
-                    # 7: Actions    (non-orderable)
                 }
             else:
                 columns_map = {
                     0: 'name',
                     1: 'email',
                     2: 'usertype',
-                    # 3: Hierarchy  (non-orderable)
                     4: 'created_by__name',
-                    # 5: Status     (non-orderable)
-                    # 6: Actions    (non-orderable)
                 }
             sort_field = columns_map.get(order_column_index, '-id')
             if sort_field != '-id' and order_dir == 'desc':
@@ -644,10 +661,8 @@ def superadmin_users(request):
         data = []
         for u in users_slice:
             acc_dists = ",".join([str(d.id) for d in u.accessible_districts.all()])
-            # Hierarchy display fields
             district_name = u.assigned_district.name if u.assigned_district else ''
             mandalam_name = u.assigned_mandalam.name if u.assigned_mandalam else ''
-            # For marketing: get the mandalam's district
             mandalam_district_name = ''
             if u.assigned_mandalam and u.assigned_mandalam.assigned_district:
                 mandalam_district_name = u.assigned_mandalam.assigned_district.name
@@ -674,6 +689,23 @@ def superadmin_users(request):
                         else:
                             target_status = 'Target Pending'
             
+            mgr_perm_data = None
+            if u.usertype == 'manager':
+                perm = u.get_manager_permissions()
+                mgr_perm_data = {
+                    'can_access_requirements': perm.can_access_requirements,
+                    'df_can_view': perm.df_can_view,
+                    'df_can_create': perm.df_can_create,
+                    'df_can_edit': perm.df_can_edit,
+                    'df_can_delete': perm.df_can_delete,
+                    'fc_can_view': perm.fc_can_view,
+                    'fc_can_create': perm.fc_can_create,
+                    'fc_can_edit': perm.fc_can_edit,
+                    'fc_can_delete': perm.fc_can_delete,
+                    'leads_access': perm.leads_access,
+                    'confirmed_leads_access': perm.confirmed_leads_access,
+                }
+
             data.append({
                 'id': u.id,
                 'name': u.name,
@@ -692,7 +724,8 @@ def superadmin_users(request):
                 'assigned_facilitation_centers': assigned_fcs,
                 'assigned_fc_names': assigned_fc_names,
                 'target_status': target_status,
-                'initial_withdrawal_percentage': str(u.initial_withdrawal_percentage) if u.initial_withdrawal_percentage is not None else '50.00'
+                'initial_withdrawal_percentage': str(u.initial_withdrawal_percentage) if u.initial_withdrawal_percentage is not None else '50.00',
+                'manager_permissions': mgr_perm_data
             })
             
         return JsonResponse({
@@ -705,7 +738,6 @@ def superadmin_users(request):
     districts = CustomUser.objects.filter(usertype='district', is_active=True)
     mandalams = CustomUser.objects.filter(usertype='mandalam')
     
-    # If a district/manager is logged in, only show relevant mandalams for creation
     if current_user.usertype == 'district':
         mandalams = mandalams.filter(assigned_district=current_user)
     elif current_user.usertype == 'manager' and current_user.assigned_district:
@@ -738,13 +770,22 @@ def superadmin_user_create(request):
             messages.error(request, 'Permission denied: Only Superadmin can create Associate Company.')
             return redirect('superadmin_users')
             
-        if usertype == 'manager' and current_user.usertype != 'superadmin':
-            messages.error(request, 'Permission denied: Only Superadmin can create Manager.')
+        if usertype == 'manager' and current_user.usertype not in ['superadmin', 'district']:
+            messages.error(request, 'Permission denied: Only Superadmin and District Franchise can create Manager.')
             return redirect('superadmin_users')
 
         if usertype == 'staff' and current_user.usertype != 'superadmin':
             messages.error(request, 'Permission denied: Only Superadmin can create Staff.')
             return redirect('superadmin_users')
+
+        if current_user.usertype == 'manager':
+            perm = current_user.get_manager_permissions()
+            if usertype == 'marketing' and not perm.df_can_create:
+                messages.error(request, 'Permission denied: You do not have permission to add Digital Franchise users.')
+                return redirect('superadmin_users')
+            elif usertype == 'mandalam' and not perm.fc_can_create:
+                messages.error(request, 'Permission denied: You do not have permission to add Facilitation Center users.')
+                return redirect('superadmin_users')
             
         try:
             # Base creation
@@ -804,6 +845,23 @@ def superadmin_user_create(request):
                     user.assigned_facilitation_centers.set(fc_ids)
 
             user.save()
+
+            # Handle Manager permissions
+            if usertype == 'manager':
+                m_perm = user.get_manager_permissions()
+                m_perm.can_access_requirements = (request.POST.get('mgr_can_access_requirements') in ['on', 'true', '1'])
+                m_perm.df_can_view = (request.POST.get('mgr_df_can_view') in ['on', 'true', '1'])
+                m_perm.df_can_create = (request.POST.get('mgr_df_can_create') in ['on', 'true', '1'])
+                m_perm.df_can_edit = (request.POST.get('mgr_df_can_edit') in ['on', 'true', '1'])
+                m_perm.df_can_delete = (request.POST.get('mgr_df_can_delete') in ['on', 'true', '1'])
+                m_perm.fc_can_view = (request.POST.get('mgr_fc_can_view') in ['on', 'true', '1'])
+                m_perm.fc_can_create = (request.POST.get('mgr_fc_can_create') in ['on', 'true', '1'])
+                m_perm.fc_can_edit = (request.POST.get('mgr_fc_can_edit') in ['on', 'true', '1'])
+                m_perm.fc_can_delete = (request.POST.get('mgr_fc_can_delete') in ['on', 'true', '1'])
+                m_perm.leads_access = request.POST.get('mgr_leads_access', 'none')
+                m_perm.confirmed_leads_access = 'view' if (request.POST.get('mgr_confirmed_leads_access') in ['on', 'true', '1']) else 'none'
+                m_perm.save()
+
             messages.success(request, 'User created successfully!')
             return redirect(f"/superadmin/users/?usertype={usertype}")
             
@@ -827,20 +885,29 @@ def superadmin_user_edit(request, user_id):
         messages.error(request, 'Permission denied: Only Superadmin can edit Associate Company.')
         return redirect('superadmin_users')
         
-    if user.usertype == 'manager' and current_user.usertype != 'superadmin':
-        messages.error(request, 'Permission denied: Only Superadmin can edit Manager.')
+    if user.usertype == 'manager' and current_user.usertype not in ['superadmin', 'district']:
+        messages.error(request, 'Permission denied: Only Superadmin and District Franchise can edit Manager.')
         return redirect('superadmin_users')
 
     if user.usertype == 'staff' and current_user.usertype != 'superadmin':
         messages.error(request, 'Permission denied: Only Superadmin can edit Staff.')
         return redirect('superadmin_users')
+
+    if current_user.usertype == 'manager':
+        perm = current_user.get_manager_permissions()
+        if user.usertype == 'marketing' and not perm.df_can_edit:
+            messages.error(request, 'Permission denied: You do not have permission to edit Digital Franchise users.')
+            return redirect('superadmin_users')
+        elif user.usertype == 'mandalam' and not perm.fc_can_edit:
+            messages.error(request, 'Permission denied: You do not have permission to edit Facilitation Center users.')
+            return redirect('superadmin_users')
         
     if request.method == 'POST':
         new_usertype = request.POST.get('usertype')
         if new_usertype == 'customer' and current_user.usertype != 'superadmin':
             messages.error(request, 'Permission denied: Cannot assign Associate Company role.')
             return redirect('superadmin_users')
-        if new_usertype == 'manager' and current_user.usertype != 'superadmin':
+        if new_usertype == 'manager' and current_user.usertype not in ['superadmin', 'district']:
             messages.error(request, 'Permission denied: Cannot assign Manager role.')
             return redirect('superadmin_users')
         if new_usertype == 'staff' and current_user.usertype != 'superadmin':
@@ -863,19 +930,32 @@ def superadmin_user_edit(request, user_id):
         assigned_district_id = request.POST.get('assigned_district')
         assigned_mandalam_id = request.POST.get('assigned_mandalam')
         
-        # Reset assignments
-        user.assigned_district = None
-        user.assigned_mandalam = None
-        
-        if user.usertype == 'manager' and assigned_district_id:
-            user.assigned_district_id = assigned_district_id
-        elif user.usertype == 'mandalam' and assigned_district_id:
-            user.assigned_district_id = assigned_district_id
-        elif user.usertype == 'marketing' and assigned_mandalam_id:
-            mandalam_user = CustomUser.objects.get(id=assigned_mandalam_id)
-            user.assigned_mandalam = mandalam_user
-            if mandalam_user.assigned_district:
-                user.assigned_district = mandalam_user.assigned_district
+        # Assignment updates during edit:
+        # Only Superadmin is allowed to change FC's 'assigned_district' or DF's 'assigned_mandalam'.
+        if current_user.usertype == 'superadmin':
+            if user.usertype == 'manager':
+                user.assigned_district_id = assigned_district_id if assigned_district_id else None
+                user.assigned_mandalam = None
+            elif user.usertype == 'mandalam':
+                user.assigned_district_id = assigned_district_id if assigned_district_id else None
+                user.assigned_mandalam = None
+            elif user.usertype == 'marketing':
+                if assigned_mandalam_id:
+                    mandalam_user = CustomUser.objects.get(id=assigned_mandalam_id)
+                    user.assigned_mandalam = mandalam_user
+                    user.assigned_district = mandalam_user.assigned_district
+                else:
+                    user.assigned_mandalam = None
+                    user.assigned_district = None
+            else:
+                user.assigned_district = None
+                user.assigned_mandalam = None
+        else:
+            # Non-superadmin user editing another user:
+            # - For Manager: assign to current_user if current_user is a district franchise.
+            # - For Facilitation Center ('mandalam') and Digital Franchise ('marketing'): preserve existing assignments.
+            if user.usertype == 'manager' and current_user.usertype == 'district':
+                user.assigned_district = current_user
                 
         # Handle accessible districts for Customer
         if user.usertype == 'customer':
@@ -895,6 +975,47 @@ def superadmin_user_edit(request, user_id):
                 
         try:
             user.save()
+
+            # Handle hierarchy updates for pending leads when DF or FC is edited
+            if user.usertype == 'marketing':
+                # Update pending leads created by this Digital Franchise to point to the new FC and District
+                Lead.objects.filter(
+                    marketing_user=user,
+                    status='pending'
+                ).update(
+                    assigned_mandalam=user.assigned_mandalam,
+                    assigned_district=user.assigned_district
+                )
+            elif user.usertype == 'mandalam':
+                # Update all DFs under this FC to point to the new District
+                if user.assigned_district:
+                    CustomUser.objects.filter(
+                        usertype='marketing',
+                        assigned_mandalam=user
+                    ).update(assigned_district=user.assigned_district)
+
+                # Update pending leads under this FC to point to the new District
+                Lead.objects.filter(
+                    Q(assigned_mandalam=user) | Q(marketing_user__assigned_mandalam=user),
+                    status='pending'
+                ).update(assigned_district=user.assigned_district)
+
+            # Handle Manager permissions
+            if user.usertype == 'manager':
+                m_perm = user.get_manager_permissions()
+                m_perm.can_access_requirements = (request.POST.get('mgr_can_access_requirements') in ['on', 'true', '1'])
+                m_perm.df_can_view = (request.POST.get('mgr_df_can_view') in ['on', 'true', '1'])
+                m_perm.df_can_create = (request.POST.get('mgr_df_can_create') in ['on', 'true', '1'])
+                m_perm.df_can_edit = (request.POST.get('mgr_df_can_edit') in ['on', 'true', '1'])
+                m_perm.df_can_delete = (request.POST.get('mgr_df_can_delete') in ['on', 'true', '1'])
+                m_perm.fc_can_view = (request.POST.get('mgr_fc_can_view') in ['on', 'true', '1'])
+                m_perm.fc_can_create = (request.POST.get('mgr_fc_can_create') in ['on', 'true', '1'])
+                m_perm.fc_can_edit = (request.POST.get('mgr_fc_can_edit') in ['on', 'true', '1'])
+                m_perm.fc_can_delete = (request.POST.get('mgr_fc_can_delete') in ['on', 'true', '1'])
+                m_perm.leads_access = request.POST.get('mgr_leads_access', 'none')
+                m_perm.confirmed_leads_access = 'view' if (request.POST.get('mgr_confirmed_leads_access') in ['on', 'true', '1']) else 'none'
+                m_perm.save()
+
             messages.success(request, 'User updated successfully!')
         except IntegrityError:
             messages.error(request, 'Error: A user with this email already exists.')
@@ -922,13 +1043,22 @@ def superadmin_user_delete(request, user_id):
             messages.error(request, 'Permission denied: Only Superadmin can delete Associate Company.')
             return redirect('superadmin_users')
             
-        if user.usertype == 'manager' and current_user.usertype != 'superadmin':
-            messages.error(request, 'Permission denied: Only Superadmin can delete Manager.')
+        if user.usertype == 'manager' and current_user.usertype not in ['superadmin', 'district']:
+            messages.error(request, 'Permission denied: Only Superadmin and District Franchise can delete Manager.')
             return redirect('superadmin_users')
             
         if user.usertype == 'staff' and current_user.usertype != 'superadmin':
             messages.error(request, 'Permission denied: Only Superadmin can delete Staff.')
             return redirect('superadmin_users')
+
+        if current_user.usertype == 'manager':
+            perm = current_user.get_manager_permissions()
+            if user.usertype == 'marketing' and not perm.df_can_delete:
+                messages.error(request, 'Permission denied: You do not have permission to delete Digital Franchise users.')
+                return redirect('superadmin_users')
+            elif user.usertype == 'mandalam' and not perm.fc_can_delete:
+                messages.error(request, 'Permission denied: You do not have permission to delete Facilitation Center users.')
+                return redirect('superadmin_users')
             
         user.delete()
         messages.success(request, 'User deleted successfully!')
@@ -1369,6 +1499,12 @@ def assign_mandalams(request, item_id):
 
 @login_required(login_url='login')
 def requirement_list(request):
+    if request.user.usertype == 'manager':
+        perm = request.user.get_manager_permissions()
+        if not perm.can_access_requirements:
+            messages.error(request, 'Access denied: You do not have permission to view Company Requirements.')
+            return redirect('superadmin_dashboard')
+
     if request.user.usertype == 'staff':
         target_user = get_target_user(request)
         if target_user == request.user:
@@ -2844,6 +2980,53 @@ def requirement_toggle_status(request, req_id):
         return JsonResponse({'status': 'success', 'new_status': requirement.status})
     return JsonResponse({'status': 'error'}, status=400)
 
+def get_pending_lead_subcategories_for_email(requirement_id, email, subcategory_ids, exclude_lead_id=None, current_user=None):
+    if not email or not str(email).strip() or not subcategory_ids:
+        return []
+    
+    clean_email = str(email).strip().lower()
+    qs = LeadItem.objects.filter(
+        lead__requirement_id=requirement_id,
+        lead__email__iexact=clean_email,
+        lead__status='pending',
+        subcategory_id__in=subcategory_ids
+    )
+    if exclude_lead_id:
+        qs = qs.exclude(lead_id=exclude_lead_id)
+        
+    if current_user and getattr(current_user, 'is_authenticated', False) and current_user.usertype == 'marketing':
+        qs = qs.exclude(lead__marketing_user=current_user)
+
+    blocked_items = qs.select_related('subcategory')
+    blocked_subcategories = list(set(item.subcategory.name for item in blocked_items if item.subcategory))
+    return blocked_subcategories
+
+@login_required(login_url='login')
+def check_lead_pending_email(request):
+    email = request.GET.get('email', '').strip()
+    req_id = request.GET.get('requirement_id')
+    raw_subs = request.GET.getlist('subcategories')
+    if len(raw_subs) == 1 and ',' in raw_subs[0]:
+        raw_subs = raw_subs[0].split(',')
+    sub_ids = [s.strip() for s in raw_subs if s.strip().isdigit()]
+    exclude_lead_id = request.GET.get('exclude_lead_id')
+    if exclude_lead_id and exclude_lead_id.isdigit():
+        exclude_lead_id = int(exclude_lead_id)
+    else:
+        exclude_lead_id = None
+
+    if not email or not req_id or not sub_ids:
+        return JsonResponse({'blocked': False, 'blocked_subcategories': []})
+
+    blocked_subs = get_pending_lead_subcategories_for_email(req_id, email, sub_ids, exclude_lead_id=exclude_lead_id, current_user=request.user)
+    if blocked_subs:
+        return JsonResponse({
+            'blocked': True,
+            'blocked_subcategories': blocked_subs,
+            'message': f"A lead with email '{email}' for subcategory {', '.join(blocked_subs)} is currently in Pending status under this requirement. Cannot proceed until its status changes."
+        })
+    return JsonResponse({'blocked': False, 'blocked_subcategories': []})
+
 @login_required(login_url='login')
 def lead_create(request, req_id):
     if request.user.usertype != 'marketing':
@@ -2855,10 +3038,17 @@ def lead_create(request, req_id):
     if request.method == 'POST':
         name = request.POST.get('name')
         phone = request.POST.get('phone')
-        email = request.POST.get('email')
+        email = request.POST.get('email', '').strip()
         address = request.POST.get('address')
         remarks = request.POST.get('remarks')
         selected_item_ids = request.POST.getlist('selected_items')
+
+        # Check for existing pending lead for same email & subcategories under this requirement created by OTHER digital franchises
+        blocked_subs = get_pending_lead_subcategories_for_email(req_id, email, selected_item_ids, current_user=request.user)
+        if blocked_subs:
+            sub_names_str = ", ".join(f"'{s}'" for s in blocked_subs)
+            messages.error(request, f"A lead with email '{email}' for subcategory {sub_names_str} is currently in Pending status under this requirement by another franchise. Cannot add a new lead for this subcategory until its status changes.")
+            return redirect(request.META.get('HTTP_REFERER', 'lead_list'))
 
         # Validate count limits from POST data
         from .models import RequirementAssignment
@@ -2949,6 +3139,12 @@ from django.db.models import Case, When, Value, IntegerField
 
 @login_required(login_url='login')
 def lead_list(request):
+    if request.user.usertype == 'manager':
+        perm = request.user.get_manager_permissions()
+        if perm.leads_access == 'none':
+            messages.error(request, 'Access denied: You do not have permission to view Leads.')
+            return redirect('superadmin_dashboard')
+
     if request.user.usertype == 'staff':
         target_user = get_target_user(request)
         if target_user == request.user:
@@ -2971,10 +3167,16 @@ def lead_list(request):
     elif user.usertype == 'district':
         control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user)
     elif user.usertype == 'manager':
-        if user.assigned_district:
-            control_cond = Q(status='pending', current_level='manager', marketing_user__assigned_district=user.assigned_district)
+        perm = user.get_manager_permissions()
+        if perm.leads_access == 'action':
+            if user.assigned_district:
+                control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user.assigned_district)
+            elif user.created_by and user.created_by.usertype == 'district':
+                control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user.created_by)
+            else:
+                control_cond = Q(status='pending', current_level='superadmin')
         else:
-            control_cond = Q(status='pending', current_level='manager', marketing_user__created_by=user)
+            control_cond = Q(pk__in=[])
     else:
         control_cond = Q(pk__in=[])
 
@@ -3005,12 +3207,12 @@ def lead_list(request):
     elif user.usertype == 'marketing':
         leads = annotated_leads(Lead.objects.filter(marketing_user=user))
     elif user.usertype == 'mandalam':
-        leads = annotated_leads(Lead.objects.filter(marketing_user__assigned_mandalam=user))
+        leads = annotated_leads(Lead.objects.filter(Q(assigned_mandalam=user) | Q(marketing_user=user) | Q(marketing_user__assigned_mandalam=user)))
     elif user.usertype == 'district':
-        leads = annotated_leads(Lead.objects.filter(marketing_user__assigned_district=user))
+        leads = annotated_leads(Lead.objects.filter(Q(assigned_district=user) | Q(marketing_user=user) | Q(marketing_user__assigned_district=user)))
     elif user.usertype == 'manager':
         if user.assigned_district:
-            leads = annotated_leads(Lead.objects.filter(marketing_user__assigned_district=user.assigned_district))
+            leads = annotated_leads(Lead.objects.filter(Q(assigned_district=user.assigned_district) | Q(marketing_user__assigned_district=user.assigned_district)))
         else:
             leads = annotated_leads(Lead.objects.filter(marketing_user__created_by=user))
     else:
@@ -3072,6 +3274,12 @@ def lead_list(request):
 
 @login_required(login_url='login')
 def confirmed_lead_list(request):
+    if request.user.usertype == 'manager':
+        perm = request.user.get_manager_permissions()
+        if perm.confirmed_leads_access == 'none':
+            messages.error(request, 'Access denied: You do not have permission to view Confirmed Leads.')
+            return redirect('superadmin_dashboard')
+
     if request.user.usertype == 'staff':
         target_user = get_target_user(request)
         if target_user == request.user:
@@ -3110,12 +3318,12 @@ def confirmed_lead_list(request):
     elif user.usertype == 'marketing':
         leads = annotated_leads(base_qs.filter(marketing_user=user))
     elif user.usertype == 'mandalam':
-        leads = annotated_leads(base_qs.filter(marketing_user__assigned_mandalam=user))
+        leads = annotated_leads(base_qs.filter(Q(assigned_mandalam=user) | Q(marketing_user=user)))
     elif user.usertype == 'district':
-        leads = annotated_leads(base_qs.filter(marketing_user__assigned_district=user))
+        leads = annotated_leads(base_qs.filter(Q(assigned_district=user) | Q(marketing_user=user)))
     elif user.usertype == 'manager':
         if user.assigned_district:
-            leads = annotated_leads(base_qs.filter(marketing_user__assigned_district=user.assigned_district))
+            leads = annotated_leads(base_qs.filter(Q(assigned_district=user.assigned_district) | Q(marketing_user__assigned_district=user.assigned_district)))
         else:
             leads = annotated_leads(base_qs.filter(marketing_user__created_by=user))
     elif user.usertype == 'customer':
@@ -3135,6 +3343,12 @@ def confirmed_lead_list(request):
 def lead_edit(request, lead_id):
     lead = get_object_or_404(Lead, id=lead_id)
     
+    if request.user.usertype == 'manager':
+        perm = request.user.get_manager_permissions()
+        if perm.leads_access != 'action':
+            messages.error(request, 'Permission denied: You have view-only access for leads.')
+            return redirect('lead_list')
+
     # Restriction: confirmed leads cannot be edited
     if lead.status == 'confirmed':
         messages.error(request, 'Confirmed leads cannot be edited.')
@@ -3142,15 +3356,28 @@ def lead_edit(request, lead_id):
     
     # Permission: only current level owner can edit
     can_edit = False
-    if request.user.usertype == lead.current_level:
+    effective_user_level = request.user.usertype
+    if effective_user_level == 'manager':
+        effective_user_level = 'district' if request.user.assigned_district or (request.user.created_by and request.user.created_by.usertype == 'district') else 'superadmin'
+
+    if effective_user_level == lead.current_level:
         if request.user.usertype == 'marketing' and lead.marketing_user == request.user:
             can_edit = True
         elif request.user.usertype == 'mandalam' and lead.marketing_user.assigned_mandalam == request.user:
             can_edit = True
         elif request.user.usertype == 'district' and lead.marketing_user.assigned_district == request.user:
             can_edit = True
-        elif request.user.usertype == 'manager' and (lead.marketing_user.assigned_district == request.user.assigned_district or lead.marketing_user.created_by == request.user):
-            can_edit = True
+        elif request.user.usertype == 'manager':
+            if request.user.assigned_district and lead.marketing_user.assigned_district == request.user.assigned_district:
+                can_edit = True
+            elif request.user.created_by and request.user.created_by.usertype == 'district' and lead.marketing_user.assigned_district == request.user.created_by:
+                can_edit = True
+            elif lead.marketing_user.created_by == request.user or lead.marketing_user == request.user:
+                can_edit = True
+            elif effective_user_level == 'superadmin':
+                can_edit = True
+    elif request.user.usertype == 'superadmin':
+        can_edit = True
             
     if not can_edit:
         messages.error(request, 'Permission denied. You do not have control over this lead.')
@@ -3159,9 +3386,17 @@ def lead_edit(request, lead_id):
     if request.method == 'POST':
         lead.name = request.POST.get('name')
         lead.phone = request.POST.get('phone')
-        lead.email = request.POST.get('email')
+        lead.email = request.POST.get('email', '').strip()
         lead.address = request.POST.get('address')
         lead.remarks = request.POST.get('remarks')
+
+        selected_item_ids = request.POST.getlist('selected_items')
+        blocked_subs = get_pending_lead_subcategories_for_email(lead.requirement_id, lead.email, selected_item_ids, exclude_lead_id=lead.id, current_user=request.user)
+        if blocked_subs:
+            sub_names_str = ", ".join(f"'{s}'" for s in blocked_subs)
+            messages.error(request, f"A lead with email '{lead.email}' for subcategory {sub_names_str} is currently in Pending status under this requirement by another franchise. Cannot update lead for this subcategory until its status changes.")
+            return redirect('lead_list')
+
         lead.save()
         
         # Validate count limits from POST data
@@ -3400,6 +3635,14 @@ def share_lead_payment(request, lead_id):
 def lead_add_update(request, lead_id):
     lead = get_object_or_404(Lead, id=lead_id)
     
+    if request.user.usertype == 'manager':
+        perm = request.user.get_manager_permissions()
+        is_confirmed = (lead.status in ['confirmed', 'completed'])
+        if is_confirmed and perm.confirmed_leads_access != 'action':
+            return JsonResponse({'status': 'error', 'message': 'Permission denied: You have view-only access for confirmed leads.'}, status=403)
+        elif not is_confirmed and perm.leads_access != 'action':
+            return JsonResponse({'status': 'error', 'message': 'Permission denied: You have view-only access for leads.'}, status=403)
+
     effective_user_level = request.user.usertype
     if effective_user_level == 'manager':
         effective_user_level = 'district'
@@ -4006,6 +4249,126 @@ def lead_add_associate_update(request, lead_id):
             'is_completed': lead.status == 'completed'
         })
         
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
+
+@login_required(login_url='login')
+def lead_get_district_feedback(request, lead_id):
+    lead = get_object_or_404(Lead, id=lead_id)
+    user = request.user
+
+    allowed = False
+    if user.usertype in ['superadmin', 'district']:
+        allowed = True
+
+    if not allowed:
+        return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+
+    try:
+        from .models import DistrictFeedback
+        feedbacks_qs = lead.district_feedbacks.select_related('district_user').all()
+        feedbacks = []
+        for fb in feedbacks_qs:
+            feedbacks.append({
+                'id': fb.id,
+                'feedback_text': fb.feedback_text,
+                'district_user_name': fb.district_user.name or fb.district_user.username,
+                'district_user_id': fb.district_user.id,
+                'created_at': fb.created_at.strftime('%b %d, %Y %H:%M')
+            })
+    except Exception as e:
+        import traceback
+        print("GET DISTRICT FEEDBACK ERROR:", traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Failed to load feedback: {str(e)}. Please run `python manage.py migrate`.'}, status=500)
+
+    can_add = (user.usertype == 'district' and lead.current_level == 'district')
+
+    return JsonResponse({
+        'status': 'success',
+        'feedbacks': feedbacks,
+        'can_add': can_add,
+        'current_level': lead.current_level,
+        'user_type': user.usertype,
+        'lead_name': lead.name
+    })
+
+@login_required(login_url='login')
+def lead_add_district_feedback(request, lead_id):
+    lead = get_object_or_404(Lead, id=lead_id)
+    user = request.user
+
+    if user.usertype == 'manager':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Managers are not allowed to add district feedback.'
+        }, status=403)
+
+    if user.usertype != 'district':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Only District Franchise is allowed to add feedback.'
+        }, status=403)
+
+    if lead.current_level != 'district':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Feedback can only be added when the lead reaches District Franchise level.'
+        }, status=403)
+
+    if request.method == 'POST':
+        import json
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            data = request.POST
+
+        feedback_text = data.get('feedback_text', '').strip()
+        if not feedback_text:
+            return JsonResponse({'status': 'error', 'message': 'Feedback text is required.'}, status=400)
+
+        custom_date = data.get('custom_date')
+        custom_time = data.get('custom_time')
+        if not custom_date or not custom_time:
+            return JsonResponse({'status': 'error', 'message': 'Feedback date and feedback time are required.'}, status=400)
+
+        created_at = None
+        if custom_date and custom_time:
+            try:
+                from django.utils.timezone import make_aware
+                import datetime
+                dt_str = f"{custom_date} {custom_time}:00"
+                naive_dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                created_at = make_aware(naive_dt)
+            except Exception:
+                pass
+
+        from .models import DistrictFeedback
+        if created_at:
+            fb = DistrictFeedback.objects.create(
+                lead=lead,
+                district_user=user,
+                feedback_text=feedback_text,
+                created_at=created_at
+            )
+        else:
+            fb = DistrictFeedback.objects.create(
+                lead=lead,
+                district_user=user,
+                feedback_text=feedback_text
+            )
+
+        create_lead_notification(user, lead, f"added district feedback for '{lead.name}'")
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'District feedback added successfully.',
+            'feedback': {
+                'id': fb.id,
+                'feedback_text': fb.feedback_text,
+                'district_user_name': fb.district_user.name or fb.district_user.username,
+                'created_at': fb.created_at.strftime('%b %d, %Y %H:%M')
+            }
+        })
+
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
 
 @login_required(login_url='login')
@@ -4826,6 +5189,108 @@ def superadmin_export_leads(request):
 
 
 @login_required(login_url='login')
+def export_feedback_leads_csv(request):
+    if request.user.usertype == 'staff':
+        target_user = get_target_user(request)
+        user = target_user
+    else:
+        user = request.user
+        
+    from django.db.models import Exists, OuterRef
+    from .models import Lead, LeadInstallment, DistrictFeedback
+    import csv
+    from collections import defaultdict
+
+    base_qs = Lead.objects.filter(status='pending')
+
+    if user.usertype != 'superadmin':
+        if request.GET.get('check_empty') == 'true':
+            return JsonResponse({'empty': True, 'error': 'Access denied: Only Superadmin can export feedback leads.'}, status=403)
+        messages.error(request, 'Access denied: Only Superadmin can export feedback leads.')
+        return redirect('lead_list')
+
+    leads = base_qs
+
+    feedbacks = DistrictFeedback.objects.filter(lead__in=leads).select_related(
+        'lead',
+        'district_user',
+        'lead__requirement',
+        'lead__requirement__customer',
+        'lead__requirement__category',
+        'lead__marketing_user',
+        'lead__marketing_user__assigned_mandalam',
+        'lead__marketing_user__assigned_district'
+    )
+
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    if from_date:
+        try:
+            feedbacks = feedbacks.filter(created_at__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            feedbacks = feedbacks.filter(created_at__date__lte=to_date)
+        except Exception:
+            pass
+
+    feedbacks = feedbacks.order_by('created_at')
+
+    if request.GET.get('check_empty') == 'true':
+        return JsonResponse({'empty': not feedbacks.exists()})
+
+    lead_feedbacks_dict = defaultdict(list)
+    for fb in feedbacks:
+        lead_feedbacks_dict[fb.lead_id].append(fb)
+
+    def csv_generator():
+        echo_buffer = Echo()
+        writer = csv.writer(echo_buffer)
+        
+        yield writer.writerow([
+            'Lead ID', 'Lead Name', 'Phone', 'Email', 'Address', 'Remarks',
+            'Requirement', 'Category', 'Digital Franchise', 'Facilitation Center',
+            'District Franchise',
+            'Feedback Date', 'Feedback Added By', 'Feedback Text'
+        ])
+        
+        for lead_id, fb_list in lead_feedbacks_dict.items():
+            lead = fb_list[0].lead
+            fc = lead.get_mandalam.name if lead.get_mandalam else 'N/A'
+            df = lead.get_district.name if lead.get_district else 'N/A'
+            
+            dates_str = "\n".join([fb.created_at.strftime('%Y-%m-%d %H:%M:%S') for fb in fb_list])
+            users_str = "\n".join([(fb.district_user.name or fb.district_user.username) if fb.district_user else 'N/A' for fb in fb_list])
+            
+            if len(fb_list) > 1:
+                texts_str = "\n".join([f"{idx+1}. {fb.feedback_text}" for idx, fb in enumerate(fb_list)])
+            else:
+                texts_str = fb_list[0].feedback_text
+
+            yield writer.writerow([
+                lead.id,
+                lead.name,
+                lead.phone,
+                lead.email or '',
+                lead.address or '',
+                lead.remarks or '',
+                f"{lead.requirement.title} (By {lead.requirement.customer.name})" if (lead.requirement and lead.requirement.customer) else (lead.requirement.title if lead.requirement else 'N/A'),
+                lead.requirement.category.name if (lead.requirement and lead.requirement.category) else 'N/A',
+                lead.marketing_user.name or lead.marketing_user.username if lead.marketing_user else 'N/A',
+                fc,
+                df,
+                dates_str,
+                users_str,
+                texts_str
+            ])
+            
+    response = StreamingHttpResponse(csv_generator(), content_type="text/csv")
+    response['Content-Disposition'] = 'attachment; filename="feedback_leads_export.csv"'
+    return response
+
+
+@login_required(login_url='login')
 def superadmin_export_confirmed_leads(request):
     if request.user.usertype == 'staff':
         target_user = get_target_user(request)
@@ -4897,8 +5362,8 @@ def superadmin_export_confirmed_leads(request):
         ])
         
         for lead in queryset:
-            fc = lead.marketing_user.assigned_mandalam.name if (lead.marketing_user and lead.marketing_user.assigned_mandalam) else 'N/A'
-            df = lead.marketing_user.assigned_district.name if (lead.marketing_user and lead.marketing_user.assigned_district) else 'N/A'
+            fc = lead.get_mandalam.name if lead.get_mandalam else 'N/A'
+            df = lead.get_district.name if lead.get_district else 'N/A'
             
             yield writer.writerow([
                 lead.id,

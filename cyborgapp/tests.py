@@ -1787,6 +1787,595 @@ class AssociateCompanyLeadCompletionTestCase(TestCase):
         self.assertEqual(wallet.total_withdrawal_earned, Decimal('2000.00'))
 
 
+class DistrictFeedbackTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='sa_fb@cyborg.com', email='sa_fb@cyborg.com', password='password123', usertype='superadmin'
+        )
+        self.district = CustomUser.objects.create_user(
+            username='dist_fb@cyborg.com', email='dist_fb@cyborg.com', password='password123', usertype='district'
+        )
+        self.manager = CustomUser.objects.create_user(
+            username='mgr_fb@cyborg.com', email='mgr_fb@cyborg.com', password='password123', usertype='manager', assigned_district=self.district
+        )
+        self.marketer = CustomUser.objects.create_user(
+            username='mkt_fb@cyborg.com', email='mkt_fb@cyborg.com', password='password123', usertype='marketing', assigned_district=self.district
+        )
+        self.customer = CustomUser.objects.create_user(
+            username='cust_fb@cyborg.com', email='cust_fb@cyborg.com', password='password123', usertype='customer'
+        )
+
+        cat = Category.objects.create(name='Cat FB Test')
+        self.req = CustomerRequirement.objects.create(
+            customer=self.customer, title='FB Test Project', category=cat, status='approved'
+        )
+        self.lead = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketer,
+            name='Test Lead Feedback',
+            phone='9998887776',
+            current_level='marketing',
+            status='pending'
+        )
+
+    def test_district_feedback_workflow_and_permissions(self):
+        from .models import DistrictFeedback
+        import json
+        client = Client()
+
+        # 1. Try to add feedback when lead is at marketing level (should fail)
+        client.login(username='dist_fb@cyborg.com', password='password123')
+        res = client.post(
+            f'/leads/{self.lead.id}/district-feedback/add/',
+            json.dumps({'feedback_text': 'Premature feedback'}),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 403)
+        self.assertIn('District Franchise level', res.json()['message'])
+
+        # 2. Advance lead to district level
+        self.lead.current_level = 'district'
+        self.lead.save()
+
+        # 3. Manager attempts to add feedback (MUST be forbidden)
+        client.login(username='mgr_fb@cyborg.com', password='password123')
+        res_mgr = client.post(
+            f'/leads/{self.lead.id}/district-feedback/add/',
+            json.dumps({'feedback_text': 'Manager trying to give feedback'}),
+            content_type='application/json'
+        )
+        self.assertEqual(res_mgr.status_code, 403)
+        self.assertIn('Managers are not allowed', res_mgr.json()['message'])
+
+        # 4. District Franchise attempts to add feedback without date/time (MUST fail)
+        client.login(username='dist_fb@cyborg.com', password='password123')
+        res_nodate = client.post(
+            f'/leads/{self.lead.id}/district-feedback/add/',
+            json.dumps({'feedback_text': 'District franchise feedback note'}),
+            content_type='application/json'
+        )
+        self.assertEqual(res_nodate.status_code, 400)
+        self.assertIn('date and feedback time are required', res_nodate.json()['message'])
+
+        # 5. District Franchise adds feedback with date and time (MUST succeed)
+        res_dist = client.post(
+            f'/leads/{self.lead.id}/district-feedback/add/',
+            json.dumps({
+                'feedback_text': 'District franchise feedback note',
+                'custom_date': '2026-09-10',
+                'custom_time': '10:30'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(res_dist.status_code, 200)
+        self.assertEqual(res_dist.json()['status'], 'success')
+        self.assertEqual(DistrictFeedback.objects.count(), 1)
+
+        # 5. Superadmin fetches and views the feedback added by district franchise
+        client.login(username='sa_fb@cyborg.com', password='password123')
+        res_sa_get = client.get(f'/leads/{self.lead.id}/district-feedback/get/')
+        self.assertEqual(res_sa_get.status_code, 200)
+        sa_data = res_sa_get.json()
+        self.assertEqual(sa_data['status'], 'success')
+        self.assertEqual(len(sa_data['feedbacks']), 1)
+        self.assertEqual(sa_data['feedbacks'][0]['feedback_text'], 'District franchise feedback note')
+        self.assertFalse(sa_data['can_add'])
+
+        # 6. District Franchise fetches feedback
+        client.login(username='dist_fb@cyborg.com', password='password123')
+        res_dist_get = client.get(f'/leads/{self.lead.id}/district-feedback/get/')
+        self.assertEqual(res_dist_get.status_code, 200)
+        dist_data = res_dist_get.json()
+        self.assertTrue(dist_data['can_add'])
+
+        # 7. Manager attempts to fetch feedback (MUST be forbidden)
+        client.login(username='mgr_fb@cyborg.com', password='password123')
+        res_mgr_get = client.get(f'/leads/{self.lead.id}/district-feedback/get/')
+        self.assertEqual(res_mgr_get.status_code, 403)
+
+    def test_export_feedback_leads_csv(self):
+        from .models import DistrictFeedback
+        client = Client()
+
+        # Non-superadmin access should be denied
+        client.login(username='dist_fb@cyborg.com', password='password123')
+        res_denied = client.get('/leads/export-feedback-csv/?check_empty=true')
+        self.assertEqual(res_denied.status_code, 403)
+
+        # Superadmin access
+        client.login(username='sa_fb@cyborg.com', password='password123')
+
+        # 1. Check empty before feedback added
+        res_empty = client.get('/leads/export-feedback-csv/?check_empty=true')
+        self.assertEqual(res_empty.status_code, 200)
+        self.assertTrue(res_empty.json()['empty'])
+
+        # 2. Add multiple DistrictFeedbacks for the same lead
+        DistrictFeedback.objects.create(
+            lead=self.lead,
+            district_user=self.district,
+            feedback_text='Export test feedback note 1'
+        )
+        DistrictFeedback.objects.create(
+            lead=self.lead,
+            district_user=self.district,
+            feedback_text='Export test feedback note 2'
+        )
+
+        # 3. Check empty after feedback added -> False
+        res_not_empty = client.get('/leads/export-feedback-csv/?check_empty=true')
+        self.assertEqual(res_not_empty.status_code, 200)
+        self.assertFalse(res_not_empty.json()['empty'])
+
+        # 4. Download CSV export
+        res_download = client.get('/leads/export-feedback-csv/')
+        self.assertEqual(res_download.status_code, 200)
+        self.assertEqual(res_download['Content-Type'], 'text/csv')
+        content = b''.join(res_download.streaming_content).decode('utf-8')
+        self.assertIn('Feedback Text', content)
+        self.assertIn('1. Export test feedback note 1', content)
+        self.assertIn('2. Export test feedback note 2', content)
+        self.assertIn(self.lead.name, content)
+        self.assertNotIn('Total Amount (Rs)', content)
+        self.assertNotIn('Payment Mode', content)
+
+        # Ensure only 2 lines in CSV (1 header + 1 row for lead)
+        csv_lines = [line for line in content.strip().splitlines() if line]
+        # In multiline CSV cells, splitlines splits by newline, so the lead name appears exactly once in header + data
+        lead_name_occurrences = content.count(self.lead.name)
+        self.assertEqual(lead_name_occurrences, 1)
+
+        # 5. Confirmed lead feedback should be excluded
+        self.lead.status = 'confirmed'
+        self.lead.save()
+        res_confirmed_empty = client.get('/leads/export-feedback-csv/?check_empty=true')
+        self.assertTrue(res_confirmed_empty.json()['empty'])
+
+
+class ManagerAccessControlTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='sa_mac@cyborg.com', email='sa_mac@cyborg.com', password='password123', usertype='superadmin'
+        )
+        self.district = CustomUser.objects.create_user(
+            username='dist_mac@cyborg.com', email='dist_mac@cyborg.com', password='password123', usertype='district'
+        )
+        self.manager = CustomUser.objects.create_user(
+            username='mgr_mac@cyborg.com', email='mgr_mac@cyborg.com', password='password123', usertype='manager', assigned_district=self.district
+        )
+        self.mandalam = CustomUser.objects.create_user(
+            username='fc_mac@cyborg.com', email='fc_mac@cyborg.com', password='password123', usertype='mandalam', assigned_district=self.district
+        )
+        self.marketer = CustomUser.objects.create_user(
+            username='df_mac@cyborg.com', email='df_mac@cyborg.com', password='password123', usertype='marketing', assigned_district=self.district, assigned_mandalam=self.mandalam
+        )
+
+        cat = Category.objects.create(name='Mac Cat Test')
+        self.req = CustomerRequirement.objects.create(
+            customer=self.superadmin, title='Mac Test Requirement', category=cat, status='approved'
+        )
+        self.lead = Lead.objects.create(
+            requirement=self.req,
+            marketing_user=self.marketer,
+            name='Mac Active Lead',
+            phone='1234567890',
+            current_level='manager',
+            status='pending'
+        )
+
+    def test_district_can_create_and_edit_manager_permissions(self):
+        client = Client()
+        client.login(username='dist_mac@cyborg.com', password='password123')
+
+        # 1. District creates a Manager with custom permissions
+        res = client.post('/superadmin/users/create/', {
+            'name': 'District Created Manager',
+            'email': 'dist_mgr@cyborg.com',
+            'usertype': 'manager',
+            'password': 'password123',
+            'mgr_can_access_requirements': 'off',
+            'mgr_df_can_view': 'on',
+            'mgr_df_can_create': 'off',
+            'mgr_df_can_edit': 'off',
+            'mgr_df_can_delete': 'off',
+            'mgr_fc_can_view': 'on',
+            'mgr_fc_can_create': 'on',
+            'mgr_fc_can_edit': 'off',
+            'mgr_fc_can_delete': 'off',
+            'mgr_leads_access': 'view',
+            'mgr_confirmed_leads_access': 'none',
+        })
+        self.assertEqual(res.status_code, 302)
+        new_mgr = CustomUser.objects.get(email='dist_mgr@cyborg.com')
+        self.assertEqual(new_mgr.assigned_district, self.district)
+        
+        perm = new_mgr.get_manager_permissions()
+        self.assertFalse(perm.can_access_requirements)
+        self.assertTrue(perm.df_can_view)
+        self.assertFalse(perm.df_can_create)
+        self.assertTrue(perm.fc_can_create)
+        self.assertEqual(perm.leads_access, 'view')
+        self.assertEqual(perm.confirmed_leads_access, 'none')
+
+        # 2. District edits Manager permissions
+        res_edit = client.post(f'/superadmin/users/{new_mgr.id}/edit/', {
+            'name': 'District Created Manager Edited',
+            'email': 'dist_mgr@cyborg.com',
+            'usertype': 'manager',
+            'mgr_can_access_requirements': 'on',
+            'mgr_df_can_view': 'on',
+            'mgr_df_can_create': 'on',
+            'mgr_df_can_edit': 'on',
+            'mgr_df_can_delete': 'on',
+            'mgr_fc_can_view': 'on',
+            'mgr_fc_can_create': 'on',
+            'mgr_fc_can_edit': 'on',
+            'mgr_fc_can_delete': 'on',
+            'mgr_leads_access': 'action',
+            'mgr_confirmed_leads_access': 'on',
+        })
+        self.assertEqual(res_edit.status_code, 302)
+        perm.refresh_from_db()
+        self.assertTrue(perm.can_access_requirements)
+        self.assertEqual(perm.leads_access, 'action')
+        self.assertEqual(perm.confirmed_leads_access, 'view')
+
+    def test_manager_access_restrictions(self):
+        client = Client()
+        # Set manager permissions: no requirements access, view-only leads, no confirmed leads
+        perm = self.manager.get_manager_permissions()
+        perm.can_access_requirements = False
+        perm.leads_access = 'view'
+        perm.confirmed_leads_access = 'none'
+        perm.df_can_create = False
+        perm.save()
+
+        client.login(username='mgr_mac@cyborg.com', password='password123')
+
+        # 1. Accessing requirements should fail/redirect
+        res_req = client.get('/requirements/')
+        self.assertEqual(res_req.status_code, 302)
+
+        # 2. Accessing confirmed leads should fail/redirect
+        res_conf = client.get('/leads/confirmed/')
+        self.assertEqual(res_conf.status_code, 302)
+
+        # 3. Accessing leads list should succeed
+        res_leads = client.get('/leads/')
+        self.assertEqual(res_leads.status_code, 200)
+
+        # 4. Attempting status update on lead with view-only leads access should fail
+        import json
+        res_update = client.post(
+            f'/leads/{self.lead.id}/update/',
+            json.dumps({'status': 'confirmed', 'notes': 'Trying to update'}),
+            content_type='application/json'
+        )
+        self.assertEqual(res_update.status_code, 403)
+
+        # 5. Attempting to create DF user without df_can_create should fail
+        res_create_df = client.post('/superadmin/users/create/', {
+            'name': 'Forbidden DF',
+            'email': 'forb_df@cyborg.com',
+            'usertype': 'marketing',
+            'password': 'password123'
+        })
+        self.assertEqual(res_create_df.status_code, 302)
+        self.assertFalse(CustomUser.objects.filter(email='forb_df@cyborg.com').exists())
+
+    def test_manager_lead_notification_filtering(self):
+        from .views import create_lead_notification
+        from .models import Notification
+
+        # Restrict manager from confirmed leads notifications
+        perm = self.manager.get_manager_permissions()
+        perm.leads_access = 'action'
+        perm.confirmed_leads_access = 'none'
+        perm.save()
+
+        # Send pending lead notification (manager SHOULD receive)
+        self.lead.status = 'pending'
+        self.lead.save()
+        create_lead_notification(self.superadmin, self.lead, "updated lead details")
+        self.assertTrue(Notification.objects.filter(recipient=self.manager).exists())
+
+        Notification.objects.all().delete()
+
+        # Send confirmed lead notification (manager SHOULD NOT receive)
+        self.lead.status = 'confirmed'
+        self.lead.save()
+        create_lead_notification(self.superadmin, self.lead, "confirmed the lead")
+        self.assertFalse(Notification.objects.filter(recipient=self.manager).exists())
+
+    def test_manager_full_action_lead_control_and_edit(self):
+        client = Client()
+        # Set manager permissions to action on leads
+        perm = self.manager.get_manager_permissions()
+        perm.leads_access = 'action'
+        perm.save()
+
+        # Set lead current level to district (which matches manager's assigned district)
+        self.lead.current_level = 'district'
+        self.lead.status = 'pending'
+        self.lead.save()
+
+        client.login(username='mgr_mac@cyborg.com', password='password123')
+
+        # 1. Fetch leads list and check that is_controlled is 1 for manager
+        res = client.get('/leads/')
+        self.assertEqual(res.status_code, 200)
+        leads_in_ctx = res.context['leads']
+        target_lead = [l for l in leads_in_ctx if l.id == self.lead.id][0]
+        self.assertEqual(target_lead.is_controlled, 1)
+
+        # 2. Edit lead as Manager
+        edit_res = client.post(f'/leads/{self.lead.id}/edit/', {
+            'name': 'Updated Lead Name by Manager',
+            'phone': self.lead.phone,
+            'email': self.lead.email or '',
+            'address': self.lead.address or '',
+            'remarks': 'Updated remarks'
+        })
+        self.assertEqual(edit_res.status_code, 302)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.name, 'Updated Lead Name by Manager')
+
+    def test_pending_lead_email_subcategories_validation(self):
+        sub = SubCategory.objects.create(category=self.req.category, name='SubValTest')
+        req_item = RequirementItem.objects.create(requirement=self.req, subcategory=sub, count=100)
+        RequirementAssignment.objects.create(requirement_item=req_item, facilitation_center=self.mandalam, assigned_count=50)
+
+        # Create second Digital Franchise user
+        df2 = CustomUser.objects.create_user(
+            username='df2_user', email='df2@test.com', password='password123', usertype='marketing',
+            assigned_district=self.district, assigned_mandalam=self.mandalam
+        )
+
+        client1 = Client()
+        client1.login(username=self.marketer.username, password='password123')
+
+        # 1. DF1 creates a pending lead for subcategory 1 with email dup@test.com
+        res1 = client1.post(f'/requirements/{self.req.id}/lead/create/', {
+            'name': 'Lead 1',
+            'phone': '1111111111',
+            'email': 'dup@test.com',
+            'selected_items': [sub.id],
+            f'count_{sub.id}': 1
+        })
+        self.assertEqual(res1.status_code, 302)
+        lead1 = Lead.objects.get(email='dup@test.com')
+        self.assertEqual(lead1.status, 'pending')
+
+        # 1b. DF1 attempts to create ANOTHER pending lead for the SAME subcategory with email dup@test.com -> ALLOWED
+        res1b = client1.post(f'/requirements/{self.req.id}/lead/create/', {
+            'name': 'Lead 1b by DF1',
+            'phone': '1111111112',
+            'email': 'dup@test.com',
+            'selected_items': [sub.id],
+            f'count_{sub.id}': 1
+        })
+        self.assertEqual(res1b.status_code, 302)
+        self.assertEqual(Lead.objects.filter(email='dup@test.com').count(), 2)
+
+        # 2. DF2 attempts to create a lead for the SAME requirement and SAME subcategory with email dup@test.com -> BLOCKED
+        client2 = Client()
+        client2.login(username='df2_user', password='password123')
+        res2 = client2.post(f'/requirements/{self.req.id}/lead/create/', {
+            'name': 'Lead 2 by DF2',
+            'phone': '2222222222',
+            'email': 'dup@test.com',
+            'selected_items': [sub.id],
+            f'count_{sub.id}': 1
+        })
+        self.assertEqual(res2.status_code, 302)
+        # Should be blocked, so lead count for dup@test.com remains 2
+        self.assertEqual(Lead.objects.filter(email='dup@test.com').count(), 2)
+
+        # 3. Change status of all DF1 leads to 'confirmed'
+        Lead.objects.filter(email='dup@test.com').update(status='confirmed')
+
+        # 4. DF2 attempts again to create lead with dup@test.com for same subcategory -> ALLOWED
+        res3 = client2.post(f'/requirements/{self.req.id}/lead/create/', {
+            'name': 'Lead 3 by DF2 after confirmed',
+            'phone': '2222222222',
+            'email': 'dup@test.com',
+            'selected_items': [sub.id],
+            f'count_{sub.id}': 1
+        })
+        self.assertEqual(res3.status_code, 302)
+        # Should now be allowed, lead count becomes 3
+        self.assertEqual(Lead.objects.filter(email='dup@test.com').count(), 3)
+
+
+class HistoricalLeadHierarchyTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='sa_hh@cyborg.com', email='sa_hh@cyborg.com', password='password123', usertype='superadmin'
+        )
+        self.dist1 = CustomUser.objects.create_user(
+            username='dist1_hh', email='dist1_hh@cyborg.com', password='password123', usertype='district'
+        )
+        self.dist2 = CustomUser.objects.create_user(
+            username='dist2_hh', email='dist2_hh@cyborg.com', password='password123', usertype='district'
+        )
+        self.fc1 = CustomUser.objects.create_user(
+            username='fc1_hh', email='fc1_hh@cyborg.com', password='password123', usertype='mandalam', assigned_district=self.dist1
+        )
+        self.fc2 = CustomUser.objects.create_user(
+            username='fc2_hh', email='fc2_hh@cyborg.com', password='password123', usertype='mandalam', assigned_district=self.dist2
+        )
+        self.df = CustomUser.objects.create_user(
+            username='df_hh', email='df_hh@cyborg.com', password='password123', usertype='marketing', assigned_district=self.dist1, assigned_mandalam=self.fc1
+        )
+        self.req = CustomerRequirement.objects.create(
+            customer=self.superadmin, title='Hierarchy Req', status='approved'
+        )
+
+    def test_df_edit_moves_pending_leads_leaves_confirmed_leads(self):
+        client = Client()
+        client.login(username='sa_hh@cyborg.com', password='password123')
+
+        # Create 1 pending lead and 1 confirmed lead for DF under FC1 & Dist1
+        pending_lead = Lead.objects.create(
+            requirement=self.req, marketing_user=self.df, name='Pending Lead', phone='9999999991', status='pending'
+        )
+        confirmed_lead = Lead.objects.create(
+            requirement=self.req, marketing_user=self.df, name='Confirmed Lead', phone='9999999992', status='confirmed'
+        )
+
+        self.assertEqual(pending_lead.assigned_mandalam, self.fc1)
+        self.assertEqual(pending_lead.assigned_district, self.dist1)
+        self.assertEqual(confirmed_lead.assigned_mandalam, self.fc1)
+        self.assertEqual(confirmed_lead.assigned_district, self.dist1)
+
+        # Edit DF to reassign to FC2 & Dist2
+        res_edit = client.post(f'/superadmin/users/{self.df.id}/edit/', {
+            'name': 'DF HH Updated',
+            'usertype': 'marketing',
+            'email': self.df.email,
+            'assigned_mandalam': self.fc2.id
+        })
+        self.assertEqual(res_edit.status_code, 302)
+
+        # Reload DF and leads
+        self.df.refresh_from_db()
+        pending_lead.refresh_from_db()
+        confirmed_lead.refresh_from_db()
+
+        self.assertEqual(self.df.assigned_mandalam, self.fc2)
+        self.assertEqual(self.df.assigned_district, self.dist2)
+
+        # Pending lead MUST move to FC2 & Dist2
+        self.assertEqual(pending_lead.assigned_mandalam, self.fc2)
+        self.assertEqual(pending_lead.assigned_district, self.dist2)
+
+        # Confirmed lead MUST stay assigned to FC1 & Dist1
+        self.assertEqual(confirmed_lead.assigned_mandalam, self.fc1)
+        self.assertEqual(confirmed_lead.assigned_district, self.dist1)
+
+    def test_fc_edit_moves_pending_leads_leaves_confirmed_leads(self):
+        client = Client()
+        client.login(username='sa_hh@cyborg.com', password='password123')
+
+        # Create 1 pending lead and 1 confirmed lead under FC1 & Dist1
+        pending_lead = Lead.objects.create(
+            requirement=self.req, marketing_user=self.df, name='Pending Lead FC', phone='8888888881', status='pending'
+        )
+        confirmed_lead = Lead.objects.create(
+            requirement=self.req, marketing_user=self.df, name='Confirmed Lead FC', phone='8888888882', status='confirmed'
+        )
+
+        # Edit FC1 to reassign to Dist2
+        res_edit = client.post(f'/superadmin/users/{self.fc1.id}/edit/', {
+            'name': 'FC1 HH Updated',
+            'usertype': 'mandalam',
+            'email': self.fc1.email,
+            'assigned_district': self.dist2.id
+        })
+        self.assertEqual(res_edit.status_code, 302)
+
+        self.fc1.refresh_from_db()
+        self.df.refresh_from_db()
+        pending_lead.refresh_from_db()
+        confirmed_lead.refresh_from_db()
+
+        # FC1 and DF assigned_district updated to Dist2
+        self.assertEqual(self.fc1.assigned_district, self.dist2)
+        self.assertEqual(self.df.assigned_district, self.dist2)
+
+        # Pending lead moved to Dist2
+        self.assertEqual(pending_lead.assigned_district, self.dist2)
+
+        # Confirmed lead remains assigned to Dist1
+        self.assertEqual(confirmed_lead.assigned_district, self.dist1)
+
+    def test_non_superadmin_cannot_edit_fc_assigned_district(self):
+        client = Client()
+        # Login as District Franchise dist1
+        client.login(username='dist1_hh', password='password123')
+
+        # District franchise tries to edit FC1 to assign to dist2
+        res = client.post(f'/superadmin/users/{self.fc1.id}/edit/', {
+            'name': 'FC1 Edited by Dist',
+            'usertype': 'mandalam',
+            'email': self.fc1.email,
+            'assigned_district': self.dist2.id
+        })
+        self.assertEqual(res.status_code, 302)
+        self.fc1.refresh_from_db()
+        # Verify assigned_district did NOT change to dist2
+        self.assertEqual(self.fc1.assigned_district, self.dist1)
+        self.assertEqual(self.fc1.name, 'FC1 Edited by Dist')
+
+        # Superadmin edits FC1 to assign to dist2
+        client.login(username='sa_hh@cyborg.com', password='password123')
+        res_sa = client.post(f'/superadmin/users/{self.fc1.id}/edit/', {
+            'name': 'FC1 Edited by SA',
+            'usertype': 'mandalam',
+            'email': self.fc1.email,
+            'assigned_district': self.dist2.id
+        })
+        self.assertEqual(res_sa.status_code, 302)
+        self.fc1.refresh_from_db()
+        # Verify assigned_district changed to dist2
+        self.assertEqual(self.fc1.assigned_district, self.dist2)
+
+    def test_non_superadmin_cannot_edit_df_assigned_mandalam(self):
+        client = Client()
+        # Login as District Franchise dist1
+        client.login(username='dist1_hh', password='password123')
+
+        # District franchise tries to edit DF to assign to fc2
+        res = client.post(f'/superadmin/users/{self.df.id}/edit/', {
+            'name': 'DF Edited by Dist',
+            'usertype': 'marketing',
+            'email': self.df.email,
+            'assigned_mandalam': self.fc2.id
+        })
+        self.assertEqual(res.status_code, 302)
+        self.df.refresh_from_db()
+        # Verify assigned_mandalam did NOT change to fc2
+        self.assertEqual(self.df.assigned_mandalam, self.fc1)
+        self.assertEqual(self.df.assigned_district, self.dist1)
+        self.assertEqual(self.df.name, 'DF Edited by Dist')
+
+        # Superadmin edits DF to assign to fc2
+        client.login(username='sa_hh@cyborg.com', password='password123')
+        res_sa = client.post(f'/superadmin/users/{self.df.id}/edit/', {
+            'name': 'DF Edited by SA',
+            'usertype': 'marketing',
+            'email': self.df.email,
+            'assigned_mandalam': self.fc2.id
+        })
+        self.assertEqual(res_sa.status_code, 302)
+        self.df.refresh_from_db()
+        # Verify assigned_mandalam changed to fc2 and assigned_district synced to dist2
+        self.assertEqual(self.df.assigned_mandalam, self.fc2)
+        self.assertEqual(self.df.assigned_district, self.dist2)
+
+
+
+
 
 
 

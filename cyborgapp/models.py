@@ -44,6 +44,12 @@ class CustomUser(AbstractUser):
     bank_account_holder = models.CharField(max_length=255, null=True, blank=True)
     bank_phone = models.CharField(max_length=20, null=True, blank=True)
 
+    def get_manager_permissions(self):
+        if self.usertype == 'manager':
+            perm, _ = ManagerPermission.objects.get_or_create(user=self)
+            return perm
+        return None
+
     def __str__(self):
         return f"{self.username} ({self.get_usertype_display()})"
 
@@ -237,6 +243,18 @@ class Lead(models.Model):
     )
     requirement = models.ForeignKey(CustomerRequirement, on_delete=models.CASCADE, related_name='leads')
     marketing_user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='added_leads')
+    assigned_mandalam = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='mandalam_assigned_leads'
+    )
+    assigned_district = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='district_assigned_leads'
+    )
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20)
     email = models.EmailField(null=True, blank=True)
@@ -255,6 +273,17 @@ class Lead(models.Model):
     )
     invoice_sent = models.BooleanField(default=False)  # Guard: prevent duplicate invoice emails
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.marketing_user:
+            if not self.assigned_mandalam and self.marketing_user.assigned_mandalam:
+                self.assigned_mandalam = self.marketing_user.assigned_mandalam
+            if not self.assigned_district:
+                if self.marketing_user.assigned_district:
+                    self.assigned_district = self.marketing_user.assigned_district
+                elif self.marketing_user.assigned_mandalam and self.marketing_user.assigned_mandalam.assigned_district:
+                    self.assigned_district = self.marketing_user.assigned_mandalam.assigned_district
+        super().save(*args, **kwargs)
 
     @property
     def get_total_amount(self):
@@ -334,6 +363,25 @@ class Lead(models.Model):
     @installment_pending.setter
     def installment_pending(self, value):
         self._installment_pending = value
+
+    @property
+    def get_mandalam(self):
+        if self.assigned_mandalam:
+            return self.assigned_mandalam
+        if self.marketing_user and self.marketing_user.assigned_mandalam:
+            return self.marketing_user.assigned_mandalam
+        return None
+
+    @property
+    def get_district(self):
+        if self.assigned_district:
+            return self.assigned_district
+        if self.marketing_user:
+            if self.marketing_user.assigned_district:
+                return self.marketing_user.assigned_district
+            if self.marketing_user.assigned_mandalam and self.marketing_user.assigned_mandalam.assigned_district:
+                return self.marketing_user.assigned_mandalam.assigned_district
+        return None
 
     @property
     def has_any_payment(self):
@@ -701,4 +749,47 @@ def check_fc_milestone_on_lead_confirm(sender, instance, created, **kwargs):
                             lead=instance
                         )
 
+class DistrictFeedback(models.Model):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='district_feedbacks')
+    district_user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='district_feedbacks')
+    feedback_text = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
 
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"District Feedback for Lead #{self.lead_id} by {self.district_user.username}"
+
+class ManagerPermission(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='manager_permissions')
+    can_access_requirements = models.BooleanField(default=True)
+
+    # Digital Franchise Users (marketing)
+    df_can_view = models.BooleanField(default=True)
+    df_can_create = models.BooleanField(default=True)
+    df_can_edit = models.BooleanField(default=True)
+    df_can_delete = models.BooleanField(default=True)
+
+    # Facilitation Center Users (mandalam)
+    fc_can_view = models.BooleanField(default=True)
+    fc_can_create = models.BooleanField(default=True)
+    fc_can_edit = models.BooleanField(default=True)
+    fc_can_delete = models.BooleanField(default=True)
+
+    LEAD_ACCESS_CHOICES = (
+        ('action', 'Action & View'),
+        ('view', 'View Only'),
+        ('none', 'No Access'),
+    )
+    leads_access = models.CharField(max_length=10, choices=LEAD_ACCESS_CHOICES, default='action')
+
+    CONFIRMED_LEAD_ACCESS_CHOICES = (
+        ('action', 'Action & View'),
+        ('view', 'View Only'),
+        ('none', 'No Access'),
+    )
+    confirmed_leads_access = models.CharField(max_length=10, choices=CONFIRMED_LEAD_ACCESS_CHOICES, default='action')
+
+    def __str__(self):
+        return f"Manager Permissions for {self.user.username}"

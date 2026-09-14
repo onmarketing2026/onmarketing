@@ -1273,10 +1273,11 @@
             leadModal.style.display = "block";
         });
 
-        leadForm.addEventListener('submit', function(e) {
+        leadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
             const selectedItems = leadForm.querySelectorAll('input[name="selected_items"]:checked');
             if (selectedItems.length === 0) {
-                e.preventDefault();
                 Swal.fire({
                     icon: 'error',
                     title: 'Selection Required',
@@ -1309,8 +1310,38 @@
                         });
                     }
                 });
-                if (!valid) e.preventDefault();
+                if (!valid) return;
             }
+
+            // Check pending lead for same email & subcategories under this requirement
+            const emailInput = leadForm.querySelector('input[name="email"]');
+            const emailVal = emailInput ? emailInput.value.trim() : '';
+
+            let reqId = '';
+            const actionMatch = leadForm.action.match(/\/requirements\/(\d+)\/lead\/create/);
+            if (actionMatch) reqId = actionMatch[1];
+
+            const subIds = Array.from(selectedItems).map(cb => cb.value).join(',');
+
+            if (emailVal && reqId && subIds) {
+                try {
+                    const checkRes = await fetch(`/leads/check-pending-email/?email=${encodeURIComponent(emailVal)}&requirement_id=${reqId}&subcategories=${subIds}`);
+                    const checkData = await checkRes.json();
+                    if (checkData.blocked) {
+                        const subNames = checkData.blocked_subcategories.join(', ');
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Pending Lead Exists',
+                            html: `A lead with email <strong>${emailVal}</strong> for subcategory <strong>${subNames}</strong> is currently in <strong>Pending</strong> status under this requirement.<br><br>Cannot add a lead for this subcategory until its status changes.`
+                        });
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Pending email check error:', err);
+                }
+            }
+
+            leadForm.submit();
         });
 
         if (closeLeadBtn) {

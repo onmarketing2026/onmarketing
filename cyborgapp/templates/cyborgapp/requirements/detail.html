@@ -530,6 +530,41 @@
         leadModal.style.display = 'block';
     });
 
+    if (leadForm) {
+        leadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const emailInput = leadForm.querySelector('input[name="email"]');
+            const emailVal = emailInput ? emailInput.value.trim() : '';
+
+            let reqId = '';
+            const actionMatch = leadForm.action.match(/\/requirements\/(\d+)\/lead\/create/);
+            if (actionMatch) reqId = actionMatch[1];
+
+            const selectedItems = leadForm.querySelectorAll('input[name="selected_items"]:checked');
+            const subIds = Array.from(selectedItems).map(cb => cb.value).join(',');
+
+            if (emailVal && reqId && subIds) {
+                try {
+                    const checkRes = await fetch(`/leads/check-pending-email/?email=${encodeURIComponent(emailVal)}&requirement_id=${reqId}&subcategories=${subIds}`);
+                    const checkData = await checkRes.json();
+                    if (checkData.blocked) {
+                        const subNames = checkData.blocked_subcategories.join(', ');
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Pending Lead Exists',
+                            html: `A lead with email <strong>${emailVal}</strong> for subcategory <strong>${subNames}</strong> is currently in <strong>Pending</strong> status under this requirement.<br><br>Cannot add a lead for this subcategory until its status changes.`
+                        });
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Pending email check error:', err);
+                }
+            }
+
+            leadForm.submit();
+        });
+    }
+
     document.getElementById('closeLeadModal').onclick = () => leadModal.style.display = 'none';
     window.addEventListener('click', e => { if (e.target === leadModal) leadModal.style.display = 'none'; });
 
