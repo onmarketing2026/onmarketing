@@ -610,61 +610,59 @@
         });
 
         // Share Details and Payment Link
-        document.querySelectorAll('.share-lead-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const leadId = this.getAttribute('data-id');
-                const leadEmail = this.getAttribute('data-email');
-                
-                if (!leadEmail) {
-                    Swal.fire({
-                        title: 'Error',
-                        text: 'Lead email is required to share details and payment link.',
-                        icon: 'error',
-                        confirmButtonColor: '#0d6efd'
-                    });
-                    return;
-                }
-                
+        $(document).on('click', '.share-lead-btn', function() {
+            const leadId = this.getAttribute('data-id');
+            const leadEmail = this.getAttribute('data-email');
+            
+            if (!leadEmail) {
                 Swal.fire({
-                    title: 'Share Lead Details?',
-                    text: `This will generate a Razorpay payment link and send it along with the subcategory details to ${leadEmail}.`,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonColor: '#198754',
-                    cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'Yes, Share!',
-                    showLoaderOnConfirm: true,
-                    preConfirm: () => {
-                        return fetch(`/leads/${leadId}/share/`, {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRFToken': '{{ csrf_token }}',
-                                'Content-Type': 'application/json'
-                            }
-                        })
-                        .then(response => {
-                            if (!response.ok) {
-                                return response.json().then(err => { throw new Error(err.message || 'Failed to share') });
-                            }
-                            return response.json();
-                        })
-                        .catch(error => {
-                            Swal.showValidationMessage(`Request failed: ${error.message}`);
-                        });
-                    },
-                    allowOutsideClick: () => !Swal.isLoading()
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        Swal.fire({
-                            title: 'Success!',
-                            text: result.value.message,
-                            icon: 'success',
-                            confirmButtonColor: '#198754'
-                        }).then(() => {
-                            location.reload();
-                        });
-                    }
+                    title: 'Error',
+                    text: 'Lead email is required to share details and payment link.',
+                    icon: 'error',
+                    confirmButtonColor: '#0d6efd'
                 });
+                return;
+            }
+            
+            Swal.fire({
+                title: 'Share Lead Details?',
+                text: `This will generate a Razorpay payment link and send it along with the subcategory details to ${leadEmail}.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#198754',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, Share!',
+                showLoaderOnConfirm: true,
+                preConfirm: () => {
+                    return fetch(`/leads/${leadId}/share/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}',
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(err => { throw new Error(err.message || 'Failed to share') });
+                        }
+                        return response.json();
+                    })
+                    .catch(error => {
+                        Swal.showValidationMessage(`Request failed: ${error.message}`);
+                    });
+                },
+                allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Success!',
+                        text: result.value.message,
+                        icon: 'success',
+                        confirmButtonColor: '#198754'
+                    }).then(() => {
+                        location.reload();
+                    });
+                }
             });
         });
 
@@ -885,97 +883,94 @@
             leadForm.submit();
         });
 
-        const editBtns = document.querySelectorAll('.edit-lead-btn');
-        editBtns.forEach(btn => {
-            btn.onclick = function() {
-                const id = this.getAttribute('data-id');
-                const status = this.getAttribute('data-status');
-                leadForm.action = `/leads/${id}/edit/`;
-                
-                const submitBtn = document.getElementById('leadSubmitBtn');
-                const inputs = leadForm.querySelectorAll('input, textarea, select');
-                const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
-                if (viewHistoryBtn) {
-                    viewHistoryBtn.setAttribute('data-id', id);
-                    viewHistoryBtn.setAttribute('data-name', this.getAttribute('data-name'));
-                    viewHistoryBtn.setAttribute('data-status', status);
-                    viewHistoryBtn.setAttribute('data-level', this.getAttribute('data-level') || '');
-                }
-
-                const isControlled = this.getAttribute('data-is-controlled') === 'true';
-                const controlledBy = this.getAttribute('data-controlled-by') || '';
-                const controlledByMsg = document.getElementById('leadControlledByMsg');
-                const isManagerViewOnly = {% if request.user.usertype == 'manager' %}{% if is_confirmed_tab %}{% if request.user.get_manager_permissions.confirmed_leads_access == 'view' %}true{% else %}false{% endif %}{% else %}{% if request.user.get_manager_permissions.leads_access == 'view' %}true{% else %}false{% endif %}{% endif %}{% else %}false{% endif %};
-
-                if (status === 'confirmed' || currentUserUsertype === 'staff' || isManagerViewOnly) {
-                    leadModalTitle.textContent = "View Lead Details";
-                    submitBtn.style.display = 'none';
-                    inputs.forEach(input => input.disabled = true);
-                    if (controlledByMsg) controlledByMsg.style.display = 'none';
-                    if (viewHistoryBtn) {
-                        if (status === 'confirmed') {
-                            viewHistoryBtn.style.display = 'block';
-                        } else {
-                            viewHistoryBtn.style.display = 'none';
-                        }
-                    }
-                } else if (!isControlled) {
-                    leadModalTitle.textContent = "View Lead Details";
-                    submitBtn.style.display = 'none';
-                    inputs.forEach(input => input.disabled = true);
-                    if (controlledByMsg) {
-                        document.getElementById('leadControllerUserType').textContent = controlledBy;
-                        controlledByMsg.style.display = 'block';
-                    }
-                    if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
-                } else {
-                    leadModalTitle.textContent = "Edit Lead";
-                    submitBtn.style.display = 'block';
-                    submitBtn.textContent = "Update Lead";
-                    inputs.forEach(input => input.disabled = false);
-                    if (controlledByMsg) controlledByMsg.style.display = 'none';
-                    if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
-                }
-
-                document.getElementById('reqSelectGroup').style.display = 'none';
-                leadRequirement.required = false;
-
-                document.getElementById('leadName').value = this.getAttribute('data-name');
-                document.getElementById('leadPhone').value = this.getAttribute('data-phone');
-                document.getElementById('leadEmail').value = this.getAttribute('data-email');
-                document.getElementById('leadAddress').value = this.getAttribute('data-address');
-                document.getElementById('leadRemarks').value = this.getAttribute('data-remarks');
-
-                const selectedItemsRaw = this.getAttribute('data-items');
-                const selectedItems = {};
-                if (selectedItemsRaw) {
-                    selectedItemsRaw.split(',').forEach(it => {
-                        const parts = it.split(':');
-                        selectedItems[parts[0]] = parts[1];
-                    });
-                }
-                const catType = this.getAttribute('data-cat-type');
-                const reqId = this.getAttribute('data-req-id');
-                // Use district-assigned filtered items if available; fall back to data-all-req-items
-                const assignedItems = reqAssignedItems[reqId];
-                let allReqItemsRaw;
-                if (assignedItems !== undefined) {
-                    allReqItemsRaw = assignedItems.length > 0
-                        ? assignedItems.map(i => `${i.id}:${i.name}:${i.count}:${i.price}:${i.left}`).join('|')
-                        : null;
-                } else {
-                    allReqItemsRaw = this.getAttribute('data-all-req-items');
-                }
-                renderItems(catType, allReqItemsRaw, selectedItems);
-                
-                if (status === 'confirmed' || currentUserUsertype === 'staff') {
-                    setTimeout(() => {
-                        leadItemsList.querySelectorAll('.item-input').forEach(i => i.disabled = true);
-                    }, 10);
-                }
-                
-                leadModal.style.display = "block";
+        $(document).on('click', '.edit-lead-btn', function() {
+            const id = this.getAttribute('data-id');
+            const status = this.getAttribute('data-status');
+            leadForm.action = `/leads/${id}/edit/`;
+            
+            const submitBtn = document.getElementById('leadSubmitBtn');
+            const inputs = leadForm.querySelectorAll('input, textarea, select');
+            const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
+            if (viewHistoryBtn) {
+                viewHistoryBtn.setAttribute('data-id', id);
+                viewHistoryBtn.setAttribute('data-name', this.getAttribute('data-name'));
+                viewHistoryBtn.setAttribute('data-status', status);
+                viewHistoryBtn.setAttribute('data-level', this.getAttribute('data-level') || '');
             }
+
+            const isControlled = this.getAttribute('data-is-controlled') === 'true';
+            const controlledBy = this.getAttribute('data-controlled-by') || '';
+            const controlledByMsg = document.getElementById('leadControlledByMsg');
+            const isManagerViewOnly = {% if request.user.usertype == 'manager' %}{% if is_confirmed_tab %}{% if request.user.get_manager_permissions.confirmed_leads_access == 'view' %}true{% else %}false{% endif %}{% else %}{% if request.user.get_manager_permissions.leads_access == 'view' %}true{% else %}false{% endif %}{% endif %}{% else %}false{% endif %};
+
+            if (status === 'confirmed' || currentUserUsertype === 'staff' || isManagerViewOnly) {
+                leadModalTitle.textContent = "View Lead Details";
+                submitBtn.style.display = 'none';
+                inputs.forEach(input => input.disabled = true);
+                if (controlledByMsg) controlledByMsg.style.display = 'none';
+                if (viewHistoryBtn) {
+                    if (status === 'confirmed') {
+                        viewHistoryBtn.style.display = 'block';
+                    } else {
+                        viewHistoryBtn.style.display = 'none';
+                    }
+                }
+            } else if (!isControlled) {
+                leadModalTitle.textContent = "View Lead Details";
+                submitBtn.style.display = 'none';
+                inputs.forEach(input => input.disabled = true);
+                if (controlledByMsg) {
+                    document.getElementById('leadControllerUserType').textContent = controlledBy;
+                    controlledByMsg.style.display = 'block';
+                }
+                if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
+            } else {
+                leadModalTitle.textContent = "Edit Lead";
+                submitBtn.style.display = 'block';
+                submitBtn.textContent = "Update Lead";
+                inputs.forEach(input => input.disabled = false);
+                if (controlledByMsg) controlledByMsg.style.display = 'none';
+                if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
+            }
+
+            document.getElementById('reqSelectGroup').style.display = 'none';
+            leadRequirement.required = false;
+
+            document.getElementById('leadName').value = this.getAttribute('data-name');
+            document.getElementById('leadPhone').value = this.getAttribute('data-phone');
+            document.getElementById('leadEmail').value = this.getAttribute('data-email');
+            document.getElementById('leadAddress').value = this.getAttribute('data-address');
+            document.getElementById('leadRemarks').value = this.getAttribute('data-remarks');
+
+            const selectedItemsRaw = this.getAttribute('data-items');
+            const selectedItems = {};
+            if (selectedItemsRaw) {
+                selectedItemsRaw.split(',').forEach(it => {
+                    const parts = it.split(':');
+                    selectedItems[parts[0]] = parts[1];
+                });
+            }
+            const catType = this.getAttribute('data-cat-type');
+            const reqId = this.getAttribute('data-req-id');
+            // Use district-assigned filtered items if available; fall back to data-all-req-items
+            const assignedItems = reqAssignedItems[reqId];
+            let allReqItemsRaw;
+            if (assignedItems !== undefined) {
+                allReqItemsRaw = assignedItems.length > 0
+                    ? assignedItems.map(i => `${i.id}:${i.name}:${i.count}:${i.price}:${i.left}`).join('|')
+                    : null;
+            } else {
+                allReqItemsRaw = this.getAttribute('data-all-req-items');
+            }
+            renderItems(catType, allReqItemsRaw, selectedItems);
+            
+            if (status === 'confirmed' || currentUserUsertype === 'staff') {
+                setTimeout(() => {
+                    leadItemsList.querySelectorAll('.item-input').forEach(i => i.disabled = true);
+                }, 10);
+            }
+            
+            leadModal.style.display = "block";
         });
 
          const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
