@@ -788,6 +788,15 @@ class SuperadminLeaderboardsTestCase(TestCase):
         self.assertEqual(response['Content-Type'], 'text/csv')
         self.assertTrue('attachment' in response['Content-Disposition'])
         
+        # Test search filter parameter
+        response_search = client.get('/superadmin/leads/export/?search=Lead')
+        self.assertEqual(response_search.status_code, 200)
+        
+        # Test empty check with search filter
+        response_empty = client.get('/superadmin/leads/export/?check_empty=true&search=NonExistentQueryXYZ')
+        self.assertEqual(response_empty.status_code, 200)
+        self.assertEqual(response_empty.json(), {'empty': True})
+        
         # Test confirmed leads export
         response = client.get('/superadmin/confirmed-leads/export/')
         self.assertEqual(response.status_code, 200)

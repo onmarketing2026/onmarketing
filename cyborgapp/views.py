@@ -5129,9 +5129,11 @@ def superadmin_export_leads(request):
     else:
         leads = Lead.objects.none()
 
-    # Apply date filtration:
+    # Apply date & search filtration:
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
+    search_query = request.GET.get('search', '').strip()
+
     if from_date:
         try:
             leads = leads.filter(created_at__date__gte=from_date)
@@ -5142,6 +5144,29 @@ def superadmin_export_leads(request):
             leads = leads.filter(created_at__date__lte=to_date)
         except Exception:
             pass
+    if search_query:
+        search_q = (
+            Q(name__icontains=search_query) |
+            Q(phone__icontains=search_query) |
+            Q(email__icontains=search_query) |
+            Q(address__icontains=search_query) |
+            Q(remarks__icontains=search_query) |
+            Q(status__icontains=search_query) |
+            Q(current_level__icontains=search_query) |
+            Q(requirement__title__icontains=search_query) |
+            Q(requirement__customer__name__icontains=search_query) |
+            Q(requirement__category__name__icontains=search_query) |
+            Q(marketing_user__name__icontains=search_query) |
+            Q(marketing_user__username__icontains=search_query) |
+            Q(marketing_user__email__icontains=search_query) |
+            Q(marketing_user__assigned_mandalam__name__icontains=search_query) |
+            Q(marketing_user__assigned_district__name__icontains=search_query) |
+            Q(items__subcategory__name__icontains=search_query)
+        )
+        clean_id = search_query.lstrip('#')
+        if clean_id.isdigit():
+            search_q |= Q(id=int(clean_id))
+        leads = leads.filter(search_q).distinct()
 
     leads = leads.order_by('-created_at')
     
@@ -5224,6 +5249,8 @@ def export_feedback_leads_csv(request):
 
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
+    search_query = request.GET.get('search', '').strip()
+
     if from_date:
         try:
             feedbacks = feedbacks.filter(created_at__date__gte=from_date)
@@ -5234,6 +5261,26 @@ def export_feedback_leads_csv(request):
             feedbacks = feedbacks.filter(created_at__date__lte=to_date)
         except Exception:
             pass
+    if search_query:
+        search_q = (
+            Q(lead__name__icontains=search_query) |
+            Q(lead__phone__icontains=search_query) |
+            Q(lead__email__icontains=search_query) |
+            Q(lead__address__icontains=search_query) |
+            Q(lead__remarks__icontains=search_query) |
+            Q(lead__requirement__title__icontains=search_query) |
+            Q(lead__requirement__customer__name__icontains=search_query) |
+            Q(lead__requirement__category__name__icontains=search_query) |
+            Q(lead__marketing_user__name__icontains=search_query) |
+            Q(lead__marketing_user__username__icontains=search_query) |
+            Q(district_user__name__icontains=search_query) |
+            Q(district_user__username__icontains=search_query) |
+            Q(feedback_text__icontains=search_query)
+        )
+        clean_id = search_query.lstrip('#')
+        if clean_id.isdigit():
+            search_q |= Q(lead__id=int(clean_id))
+        feedbacks = feedbacks.filter(search_q).distinct()
 
     feedbacks = feedbacks.order_by('created_at')
 
@@ -5330,9 +5377,11 @@ def superadmin_export_confirmed_leads(request):
     else:
         leads = Lead.objects.none()
 
-    # Apply date filtration:
+    # Apply date & search filtration:
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
+    search_query = request.GET.get('search', '').strip()
+
     if from_date:
         try:
             leads = leads.filter(created_at__date__gte=from_date)
@@ -5343,6 +5392,29 @@ def superadmin_export_confirmed_leads(request):
             leads = leads.filter(created_at__date__lte=to_date)
         except Exception:
             pass
+    if search_query:
+        search_q = (
+            Q(name__icontains=search_query) |
+            Q(phone__icontains=search_query) |
+            Q(email__icontains=search_query) |
+            Q(address__icontains=search_query) |
+            Q(remarks__icontains=search_query) |
+            Q(status__icontains=search_query) |
+            Q(current_level__icontains=search_query) |
+            Q(requirement__title__icontains=search_query) |
+            Q(requirement__customer__name__icontains=search_query) |
+            Q(requirement__category__name__icontains=search_query) |
+            Q(marketing_user__name__icontains=search_query) |
+            Q(marketing_user__username__icontains=search_query) |
+            Q(marketing_user__email__icontains=search_query) |
+            Q(marketing_user__assigned_mandalam__name__icontains=search_query) |
+            Q(marketing_user__assigned_district__name__icontains=search_query) |
+            Q(items__subcategory__name__icontains=search_query)
+        )
+        clean_id = search_query.lstrip('#')
+        if clean_id.isdigit():
+            search_q |= Q(id=int(clean_id))
+        leads = leads.filter(search_q).distinct()
 
     leads = leads.order_by('-created_at')
     
