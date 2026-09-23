@@ -105,6 +105,93 @@
                 {% endif %}
             </div>
         </div>
+
+        {% if is_confirmed_tab %}
+        <!-- Premium Segmented Status Filter Bar for Confirmed Leads -->
+        <div class="confirmed-filter-panel" style="padding: 14px 25px; border-bottom: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.012); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span style="font-weight: 700; font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-filter" style="color: #198754;"></i> Status:
+                </span>
+                <div class="status-pill-group" style="display: inline-flex; gap: 5px; background: var(--card-bg); padding: 4px; border-radius: 10px; border: 1px solid var(--border-color); box-shadow: inset 0 1px 3px rgba(0,0,0,0.03);">
+                    <button type="button" class="status-pill-btn active" data-status="all" style="padding: 6px 16px; border-radius: 7px; border: none; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; background: linear-gradient(135deg, #198754, #107c41); color: #ffffff; box-shadow: 0 2px 6px rgba(25, 135, 84, 0.3);">
+                        All Statuses
+                    </button>
+                    <button type="button" class="status-pill-btn" data-status="confirmed" style="padding: 6px 16px; border-radius: 7px; border: none; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; background: transparent; color: var(--text-muted);">
+                        <i class="fa-solid fa-circle-check" style="color: #198754; margin-right: 4px;"></i> Confirmed
+                    </button>
+                    <button type="button" class="status-pill-btn" data-status="payment_pending" style="padding: 6px 16px; border-radius: 7px; border: none; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; background: transparent; color: var(--text-muted);">
+                        <i class="fa-solid fa-credit-card" style="color: #fd7e14; margin-right: 4px;"></i> Payment Pending
+                    </button>
+                    <button type="button" class="status-pill-btn" data-status="completed" style="padding: 6px 16px; border-radius: 7px; border: none; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; background: transparent; color: var(--text-muted);">
+                        <i class="fa-solid fa-circle-check" style="color: #0d6efd; margin-right: 4px;"></i> Completed
+                    </button>
+                </div>
+            </div>
+            <input type="hidden" id="filterStatusSelect" class="lead-filter-input" value="all">
+        </div>
+        {% else %}
+        <!-- Modular Filter Section for Pending Leads -->
+        <div class="leads-filter-panel" style="padding: 18px 25px; border-bottom: 1px solid var(--border-color); background: rgba(0, 0, 0, 0.015);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-filter" style="color: var(--role-color, #6f42c1);"></i> Filter Leads
+                    </span>
+                    <span id="activeFilterBadge" style="display: none; background: var(--role-color, #6f42c1); color: #fff; border-radius: 12px; padding: 2px 10px; font-size: 0.72rem; font-weight: 700;">
+                        0 Active
+                    </span>
+                </div>
+                <button type="button" id="btnResetFilters" style="background: transparent; border: none; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: color 0.2s;" onmouseover="this.style.color='#dc3545'" onmouseout="this.style.color='var(--text-muted)'">
+                    <i class="fa-solid fa-rotate-left"></i> Reset Filters
+                </button>
+            </div>
+            
+            <!-- Extensible Grid for Filter Controls -->
+            <div class="leads-filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                
+                <!-- Filter 1: Action Status -->
+                <div class="filter-group">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase;">
+                        <i class="fa-solid fa-user-gear" style="margin-right: 4px;"></i> Action Status
+                    </label>
+                    <select id="filterActionSelect" class="lead-filter-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.85rem; font-weight: 600; outline: none; cursor: pointer;">
+                        <option value="all">All Leads</option>
+                        <option value="my_action">⚡ Your Action Needed</option>
+                        <option value="other_action">👁️ View Only / Other Level</option>
+                    </select>
+                </div>
+
+                <!-- Filter 2: Lead Status -->
+                <div class="filter-group">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase;">
+                        <i class="fa-solid fa-list-check" style="margin-right: 4px;"></i> Status
+                    </label>
+                    <select id="filterStatusSelect" class="lead-filter-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.85rem; font-weight: 600; outline: none; cursor: pointer;">
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="payment_pending">Payment Pending</option>
+                    </select>
+                </div>
+
+                <!-- Filter 3: Level / Hierarchy -->
+                <div class="filter-group">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase;">
+                        <i class="fa-solid fa-layer-group" style="margin-right: 4px;"></i> Level
+                    </label>
+                    <select id="filterLevelSelect" class="lead-filter-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.85rem; font-weight: 600; outline: none; cursor: pointer;">
+                        <option value="all">All Levels</option>
+                        <option value="marketing">Digital Franchise</option>
+                        <option value="mandalam">Facilitation Center</option>
+                        <option value="district">District Franchise</option>
+                        <option value="superadmin">Super Admin</option>
+                    </select>
+                </div>
+
+            </div>
+        </div>
+        {% endif %}
+
         <div style="padding: 25px;">
             <table id="leadsTable" class="display" style="width:100%">
             <thead>
@@ -132,7 +219,11 @@
             </thead>
             <tbody>
                 {% for lead in leads %}
-                <tr {% if lead.is_controlled %}style="background: linear-gradient(90deg, rgba(111, 66, 193, 0.05) 0%, rgba(255, 255, 255, 0) 100%);"{% endif %}>
+                <tr data-is-controlled="{% if lead.is_controlled %}true{% else %}false{% endif %}"
+                    data-status="{{ lead.status }}"
+                    data-payment-pending="{% if lead.status == 'confirmed' and lead.payment_mode == 'part' and lead.installment_pending %}true{% else %}false{% endif %}"
+                    data-level="{{ lead.current_level }}"
+                    {% if lead.is_controlled %}style="background: linear-gradient(90deg, rgba(111, 66, 193, 0.05) 0%, rgba(255, 255, 255, 0) 100%);"{% endif %}>
                     <td style="font-weight: 700; color: var(--text-muted);">#{{ lead.id }}</td>
                     <td>
                         <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
@@ -166,22 +257,45 @@
                     </td>
                     {% if request.user.usertype != 'marketing' and request.user.usertype != 'customer' %}
                         <td>
-                            <div style="font-weight: 600;">{{ lead.marketing_user.name }}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lead.marketing_user.email }}</div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                                <div>
+                                    <div style="font-weight: 600;">{{ lead.marketing_user.name }}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lead.marketing_user.email }}</div>
+                                </div>
+                                {% if request.user.usertype == 'superadmin' and lead.status == 'pending' and lead.current_level == 'marketing' %}
+                                    <span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at Digital Franchise action level">
+                                        <i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action
+                                    </span>
+                                {% endif %}
+                            </div>
                         </td>
                     {% endif %}
                     {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
                         <td>
-                            <span style="background: var(--role-bg-extra-light); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--role-color);">
-                                {{ lead.get_mandalam.name|default:"-" }}
-                            </span>
+                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                                <span style="background: var(--role-bg-extra-light); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--role-color);">
+                                    {{ lead.get_mandalam.name|default:"-" }}
+                                </span>
+                                {% if request.user.usertype == 'superadmin' and lead.status == 'pending' and lead.current_level == 'mandalam' %}
+                                    <span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at Facilitation Center action level">
+                                        <i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action
+                                    </span>
+                                {% endif %}
+                            </div>
                         </td>
                     {% endif %}
                     {% if request.user.usertype == 'superadmin' %}
                         <td>
-                            <span style="background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-main);">
-                                {{ lead.get_district.name|default:"-" }}
-                            </span>
+                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                                <span style="background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-main);">
+                                    {{ lead.get_district.name|default:"-" }}
+                                </span>
+                                {% if request.user.usertype == 'superadmin' and lead.status == 'pending' and lead.current_level == 'district' %}
+                                    <span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at District Franchise action level">
+                                        <i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action
+                                    </span>
+                                {% endif %}
+                            </div>
                         </td>
                     {% endif %}
                     <td data-sort="{{ lead.created_at|date:'YmdHis' }}">
@@ -600,6 +714,46 @@
     let currentLeadConfirmedById = null;
 
     document.addEventListener('DOMContentLoaded', function() {
+        // DataTables Custom Filtering for Leads Table
+        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+            if (!settings.nTable || settings.nTable.id !== 'leadsTable') {
+                return true;
+            }
+            
+            const rowNode = settings.aoData[dataIndex].nTr;
+            if (!rowNode) return true;
+            const $row = $(rowNode);
+            
+            // 1. Action Filter
+            const actionVal = $('#filterActionSelect').val() || 'all';
+            if (actionVal === 'my_action') {
+                if ($row.attr('data-is-controlled') !== 'true') return false;
+            } else if (actionVal === 'other_action') {
+                if ($row.attr('data-is-controlled') === 'true') return false;
+            }
+            
+            // 2. Status Filter
+            const statusVal = $('#filterStatusSelect').val() || 'all';
+            if (statusVal && statusVal !== 'all') {
+                const rowStatus = $row.attr('data-status');
+                const isPaymentPending = $row.attr('data-payment-pending') === 'true';
+                if (statusVal === 'payment_pending') {
+                    if (!isPaymentPending) return false;
+                } else if (rowStatus !== statusVal) {
+                    return false;
+                }
+            }
+            
+            // 3. Level Filter
+            const levelVal = $('#filterLevelSelect').val() || 'all';
+            if (levelVal && levelVal !== 'all') {
+                const rowLevel = $row.attr('data-level');
+                if (rowLevel !== levelVal) return false;
+            }
+            
+            return true;
+        });
+
         $('#leadsTable').DataTable({
             responsive: true,
             order: [], // Respect server-side sorting (Pending first)
@@ -607,6 +761,65 @@
             columnDefs: [
                 { orderable: false, targets: -1 }
             ]
+        });
+
+        function updateFilterBadge() {
+            let activeCount = 0;
+            $('.lead-filter-input').each(function() {
+                if ($(this).val() !== 'all') {
+                    activeCount++;
+                }
+            });
+            const badge = $('#activeFilterBadge');
+            if (activeCount > 0) {
+                badge.text(`${activeCount} Filter${activeCount > 1 ? 's' : ''} Active`).show();
+            } else {
+                badge.hide();
+            }
+        }
+
+        $(document).on('click', '.status-pill-btn', function() {
+            $('.status-pill-btn').removeClass('active').css({
+                'background': 'transparent',
+                'color': 'var(--text-muted)',
+                'box-shadow': 'none'
+            });
+            $(this).addClass('active').css({
+                'background': 'linear-gradient(135deg, #198754, #107c41)',
+                'color': '#ffffff',
+                'box-shadow': '0 2px 6px rgba(25, 135, 84, 0.3)'
+            });
+            const statusVal = $(this).attr('data-status');
+            $('#filterStatusSelect').val(statusVal);
+            if ($.fn.dataTable.isDataTable('#leadsTable')) {
+                $('#leadsTable').DataTable().draw();
+            }
+            updateFilterBadge();
+        });
+
+        $(document).on('change', '.lead-filter-input', function() {
+            if ($.fn.dataTable.isDataTable('#leadsTable')) {
+                $('#leadsTable').DataTable().draw();
+            }
+            updateFilterBadge();
+        });
+
+        $(document).on('click', '#btnResetFilters', function() {
+            $('.status-pill-btn').removeClass('active').css({
+                'background': 'transparent',
+                'color': 'var(--text-muted)',
+                'box-shadow': 'none'
+            });
+            $('.status-pill-btn[data-status="all"]').addClass('active').css({
+                'background': 'linear-gradient(135deg, #198754, #107c41)',
+                'color': '#ffffff',
+                'box-shadow': '0 2px 6px rgba(25, 135, 84, 0.3)'
+            });
+            $('.lead-filter-input').val('all');
+            if ($.fn.dataTable.isDataTable('#leadsTable')) {
+                $('#leadsTable').DataTable().draw();
+            }
+            updateFilterBadge();
         });
 
         // Share Details and Payment Link
@@ -1818,11 +2031,18 @@
                 if ($.fn.dataTable.isDataTable('#leadsTable')) {
                     searchVal = $('#leadsTable').DataTable().search();
                 }
+                const actionVal = $('#filterActionSelect').val();
+                const statusVal = $('#filterStatusSelect').val();
+                const levelVal = $('#filterLevelSelect').val();
+
                 let baseUrl = this.getAttribute('href').split('?')[0];
                 const params = [];
                 if (fromVal) params.push(`from_date=${encodeURIComponent(fromVal)}`);
                 if (toVal) params.push(`to_date=${encodeURIComponent(toVal)}`);
                 if (searchVal && searchVal.trim()) params.push(`search=${encodeURIComponent(searchVal.trim())}`);
+                if (actionVal && actionVal !== 'all') params.push(`action_filter=${encodeURIComponent(actionVal)}`);
+                if (statusVal && statusVal !== 'all') params.push(`status_filter=${encodeURIComponent(statusVal)}`);
+                if (levelVal && levelVal !== 'all') params.push(`level_filter=${encodeURIComponent(levelVal)}`);
                 
                 let checkUrl = baseUrl + '?check_empty=true';
                 if (params.length > 0) {
@@ -1836,7 +2056,7 @@
                             Swal.fire({
                                 icon: 'warning',
                                 title: 'No Data Found',
-                                text: 'There is no data to export matching the selected range and search.',
+                                text: 'There is no data to export matching the selected range and filter criteria.',
                                 confirmButtonColor: 'var(--role-color, #6f42c1)'
                             });
                         } else {
@@ -1869,11 +2089,18 @@
                 if ($.fn.dataTable.isDataTable('#leadsTable')) {
                     searchVal = $('#leadsTable').DataTable().search();
                 }
+                const actionVal = $('#filterActionSelect').val();
+                const statusVal = $('#filterStatusSelect').val();
+                const levelVal = $('#filterLevelSelect').val();
+
                 let baseUrl = this.getAttribute('href').split('?')[0];
                 const params = [];
                 if (fromVal) params.push(`from_date=${encodeURIComponent(fromVal)}`);
                 if (toVal) params.push(`to_date=${encodeURIComponent(toVal)}`);
                 if (searchVal && searchVal.trim()) params.push(`search=${encodeURIComponent(searchVal.trim())}`);
+                if (actionVal && actionVal !== 'all') params.push(`action_filter=${encodeURIComponent(actionVal)}`);
+                if (statusVal && statusVal !== 'all') params.push(`status_filter=${encodeURIComponent(statusVal)}`);
+                if (levelVal && levelVal !== 'all') params.push(`level_filter=${encodeURIComponent(levelVal)}`);
                 
                 let checkUrl = baseUrl + '?check_empty=true';
                 if (params.length > 0) {
@@ -1887,7 +2114,7 @@
                             Swal.fire({
                                 icon: 'warning',
                                 title: 'No Feedback Leads',
-                                text: 'There are no leads with feedback to export matching the selected range and search.',
+                                text: 'There are no leads with feedback to export matching the selected range and filter criteria.',
                                 confirmButtonColor: 'var(--role-color, #6f42c1)'
                             });
                         } else {

@@ -5129,10 +5129,48 @@ def superadmin_export_leads(request):
     else:
         leads = Lead.objects.none()
 
-    # Apply date & search filtration:
+    # Apply date, search & dropdown filtration:
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     search_query = request.GET.get('search', '').strip()
+    action_filter = request.GET.get('action_filter')
+    status_filter = request.GET.get('status_filter')
+    level_filter = request.GET.get('level_filter')
+
+    if user.usertype == 'superadmin':
+        control_cond = Q(status='pending', current_level='superadmin')
+    elif user.usertype == 'marketing':
+        control_cond = Q(status='pending', current_level='marketing', marketing_user=user)
+    elif user.usertype == 'mandalam':
+        control_cond = Q(status='pending', current_level='mandalam', marketing_user__assigned_mandalam=user)
+    elif user.usertype == 'district':
+        control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user)
+    elif user.usertype == 'manager':
+        perm = user.get_manager_permissions()
+        if perm.leads_access == 'action':
+            if user.assigned_district:
+                control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user.assigned_district)
+            elif user.created_by and user.created_by.usertype == 'district':
+                control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user.created_by)
+            else:
+                control_cond = Q(status='pending', current_level='superadmin')
+        else:
+            control_cond = Q(pk__in=[])
+    else:
+        control_cond = Q(pk__in=[])
+
+    if action_filter == 'my_action':
+        leads = leads.filter(control_cond)
+    elif action_filter == 'other_action':
+        leads = leads.exclude(control_cond)
+
+    if status_filter == 'payment_pending':
+        leads = leads.filter(status='confirmed', payment_mode='part', installment_pending=True)
+    elif status_filter and status_filter != 'all':
+        leads = leads.filter(status=status_filter)
+
+    if level_filter and level_filter != 'all':
+        leads = leads.filter(current_level=level_filter)
 
     if from_date:
         try:
@@ -5377,10 +5415,48 @@ def superadmin_export_confirmed_leads(request):
     else:
         leads = Lead.objects.none()
 
-    # Apply date & search filtration:
+    # Apply date, search & dropdown filtration:
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     search_query = request.GET.get('search', '').strip()
+    action_filter = request.GET.get('action_filter')
+    status_filter = request.GET.get('status_filter')
+    level_filter = request.GET.get('level_filter')
+
+    if user.usertype == 'superadmin':
+        control_cond = Q(status='pending', current_level='superadmin')
+    elif user.usertype == 'marketing':
+        control_cond = Q(status='pending', current_level='marketing', marketing_user=user)
+    elif user.usertype == 'mandalam':
+        control_cond = Q(status='pending', current_level='mandalam', marketing_user__assigned_mandalam=user)
+    elif user.usertype == 'district':
+        control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user)
+    elif user.usertype == 'manager':
+        perm = user.get_manager_permissions()
+        if perm.leads_access == 'action':
+            if user.assigned_district:
+                control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user.assigned_district)
+            elif user.created_by and user.created_by.usertype == 'district':
+                control_cond = Q(status='pending', current_level='district', marketing_user__assigned_district=user.created_by)
+            else:
+                control_cond = Q(status='pending', current_level='superadmin')
+        else:
+            control_cond = Q(pk__in=[])
+    else:
+        control_cond = Q(pk__in=[])
+
+    if action_filter == 'my_action':
+        leads = leads.filter(control_cond)
+    elif action_filter == 'other_action':
+        leads = leads.exclude(control_cond)
+
+    if status_filter == 'payment_pending':
+        leads = leads.filter(status='confirmed', payment_mode='part', installment_pending=True)
+    elif status_filter and status_filter != 'all':
+        leads = leads.filter(status=status_filter)
+
+    if level_filter and level_filter != 'all':
+        leads = leads.filter(current_level=level_filter)
 
     if from_date:
         try:
