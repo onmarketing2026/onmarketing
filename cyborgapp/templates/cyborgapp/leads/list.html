@@ -1007,8 +1007,29 @@
         leadForm.addEventListener('submit', async function(e) {
             e.preventDefault();
 
+            const submitBtn = leadForm.querySelector('button[type="submit"]') || document.getElementById('leadSubmitBtn');
+            if (submitBtn && submitBtn.disabled) return;
+
+            const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.style.pointerEvents = 'none';
+                submitBtn.style.opacity = '0.7';
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="margin-right: 6px;"></i> Submitting...';
+            }
+
+            function resetSubmitBtn() {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.style.pointerEvents = '';
+                    submitBtn.style.opacity = '';
+                    submitBtn.innerHTML = originalBtnHtml;
+                }
+            }
+
             const selectedItems = leadForm.querySelectorAll('input[name="selected_items"]:checked');
             if (selectedItems.length === 0) {
+                resetSubmitBtn();
                 Swal.fire({
                     icon: 'error',
                     title: 'Selection Required',
@@ -1056,7 +1077,10 @@
                     }
                 }
             });
-            if (!valid) return;
+            if (!valid) {
+                resetSubmitBtn();
+                return;
+            }
 
             // Check pending lead for same email & subcategories under this requirement
             const emailInput = document.getElementById('leadEmail') || leadForm.querySelector('input[name="email"]');
@@ -1080,6 +1104,7 @@
                     const checkRes = await fetch(`/leads/check-pending-email/?email=${encodeURIComponent(emailVal)}&requirement_id=${reqId}&subcategories=${subIds}&exclude_lead_id=${excludeLeadId}`);
                     const checkData = await checkRes.json();
                     if (checkData.blocked) {
+                        resetSubmitBtn();
                         const subNames = checkData.blocked_subcategories.join(', ');
                         Swal.fire({
                             icon: 'error',
