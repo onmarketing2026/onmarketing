@@ -217,183 +217,7 @@
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody>
-                {% for lead in leads %}
-                <tr data-is-controlled="{% if lead.is_controlled %}true{% else %}false{% endif %}"
-                    data-status="{{ lead.status }}"
-                    data-payment-pending="{% if lead.status == 'confirmed' and lead.payment_mode == 'part' and lead.installment_pending %}true{% else %}false{% endif %}"
-                    data-level="{{ lead.current_level }}"
-                    {% if lead.is_controlled %}style="background: linear-gradient(90deg, rgba(111, 66, 193, 0.05) 0%, rgba(255, 255, 255, 0) 100%);"{% endif %}>
-                    <td style="font-weight: 700; color: var(--text-muted);">#{{ lead.id }}</td>
-                    <td>
-                        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
-                            <span style="font-weight: 700; color: var(--text-main);">{{ lead.name }}</span>
-                            {% if lead.is_controlled %}
-                                <span style="background: var(--role-color, #6f42c1); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; display: inline-flex; align-items: center; gap: 3px;" title="You have control to edit or update this lead">
-                                    <i class="fa-solid fa-pen-to-square"></i> Your Action
-                                </span>
-                            {% endif %}
-                        </div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis;">{{ lead.address|default:"No address" }}</div>
-                    </td>
-                    <td>
-                        <div style="font-weight: 600;"><i class="fa-solid fa-phone" style="font-size: 0.75rem; margin-right: 5px; color: var(--role-color);"></i>{{ lead.phone }}</div>
-                        {% if lead.email %}
-                            <div style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-envelope" style="font-size: 0.7rem; margin-right: 5px;"></i>{{ lead.email }}</div>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">{{ lead.requirement.title }}</div>
-                        {% if request.user.usertype == 'superadmin' %}
-                            <div style="font-size: 0.75rem; color: var(--role-color);">By {{ lead.requirement.customer.name }}</div>
-                        {% endif %}
-                        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">
-                            {% for item in lead.items.all %}
-                                <span style="background: var(--role-bg-extra-light); padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; color: var(--role-color); border: 1px solid var(--role-bg-light);">
-                                    {{ item.subcategory.name }}{% if lead.requirement.category.cat_type == 'count' %}: {{ item.count }}{% endif %}
-                                </span>
-                            {% endfor %}
-                        </div>
-                    </td>
-                    {% if request.user.usertype != 'marketing' and request.user.usertype != 'customer' %}
-                        <td>
-                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-                                <div>
-                                    <div style="font-weight: 600;">{{ lead.marketing_user.name }}</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ lead.marketing_user.email }}</div>
-                                </div>
-                                {% if request.user.usertype == 'superadmin' and lead.status == 'pending' and lead.current_level == 'marketing' %}
-                                    <span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at Digital Franchise action level">
-                                        <i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action
-                                    </span>
-                                {% endif %}
-                            </div>
-                        </td>
-                    {% endif %}
-                    {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
-                        <td>
-                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-                                <span style="background: var(--role-bg-extra-light); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--role-color);">
-                                    {{ lead.get_mandalam.name|default:"-" }}
-                                </span>
-                                {% if request.user.usertype == 'superadmin' and lead.status == 'pending' and lead.current_level == 'mandalam' %}
-                                    <span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at Facilitation Center action level">
-                                        <i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action
-                                    </span>
-                                {% endif %}
-                            </div>
-                        </td>
-                    {% endif %}
-                    {% if request.user.usertype == 'superadmin' %}
-                        <td>
-                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-                                <span style="background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-main);">
-                                    {{ lead.get_district.name|default:"-" }}
-                                </span>
-                                {% if request.user.usertype == 'superadmin' and lead.status == 'pending' and lead.current_level == 'district' %}
-                                    <span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at District Franchise action level">
-                                        <i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action
-                                    </span>
-                                {% endif %}
-                            </div>
-                        </td>
-                    {% endif %}
-                    <td data-sort="{{ lead.created_at|date:'YmdHis' }}">
-                        {{ lead.created_at|date:"M d, Y" }}
-                    </td>
-                    {% if request.user.usertype != 'customer' %}
-                        {% if request.user.usertype == 'superadmin' %}
-                        <td style="font-weight: 800; font-size: 0.95rem;">
-                            <div style="color: #198754;" title="Total Sale">₹{{ lead.get_total_amount }}</div>
-                            <div style="color: #0d6efd; font-size: 0.75rem; border-top: 1px solid #eee; margin-top: 4px; padding-top: 4px;" title="To Customer">C: ₹{{ lead.get_customer_amount }}</div>
-                            <div style="color: #6610f2; font-size: 0.75rem;" title="Admin Markup">M: ₹{{ lead.get_markup_amount }}</div>
-                            <div style="color: #fd7e14; font-size: 0.75rem;" title="Other Expenses">E: ₹{{ lead.get_expense_amount }}</div>
-                            <div style="color: #20c997; font-size: 0.75rem;" title="GST">G: ₹{{ lead.get_gst_amount }}</div>
-                        </td>
-                        {% else %}
-                        <td style="font-weight: 800; color: #198754; font-size: 1rem;">
-                            ₹{{ lead.get_total_amount }}
-                        </td>
-                        {% endif %}
-                    {% endif %}
-                    <td>
-                        {% if lead.status == 'completed' %}
-                            <span class="status-badge status-completed" style="background: rgba(13, 110, 253, 0.12); color: #0d6efd; padding: 4px 10px; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">Completed</span>
-                        {% elif lead.status == 'confirmed' and lead.payment_mode == 'part' and lead.installment_pending %}
-                            <span class="status-badge status-payment-pending"><i class="fa-solid fa-credit-card" style="margin-right:4px;"></i>Payment Pending</span>
-                        {% elif lead.status == 'confirmed' %}
-                            <span class="status-badge status-confirmed">Confirmed</span>
-                        {% else %}
-                            <span class="status-badge status-{{ lead.status }}">{{ lead.status }}</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div style="display: flex; gap: 10px; justify-content: center;">
-                            {% if is_confirmed_tab %}
-                                <button class="action-btn-circle btn-history-premium assoc-updates-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" title="Associate Updates">
-                                    <i class="fa-solid fa-comment-dots"></i>
-                                </button>
-                                {% if request.user.usertype == 'district' or request.user.usertype == 'superadmin' %}
-                                <button class="action-btn-circle btn-feedback-premium district-feedback-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-level="{{ lead.current_level }}" title="District Feedback">
-                                    <i class="fa-solid fa-comments"></i>
-                                </button>
-                                {% endif %}
-                                {% if lead.has_any_payment and request.user.usertype != 'customer' %}
-                                <button class="action-btn-circle btn-invoice-premium invoice-action-btn"
-                                        data-lead-id="{{ lead.id }}"
-                                        data-lead-email="{{ lead.email|default:'' }}"
-                                        data-lead-name="{{ lead.name|escapejs }}"
-                                        title="Invoice">
-                                    <i class="fa-solid fa-file-invoice"></i>
-                                </button>
-                                {% endif %}
-                            {% else %}
-                                {% with effective_level=request.user.usertype %}
-                                    <button class="action-btn-circle btn-edit-premium edit-lead-btn" 
-                                            data-id="{{ lead.id }}" 
-                                            data-name="{{ lead.name }}" 
-                                            data-phone="{{ lead.phone }}" 
-                                            data-email="{{ lead.email|default:'' }}" 
-                                            data-address="{{ lead.address|default:'' }}" 
-                                            data-remarks="{{ lead.remarks|default:'' }}"
-                                            data-req-id="{{ lead.requirement_id }}"
-                                            data-status="{{ lead.status }}"
-                                            data-level="{{ lead.current_level }}"
-                                            data-cat-type="{{ lead.requirement.category.cat_type|default:'other' }}"
-                                            data-items="{% for item in lead.items.all %}{{ item.subcategory_id }}:{{ item.count }}{% if not forloop.last %},{% endif %}{% endfor %}"
-                                            data-all-req-items="{{ lead.get_req_items_with_fc_limits }}"
-                                            data-is-controlled="{% if lead.is_controlled %}true{% else %}false{% endif %}"
-                                            data-controlled-by="{% if lead.current_level == 'marketing' %}Digital Franchise{% elif lead.current_level == 'mandalam' %}Fecilitation Center{% elif lead.current_level == 'district' %}District Franchise{% elif lead.current_level == 'superadmin' %}Superadmin{% else %}{{ lead.current_level }}{% endif %}"
-                                            title="View/Edit Lead Details">
-                                        <i class="fa-solid fa-pen-to-square"></i>
-                                    </button>
-                                {% endwith %}
-                                <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-status="{{ lead.status }}" data-level="{{ lead.current_level }}" title="Status & Timeline">
-                                    <i class="fa-solid fa-clock-rotate-left"></i>
-                                </button>
-                                {% if request.user.usertype == 'district' or request.user.usertype == 'superadmin' %}
-                                <button class="action-btn-circle btn-feedback-premium district-feedback-btn" data-id="{{ lead.id }}" data-name="{{ lead.name }}" data-level="{{ lead.current_level }}" title="District Feedback">
-                                    <i class="fa-solid fa-comments"></i>
-                                </button>
-                                {% endif %}
-                                <button class="action-btn-circle btn-share-premium share-lead-btn" data-id="{{ lead.id }}" data-email="{{ lead.email|default:'' }}" title="Share Details & Payment Link">
-                                    <i class="fa-solid fa-paper-plane"></i>
-                                </button>
-                                {% if lead.status == 'confirmed' and lead.has_any_payment and request.user.usertype != 'customer' %}
-                                <button class="action-btn-circle btn-invoice-premium invoice-action-btn"
-                                        data-lead-id="{{ lead.id }}"
-                                        data-lead-email="{{ lead.email|default:'' }}"
-                                        data-lead-name="{{ lead.name|escapejs }}"
-                                        title="Invoice">
-                                    <i class="fa-solid fa-file-invoice"></i>
-                                </button>
-                                {% endif %}
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
+            <tbody></tbody>
         </table>
         </div>
     </div>
@@ -713,54 +537,255 @@
     let currentLeadTotalAmount = 0;
     let currentLeadConfirmedById = null;
 
+    function escapeHtml(text) {
+        if (!text) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        // DataTables Custom Filtering for Leads Table
-        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-            if (!settings.nTable || settings.nTable.id !== 'leadsTable') {
-                return true;
-            }
-            
-            const rowNode = settings.aoData[dataIndex].nTr;
-            if (!rowNode) return true;
-            const $row = $(rowNode);
-            
-            // 1. Action Filter
-            const actionVal = $('#filterActionSelect').val() || 'all';
-            if (actionVal === 'my_action') {
-                if ($row.attr('data-is-controlled') !== 'true') return false;
-            } else if (actionVal === 'other_action') {
-                if ($row.attr('data-is-controlled') === 'true') return false;
-            }
-            
-            // 2. Status Filter
-            const statusVal = $('#filterStatusSelect').val() || 'all';
-            if (statusVal && statusVal !== 'all') {
-                const rowStatus = $row.attr('data-status');
-                const isPaymentPending = $row.attr('data-payment-pending') === 'true';
-                if (statusVal === 'payment_pending') {
-                    if (!isPaymentPending) return false;
-                } else if (rowStatus !== statusVal) {
-                    return false;
+        let tableColumns = [
+            // 0: Lead ID
+            {
+                data: 'id',
+                render: function(data, type, row) {
+                    return `<span style="font-weight: 700; color: var(--text-muted);">#${data}</span>`;
+                }
+            },
+            // 1: Lead Name
+            {
+                data: 'name',
+                render: function(data, type, row) {
+                    let yourActionBadge = row.is_controlled ? `
+                        <span style="background: var(--role-color, #6f42c1); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; display: inline-flex; align-items: center; gap: 3px;" title="You have control to edit or update this lead">
+                            <i class="fa-solid fa-pen-to-square"></i> Your Action
+                        </span>` : '';
+                    let addr = row.address || 'No address';
+                    return `
+                        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                            <span style="font-weight: 700; color: var(--text-main);">${escapeHtml(data)}</span>
+                            ${yourActionBadge}
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(addr)}</div>
+                    `;
+                }
+            },
+            // 2: Contact Info
+            {
+                data: 'phone',
+                render: function(data, type, row) {
+                    let emailHtml = row.email ? `<div style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-envelope" style="font-size: 0.7rem; margin-right: 5px;"></i>${escapeHtml(row.email)}</div>` : '';
+                    return `
+                        <div style="font-weight: 600;"><i class="fa-solid fa-phone" style="font-size: 0.75rem; margin-right: 5px; color: var(--role-color);"></i>${escapeHtml(data)}</div>
+                        ${emailHtml}
+                    `;
+                }
+            },
+            // 3: Requirement
+            {
+                data: 'requirement',
+                render: function(data, type, row) {
+                    let reqTitle = data ? escapeHtml(data.title) : '-';
+                    let customerBy = (currentUserUsertype === 'superadmin' && data && data.customer_name) ? `<div style="font-size: 0.75rem; color: var(--role-color);">By ${escapeHtml(data.customer_name)}</div>` : '';
+                    let itemsHtml = '';
+                    if (row.items && row.items.length > 0) {
+                        let catType = data ? data.category_type : 'other';
+                        itemsHtml = '<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">' +
+                            row.items.map(item => `<span style="background: var(--role-bg-extra-light); padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; color: var(--role-color); border: 1px solid var(--role-bg-light);">${escapeHtml(item.subcategory_name)}${catType === 'count' ? ': ' + item.count : ''}</span>`).join('') +
+                            '</div>';
+                    }
+                    return `
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">${reqTitle}</div>
+                        ${customerBy}
+                        ${itemsHtml}
+                    `;
                 }
             }
-            
-            // 3. Level Filter
-            const levelVal = $('#filterLevelSelect').val() || 'all';
-            if (levelVal && levelVal !== 'all') {
-                const rowLevel = $row.attr('data-level');
-                if (rowLevel !== levelVal) return false;
+        ];
+
+        // 4: Digital Franchise
+        if (currentUserUsertype !== 'marketing' && currentUserUsertype !== 'customer') {
+            tableColumns.push({
+                data: 'marketing_user',
+                render: function(data, type, row) {
+                    let inActionBadge = '';
+                    if (currentUserUsertype === 'superadmin' && row.status === 'pending' && row.current_level === 'marketing') {
+                        inActionBadge = `<span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at Digital Franchise action level"><i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action</span>`;
+                    }
+                    let name = data ? escapeHtml(data.name) : '-';
+                    let email = data ? escapeHtml(data.email) : '';
+                    return `
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                            <div>
+                                <div style="font-weight: 600;">${name}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${email}</div>
+                            </div>
+                            ${inActionBadge}
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // 5: Fecilitation Center
+        if (currentUserUsertype === 'superadmin' || currentUserUsertype === 'district' || currentUserUsertype === 'manager') {
+            tableColumns.push({
+                data: 'mandalam_name',
+                render: function(data, type, row) {
+                    let inActionBadge = '';
+                    if (currentUserUsertype === 'superadmin' && row.status === 'pending' && row.current_level === 'mandalam') {
+                        inActionBadge = `<span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at Facilitation Center action level"><i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action</span>`;
+                    }
+                    return `
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                            <span style="background: var(--role-bg-extra-light); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--role-color);">${escapeHtml(data || '-')}</span>
+                            ${inActionBadge}
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // 6: District Franchise
+        if (currentUserUsertype === 'superadmin') {
+            tableColumns.push({
+                data: 'district_name',
+                render: function(data, type, row) {
+                    let inActionBadge = '';
+                    if (currentUserUsertype === 'superadmin' && row.status === 'pending' && row.current_level === 'district') {
+                        inActionBadge = `<span style="background: #fff8e6; color: #d97706; border: 1px solid #fcd34d; padding: 2px 7px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;" title="Lead is currently at District Franchise action level"><i class="fa-solid fa-bolt" style="font-size: 0.6rem;"></i> In Action</span>`;
+                    }
+                    return `
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                            <span style="background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-main);">${escapeHtml(data || '-')}</span>
+                            ${inActionBadge}
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // 7: Date Added
+        tableColumns.push({
+            data: 'created_at',
+            render: function(data, type, row) {
+                return data || '';
             }
-            
-            return true;
+        });
+
+        // 8: Financial Breakdown / Total Amount
+        if (currentUserUsertype !== 'customer') {
+            tableColumns.push({
+                data: 'total_amount',
+                render: function(data, type, row) {
+                    if (currentUserUsertype === 'superadmin') {
+                        return `
+                            <div style="font-weight: 800; font-size: 0.95rem;">
+                                <div style="color: #198754;" title="Total Sale">₹${row.total_amount}</div>
+                                <div style="color: #0d6efd; font-size: 0.75rem; border-top: 1px solid #eee; margin-top: 4px; padding-top: 4px;" title="To Customer">C: ₹${row.customer_amount}</div>
+                                <div style="color: #6610f2; font-size: 0.75rem;" title="Admin Markup">M: ₹${row.markup_amount}</div>
+                                <div style="color: #fd7e14; font-size: 0.75rem;" title="Other Expenses">E: ₹${row.expense_amount}</div>
+                                <div style="color: #20c997; font-size: 0.75rem;" title="GST">G: ₹${row.gst_amount}</div>
+                            </div>
+                        `;
+                    } else {
+                        return `<div style="font-weight: 800; color: #198754; font-size: 1rem;">₹${row.total_amount}</div>`;
+                    }
+                }
+            });
+        }
+
+        // 9: Status
+        tableColumns.push({
+            data: 'status',
+            render: function(data, type, row) {
+                if (data === 'completed') {
+                    return `<span class="status-badge status-completed" style="background: rgba(13, 110, 253, 0.12); color: #0d6efd; padding: 4px 10px; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">Completed</span>`;
+                } else if (data === 'confirmed' && row.payment_mode === 'part' && row.installment_pending) {
+                    return `<span class="status-badge status-payment-pending"><i class="fa-solid fa-credit-card" style="margin-right:4px;"></i>Payment Pending</span>`;
+                } else if (data === 'confirmed') {
+                    return `<span class="status-badge status-confirmed">Confirmed</span>`;
+                } else {
+                    return `<span class="status-badge status-${data}">${data}</span>`;
+                }
+            }
+        });
+
+        // 10: Actions
+        tableColumns.push({
+            data: null,
+            orderable: false,
+            render: function(data, type, row) {
+                let isConfirmedTab = {% if is_confirmed_tab %}true{% else %}false{% endif %};
+                let btns = `<div style="display: flex; gap: 10px; justify-content: center;">`;
+                if (isConfirmedTab) {
+                    btns += `<button class="action-btn-circle btn-history-premium assoc-updates-btn" data-id="${row.id}" data-name="${escapeHtml(row.name)}" title="Associate Updates"><i class="fa-solid fa-comment-dots"></i></button>`;
+                    if (currentUserUsertype === 'district' || currentUserUsertype === 'superadmin') {
+                        btns += `<button class="action-btn-circle btn-feedback-premium district-feedback-btn" data-id="${row.id}" data-name="${escapeHtml(row.name)}" data-level="${row.current_level}" title="District Feedback"><i class="fa-solid fa-comments"></i></button>`;
+                    }
+                    if (row.has_any_payment && currentUserUsertype !== 'customer') {
+                        btns += `<button class="action-btn-circle btn-invoice-premium invoice-action-btn" data-lead-id="${row.id}" data-lead-email="${escapeHtml(row.email || '')}" data-lead-name="${escapeHtml(row.name)}" title="Invoice"><i class="fa-solid fa-file-invoice"></i></button>`;
+                    }
+                } else {
+                    btns += `
+                        <button class="action-btn-circle btn-edit-premium edit-lead-btn"
+                                data-id="${row.id}"
+                                data-name="${escapeHtml(row.name)}"
+                                data-phone="${escapeHtml(row.phone)}"
+                                data-email="${escapeHtml(row.email || '')}"
+                                data-address="${escapeHtml(row.address || '')}"
+                                data-remarks="${escapeHtml(row.remarks || '')}"
+                                data-req-id="${row.requirement ? row.requirement.id : ''}"
+                                data-status="${row.status}"
+                                data-level="${row.current_level}"
+                                data-cat-type="${row.requirement ? row.requirement.category_type : 'other'}"
+                                data-items="${row.data_items || ''}"
+                                data-all-req-items='${escapeHtml(row.get_req_items_with_fc_limits || "")}'
+                                data-is-controlled="${row.is_controlled ? 'true' : 'false'}"
+                                data-controlled-by="${escapeHtml(row.controlled_by)}"
+                                title="View/Edit Lead Details">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="action-btn-circle btn-history-premium history-lead-btn" data-id="${row.id}" data-name="${escapeHtml(row.name)}" data-status="${row.status}" data-level="${row.current_level}" title="Status & Timeline"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                    `;
+                    if (currentUserUsertype === 'district' || currentUserUsertype === 'superadmin') {
+                        btns += `<button class="action-btn-circle btn-feedback-premium district-feedback-btn" data-id="${row.id}" data-name="${escapeHtml(row.name)}" data-level="${row.current_level}" title="District Feedback"><i class="fa-solid fa-comments"></i></button>`;
+                    }
+                    btns += `<button class="action-btn-circle btn-share-premium share-lead-btn" data-id="${row.id}" data-email="${escapeHtml(row.email || '')}" title="Share Details & Payment Link"><i class="fa-solid fa-paper-plane"></i></button>`;
+                    if (row.status === 'confirmed' && row.has_any_payment && currentUserUsertype !== 'customer') {
+                        btns += `<button class="action-btn-circle btn-invoice-premium invoice-action-btn" data-lead-id="${row.id}" data-lead-email="${escapeHtml(row.email || '')}" data-lead-name="${escapeHtml(row.name)}" title="Invoice"><i class="fa-solid fa-file-invoice"></i></button>`;
+                    }
+                }
+                btns += `</div>`;
+                return btns;
+            }
         });
 
         $('#leadsTable').DataTable({
+            processing: true,
+            serverSide: true,
             responsive: true,
-            order: [], // Respect server-side sorting (Pending first)
+            order: [], // Respect server-side default sorting
             pageLength: 10,
-            columnDefs: [
-                { orderable: false, targets: -1 }
-            ]
+            ajax: {
+                url: window.location.href,
+                type: 'GET',
+                data: function(d) {
+                    d.action_filter = $('#filterActionSelect').val() || 'all';
+                    d.status_filter = $('#filterStatusSelect').val() || 'all';
+                    d.level_filter = $('#filterLevelSelect').val() || 'all';
+                }
+            },
+            columns: tableColumns,
+            createdRow: function(row, data, dataIndex) {
+                if (data.is_controlled) {
+                    $(row).css('background', 'linear-gradient(90deg, rgba(111, 66, 193, 0.05) 0%, rgba(255, 255, 255, 0) 100%)');
+                }
+            }
         });
 
         function updateFilterBadge() {
@@ -792,14 +817,14 @@
             const statusVal = $(this).attr('data-status');
             $('#filterStatusSelect').val(statusVal);
             if ($.fn.dataTable.isDataTable('#leadsTable')) {
-                $('#leadsTable').DataTable().draw();
+                $('#leadsTable').DataTable().ajax.reload();
             }
             updateFilterBadge();
         });
 
         $(document).on('change', '.lead-filter-input', function() {
             if ($.fn.dataTable.isDataTable('#leadsTable')) {
-                $('#leadsTable').DataTable().draw();
+                $('#leadsTable').DataTable().ajax.reload();
             }
             updateFilterBadge();
         });
@@ -817,7 +842,7 @@
             });
             $('.lead-filter-input').val('all');
             if ($.fn.dataTable.isDataTable('#leadsTable')) {
-                $('#leadsTable').DataTable().draw();
+                $('#leadsTable').DataTable().ajax.reload();
             }
             updateFilterBadge();
         });

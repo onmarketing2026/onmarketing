@@ -2382,6 +2382,63 @@ class HistoricalLeadHierarchyTestCase(TestCase):
         self.assertEqual(self.df.assigned_mandalam, self.fc2)
         self.assertEqual(self.df.assigned_district, self.dist2)
 
+class ServerSideLeadsDataTableTestCase(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_user(
+            username='sa_dt@cyborg.com',
+            email='sa_dt@cyborg.com',
+            password='password123',
+            usertype='superadmin',
+            name='Super Admin DT'
+        )
+        self.customer = CustomUser.objects.create_user(
+            username='cust_dt@cyborg.com',
+            email='cust_dt@cyborg.com',
+            password='password123',
+            usertype='customer',
+            name='Customer DT'
+        )
+        self.df = CustomUser.objects.create_user(
+            username='df_dt@cyborg.com',
+            email='df_dt@cyborg.com',
+            password='password123',
+            usertype='marketing',
+            name='DF DT'
+        )
+        self.category = Category.objects.create(name='General Services', cat_type='other')
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.customer,
+            category=self.category,
+            title='Website Development Requirement',
+            status='approved'
+        )
+        self.lead = Lead.objects.create(
+            name='ServerSide Lead 1',
+            phone='9876543210',
+            email='lead1@example.com',
+            requirement=self.requirement,
+            marketing_user=self.df,
+            status='pending',
+            current_level='superadmin'
+        )
+
+    def test_leads_datatable_ajax_response(self):
+        client = Client()
+        client.login(username='sa_dt@cyborg.com', password='password123')
+        response = client.get('/leads/?draw=1&start=0&length=10', HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        json_data = response.json()
+        self.assertIn('draw', json_data)
+        self.assertEqual(json_data['draw'], 1)
+        self.assertEqual(json_data['recordsTotal'], 1)
+        self.assertEqual(json_data['recordsFiltered'], 1)
+        self.assertEqual(len(json_data['data']), 1)
+        lead_row = json_data['data'][0]
+        self.assertEqual(lead_row['id'], self.lead.id)
+        self.assertEqual(lead_row['name'], 'ServerSide Lead 1')
+        self.assertEqual(lead_row['DT_RowAttr']['data-is-controlled'], 'true')
+
+
 
 
 

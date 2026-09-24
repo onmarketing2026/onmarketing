@@ -3137,6 +3137,158 @@ from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate
 
 from django.db.models import Case, When, Value, IntegerField
 
+def get_leads_datatable_response(request, leads, user, control_cond, is_confirmed_tab=False):
+    if not (request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('draw')):
+        return None
+
+    from django.http import JsonResponse
+    from django.db.models import Q
+
+    draw = int(request.GET.get('draw', 1))
+    start = int(request.GET.get('start', 0))
+    length = int(request.GET.get('length', 10))
+    search_value = request.GET.get('search[value]', '').strip()
+    action_filter = request.GET.get('action_filter', 'all')
+    status_filter = request.GET.get('status_filter', 'all')
+    level_filter = request.GET.get('level_filter', 'all')
+
+    records_total = leads.count()
+
+    # Apply Action Filter
+    if action_filter == 'my_action':
+        leads = leads.filter(control_cond)
+    elif action_filter == 'other_action':
+        leads = leads.exclude(control_cond)
+
+    # Apply Status Filter
+    if status_filter == 'payment_pending':
+        leads = leads.filter(status='confirmed', payment_mode='part', installment_pending=True)
+    elif status_filter and status_filter != 'all':
+        leads = leads.filter(status=status_filter)
+
+    # Apply Level Filter
+    if level_filter and level_filter != 'all':
+        leads = leads.filter(current_level=level_filter)
+
+    # Apply Search Filter
+    if search_value:
+        search_q = (
+            Q(name__icontains=search_value) |
+            Q(phone__icontains=search_value) |
+            Q(email__icontains=search_value) |
+            Q(address__icontains=search_value) |
+            Q(remarks__icontains=search_value) |
+            Q(status__icontains=search_value) |
+            Q(current_level__icontains=search_value) |
+            Q(requirement__title__icontains=search_value) |
+            Q(requirement__customer__name__icontains=search_value) |
+            Q(requirement__category__name__icontains=search_value) |
+            Q(marketing_user__name__icontains=search_value) |
+            Q(marketing_user__username__icontains=search_value) |
+            Q(marketing_user__email__icontains=search_value) |
+            Q(marketing_user__assigned_mandalam__name__icontains=search_value) |
+            Q(marketing_user__assigned_district__name__icontains=search_value) |
+            Q(items__subcategory__name__icontains=search_value)
+        )
+        clean_id = search_value.lstrip('#')
+        if clean_id.isdigit():
+            search_q |= Q(id=int(clean_id))
+        leads = leads.filter(search_q).distinct()
+
+    records_filtered = leads.count()
+
+    # Pagination slice
+    leads_slice = leads.select_related(
+        'requirement', 'requirement__customer', 'requirement__category',
+        'marketing_user', 'marketing_user__assigned_mandalam', 'marketing_user__assigned_district'
+    ).prefetch_related('items', 'items__subcategory')[start:start+length]
+
+    data = []
+    for lead in leads_slice:
+        is_controlled = bool(getattr(lead, 'is_controlled', 0))
+        inst_pending = bool(getattr(lead, 'installment_pending', False))
+        is_payment_pending = (lead.status == 'confirmed' and lead.payment_mode == 'part' and inst_pending)
+
+        items_list = []
+        data_items_parts = []
+        for item in lead.items.all():
+            items_list.append({
+                'subcategory_id': item.subcategory_id,
+                'subcategory_name': item.subcategory.name,
+                'count': item.count
+            })
+            data_items_parts.append(f"{item.subcategory_id}:{item.count}")
+        data_items = ",".join(data_items_parts)
+
+        controlled_by = ""
+        if lead.current_level == 'marketing':
+            controlled_by = "Digital Franchise"
+        elif lead.current_level == 'mandalam':
+            controlled_by = "Fecilitation Center"
+        elif lead.current_level == 'district':
+            controlled_by = "District Franchise"
+        elif lead.current_level == 'superadmin':
+            controlled_by = "Superadmin"
+        else:
+            controlled_by = lead.current_level
+
+        req_items_fc_limits = lead.get_req_items_with_fc_limits if hasattr(lead, 'get_req_items_with_fc_limits') else ""
+
+        row_dict = {
+            "DT_RowAttr": {
+                "data-id": str(lead.id),
+                "data-is-controlled": "true" if is_controlled else "false",
+                "data-status": lead.status,
+                "data-payment-pending": "true" if is_payment_pending else "false",
+                "data-level": lead.current_level
+            },
+            "id": lead.id,
+            "name": lead.name,
+            "phone": lead.phone,
+            "email": lead.email or "",
+            "address": lead.address or "",
+            "remarks": lead.remarks or "",
+            "is_controlled": is_controlled,
+            "controlled_by": controlled_by,
+            "status": lead.status,
+            "current_level": lead.current_level,
+            "payment_mode": lead.payment_mode,
+            "installment_pending": inst_pending,
+            "has_any_payment": lead.has_any_payment,
+            "total_amount": float(lead.get_total_amount),
+            "customer_amount": float(lead.get_customer_amount),
+            "markup_amount": float(lead.get_markup_amount),
+            "expense_amount": float(lead.get_expense_amount),
+            "gst_amount": float(lead.get_gst_amount),
+            "created_at": lead.created_at.strftime("%b %d, %Y"),
+            "created_at_sort": lead.created_at.strftime("%Y%m%d%H%M%S"),
+            "data_items": data_items,
+            "items": items_list,
+            "get_req_items_with_fc_limits": req_items_fc_limits,
+            "requirement": {
+                "id": lead.requirement_id if lead.requirement_id else None,
+                "title": lead.requirement.title if lead.requirement else "-",
+                "customer_name": lead.requirement.customer.name if (lead.requirement and lead.requirement.customer) else "",
+                "category_type": lead.requirement.category.cat_type if (lead.requirement and lead.requirement.category) else "other"
+            } if lead.requirement else None,
+            "marketing_user": {
+                "name": lead.marketing_user.name if lead.marketing_user else "-",
+                "email": lead.marketing_user.email if lead.marketing_user else "",
+                "username": lead.marketing_user.username if lead.marketing_user else ""
+            } if lead.marketing_user else None,
+            "mandalam_name": lead.get_mandalam.name if lead.get_mandalam else "-",
+            "district_name": lead.get_district.name if lead.get_district else "-"
+        }
+        data.append(row_dict)
+
+    return JsonResponse({
+        'draw': draw,
+        'recordsTotal': records_total,
+        'recordsFiltered': records_filtered,
+        'data': data
+    })
+
+
 @login_required(login_url='login')
 def lead_list(request):
     if request.user.usertype == 'manager':
@@ -3217,6 +3369,10 @@ def lead_list(request):
             leads = annotated_leads(Lead.objects.filter(marketing_user__created_by=user))
     else:
         leads = Lead.objects.none()
+
+    dt_response = get_leads_datatable_response(request, leads, user, control_cond, is_confirmed_tab=False)
+    if dt_response:
+        return dt_response
 
     # Get approved requirements for marketers to add leads directly from leads section
     approved_requirements = []
@@ -3330,6 +3486,10 @@ def confirmed_lead_list(request):
         leads = annotated_leads(base_qs.filter(requirement__customer=user))
     else:
         leads = Lead.objects.none()
+
+    dt_response = get_leads_datatable_response(request, leads, user, control_cond=Q(pk__in=[]), is_confirmed_tab=True)
+    if dt_response:
+        return dt_response
 
     import json
     return render(request, 'cyborgapp/leads/list.html', {
