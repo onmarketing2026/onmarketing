@@ -849,6 +849,17 @@
 
         // Share Details and Payment Link
         $(document).on('click', '.share-lead-btn', function() {
+            const isManagerViewOnly = {% if request.user.usertype == 'manager' %}{% if is_confirmed_tab %}{% if request.user.get_manager_permissions.confirmed_leads_access == 'view' %}true{% else %}false{% endif %}{% else %}{% if request.user.get_manager_permissions.leads_access == 'view' %}true{% else %}false{% endif %}{% endif %}{% else %}false{% endif %};
+            if (isManagerViewOnly) {
+                Swal.fire({
+                    title: 'Permission Denied',
+                    text: 'You have View Only access. Only managers with Action & View (Full Access) permission can share the payment link.',
+                    icon: 'error',
+                    confirmButtonColor: 'var(--role-color, #6f42c1)'
+                });
+                return;
+            }
+
             const leadId = this.getAttribute('data-id');
             const leadEmail = this.getAttribute('data-email');
             
@@ -1667,7 +1678,9 @@
                         // Set Next Level Name
                         const levels = ['marketing', 'mandalam', 'district', 'superadmin'];
                         const nextIdx = levels.indexOf(data.current_level) + 1;
-                        if (nextIdx < levels.length) {
+                        if (currentUserUsertype === 'manager') {
+                            passLevelGroup.style.display = 'none';
+                        } else if (nextIdx < levels.length) {
                             passLevelGroup.style.display = 'block';
                             nextLevelNameDisplay.textContent = formatLevelName(levels[nextIdx]);
                         } else {

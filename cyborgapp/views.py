@@ -3682,6 +3682,15 @@ def share_lead_payment(request, lead_id):
         if limit_error:
             return JsonResponse({'status': 'error', 'message': limit_error}, status=400)
     
+    # Manager Permission Check
+    if request.user.usertype == 'manager':
+        perm = request.user.get_manager_permissions()
+        is_confirmed = (lead.status in ['confirmed', 'completed'])
+        if is_confirmed and perm.confirmed_leads_access != 'action':
+            return JsonResponse({'status': 'error', 'message': 'Permission denied: You need Action & View access to share payment links.'}, status=403)
+        elif not is_confirmed and perm.leads_access != 'action':
+            return JsonResponse({'status': 'error', 'message': 'Permission denied: You need Action & View access to share payment links.'}, status=403)
+
     # 1. Validation: Only the user currently controlling the lead is allowed to share
     effective_user_level = request.user.usertype
     if effective_user_level == 'manager':
@@ -3835,6 +3844,9 @@ def lead_add_update(request, lead_id):
         update_text = data.get('update_text')
         new_status = data.get('status')
         pass_lead = data.get('pass_lead')
+
+        if pass_lead and request.user.usertype == 'manager':
+            return JsonResponse({'status': 'error', 'message': 'Managers are not allowed to escalate leads.'}, status=403)
 
         # Escalation and Confirmed status are mutually exclusive
         if pass_lead and new_status == 'confirmed':

@@ -710,10 +710,12 @@
                         
                         if (row.usertype === 'manager' && loggedInUsertype === 'district') {
                             return `
-                                <label class="switch" style="opacity: 0.6; pointer-events: none;">
-                                  <input type="checkbox" ${checked} disabled>
-                                  <span class="slider"></span>
-                                </label>
+                                <span class="disabled-manager-toggle" style="display: inline-block; cursor: pointer;" title="Only Superadmin can activate and deactivate managers">
+                                    <label class="switch" style="opacity: 0.6; pointer-events: none;">
+                                      <input type="checkbox" ${checked} disabled>
+                                      <span class="slider"></span>
+                                    </label>
+                                </span>
                             `;
                         }
                         return `
@@ -788,6 +790,17 @@
                 search: "_INPUT_",
                 searchPlaceholder: "Search users..."
             }
+        });
+
+        $(document).on('click', '.disabled-manager-toggle', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            Swal.fire({
+                icon: 'warning',
+                title: 'Permission Denied',
+                text: 'Only Superadmin can activate and deactivate managers.',
+                confirmButtonColor: 'var(--role-color, #6f42c1)'
+            });
         });
 
         // Status Toggle Logic using Event Delegation

@@ -2149,6 +2149,50 @@ class ManagerAccessControlTestCase(TestCase):
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.name, 'Updated Lead Name by Manager')
 
+    def test_manager_cannot_escalate_lead_to_superadmin(self):
+        client = Client()
+        perm = self.manager.get_manager_permissions()
+        perm.leads_access = 'action'
+        perm.save()
+
+        self.lead.current_level = 'district'
+        self.lead.status = 'pending'
+        self.lead.save()
+
+        client.login(username='mgr_mac@cyborg.com', password='password123')
+        import json
+        res = client.post(f'/leads/{self.lead.id}/update/', data=json.dumps({
+            'update_text': 'Attempt manager escalation',
+            'status': 'pending',
+            'pass_lead': True
+        }), content_type='application/json')
+        self.assertEqual(res.status_code, 403)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.current_level, 'district')
+
+    def test_manager_share_payment_link_permission_restriction(self):
+        client = Client()
+        perm = self.manager.get_manager_permissions()
+        
+        self.lead.current_level = 'district'
+        self.lead.status = 'pending'
+        self.lead.save()
+
+        client.login(username='mgr_mac@cyborg.com', password='password123')
+
+        # 1. Manager with 'view' access is blocked from sharing payment link
+        perm.leads_access = 'view'
+        perm.save()
+        res_view = client.post(f'/leads/{self.lead.id}/share/')
+        self.assertEqual(res_view.status_code, 403)
+        self.assertIn('Permission denied', res_view.json().get('message', ''))
+
+        # 2. Manager with 'action' access can access share endpoint (not 403)
+        perm.leads_access = 'action'
+        perm.save()
+        res_action = client.post(f'/leads/{self.lead.id}/share/')
+        self.assertNotEqual(res_action.status_code, 403)
+
     def test_pending_lead_email_subcategories_validation(self):
         sub = SubCategory.objects.create(category=self.req.category, name='SubValTest')
         req_item = RequirementItem.objects.create(requirement=self.req, subcategory=sub, count=100)
