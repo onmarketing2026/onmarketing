@@ -275,9 +275,25 @@ class Lead(models.Model):
         related_name='confirmed_leads'
     )
     invoice_sent = models.BooleanField(default=False)  # Guard: prevent duplicate invoice emails
+    
+    # Manager Ping & District Feedback Fields
+    is_manager_pinged = models.BooleanField(default=False)
+    manager_ping_note = models.TextField(null=True, blank=True)
+    manager_ping_at = models.DateTimeField(null=True, blank=True)
+    manager_pinged_by = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='district_pinged_leads'
+    )
+    has_district_feedback = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
+        if self.status == 'confirmed' or self.current_level == 'superadmin':
+            self.has_district_feedback = False
+
         if self.marketing_user:
             if not self.assigned_mandalam and self.marketing_user.assigned_mandalam:
                 self.assigned_mandalam = self.marketing_user.assigned_mandalam

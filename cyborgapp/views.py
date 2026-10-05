@@ -980,8 +980,7 @@ def superadmin_user_edit(request, user_id):
             fc_ids = request.POST.getlist('assigned_facilitation_centers')
             user.assigned_facilitation_centers.set(fc_ids)
 
-        if current_user.usertype == 'superadmin' and user.usertype == 'mandalam':
-            user.is_target_exempt = (request.POST.get('is_target_exempt') in ['on', 'true', '1'])
+        # Note: is_target_exempt is set during user creation and is read-only during editing.
                 
         try:
             user.save()
@@ -3165,7 +3164,9 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
     records_total = leads.count()
 
     # Apply Action Filter
-    if action_filter == 'my_action':
+    if action_filter == 'pinged':
+        leads = leads.filter(is_manager_pinged=True)
+    elif action_filter == 'my_action':
         leads = leads.filter(control_cond)
     elif action_filter == 'other_action':
         leads = leads.exclude(control_cond)
@@ -3287,7 +3288,12 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
                 "username": lead.marketing_user.username if lead.marketing_user else ""
             } if lead.marketing_user else None,
             "mandalam_name": lead.get_mandalam.name if lead.get_mandalam else "-",
-            "district_name": lead.get_district.name if lead.get_district else "-"
+            "district_name": lead.get_district.name if lead.get_district else "-",
+            "is_manager_pinged": lead.is_manager_pinged,
+            "manager_ping_note": lead.manager_ping_note or "",
+            "manager_ping_at": lead.manager_ping_at.strftime("%b %d, %Y %I:%M %p") if lead.manager_ping_at else "",
+            "manager_pinged_by_name": lead.manager_pinged_by.name if lead.manager_pinged_by else "",
+            "has_district_feedback": lead.has_district_feedback
         }
         data.append(row_dict)
 
@@ -4226,9 +4232,40 @@ def lead_add_update(request, lead_id):
 @login_required(login_url='login')
 def lead_get_updates(request, lead_id):
     lead = get_object_or_404(Lead, id=lead_id)
-    updates = list(lead.updates.values('update_text', 'created_at').order_by('-created_at'))
-    for update in updates:
-        update['created_at'] = update['created_at'].strftime('%b %d, %Y %H:%M')
+    
+    timeline_items = []
+    
+    # 1. LeadUpdate entries
+    for u in lead.updates.all():
+        timeline_items.append({
+            'text': u.update_text,
+            'created_at_dt': u.created_at
+        })
+        
+    # 2. Notification entries linked to this lead
+    seen_texts = set(item['text'].strip().lower() for item in timeline_items)
+    for n in lead.notifications.all():
+        verb_clean = n.verb
+        if verb_clean.startswith(f"[Lead #{lead.id}]"):
+            verb_clean = verb_clean.replace(f"[Lead #{lead.id}]", "").strip()
+        
+        if verb_clean.lower() not in seen_texts:
+            seen_texts.add(verb_clean.lower())
+            timeline_items.append({
+                'text': verb_clean,
+                'created_at_dt': n.created_at
+            })
+
+    # Sort timeline items descending by datetime (newest first)
+    timeline_items.sort(key=lambda x: x['created_at_dt'], reverse=True)
+
+    updates = []
+    for item in timeline_items:
+        updates.append({
+            'update_text': item['text'],
+            'created_at': item['created_at_dt'].strftime('%b %d, %Y %H:%M'),
+            'raw_created_at': item['created_at_dt'].isoformat()
+        })
     
     effective_user_level = request.user.usertype
     if effective_user_level == 'manager':
@@ -4540,6 +4577,16 @@ def lead_add_district_feedback(request, lead_id):
 
         create_lead_notification(user, lead, f"added district feedback for '{lead.name}'")
 
+        LeadUpdate.objects.create(
+            lead=lead,
+            update_text=f"District Franchise {user.name or user.username} added feedback: {feedback_text}"
+        )
+
+        lead.has_district_feedback = True
+        if lead.is_manager_pinged:
+            lead.is_manager_pinged = False
+        lead.save()
+
         return JsonResponse({
             'status': 'success',
             'message': 'District feedback added successfully.',
@@ -4550,6 +4597,53 @@ def lead_add_district_feedback(request, lead_id):
                 'created_at': fb.created_at.strftime('%b %d, %Y %H:%M')
             }
         })
+
+
+@login_required(login_url='login')
+def ping_district_lead(request, lead_id):
+    if request.method == 'POST':
+        lead = get_object_or_404(Lead, id=lead_id)
+        current_user = request.user
+
+        # Validation: Manager, District Franchise, or Superadmin
+        if current_user.usertype not in ['manager', 'district', 'superadmin']:
+            return JsonResponse({'status': 'error', 'message': 'Permission denied.'}, status=403)
+
+        if lead.current_level != 'district':
+            return JsonResponse({'status': 'error', 'message': 'Ping can only be sent when lead is at District level.'}, status=400)
+
+        from django.utils import timezone
+
+        note = request.POST.get('note', '').strip()
+
+        lead.is_manager_pinged = True
+        lead.manager_ping_note = note
+        lead.manager_ping_at = timezone.now()
+        lead.manager_pinged_by = current_user
+        lead.save()
+
+        # Record in LeadUpdate timeline
+        update_msg = f"Manager {current_user.name} pinged District Franchise"
+        if note:
+            update_msg += f": {note}"
+        LeadUpdate.objects.create(lead=lead, update_text=update_msg)
+
+        # Notify District Franchise user
+        district_target = lead.assigned_district or (current_user.assigned_district if hasattr(current_user, 'assigned_district') else None)
+        if district_target:
+            Notification.objects.create(
+                recipient=district_target,
+                actor=current_user,
+                verb=f"Manager {current_user.name} pinged you for feedback on Lead #{lead.id} ({lead.name})",
+                lead=lead
+            )
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'District Franchise pinged successfully!'
+        })
+
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=405)
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
 

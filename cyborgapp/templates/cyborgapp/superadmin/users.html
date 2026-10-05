@@ -419,6 +419,7 @@
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: var(--text-main);">
                         <input type="checkbox" id="is_target_exempt" name="is_target_exempt" style="width: 18px; height: 18px; accent-color: var(--primary-gold);">
                         <span>Exempt from Mandatory Lead Targets</span>
+                        <small id="is_target_exempt_edit_note" style="color: #0d6efd; font-size: 0.75rem; font-weight: bold; display: none;">(Read-Only)</small>
                     </label>
                     <small style="color: var(--text-muted); margin-top: 5px; display: block;">If checked, this Facilitation Center will be exempt from the lead mandatory target restriction.</small>
                 </div>
@@ -1370,7 +1371,12 @@
                 }
 
                 const targetExemptCb = document.getElementById('is_target_exempt');
-                if (targetExemptCb) targetExemptCb.checked = false;
+                if (targetExemptCb) {
+                    targetExemptCb.checked = false;
+                    targetExemptCb.disabled = false;
+                }
+                const targetExemptNote = document.getElementById('is_target_exempt_edit_note');
+                if (targetExemptNote) targetExemptNote.style.display = 'none';
 
                 toggleHierarchy();
                 $(userForm).find('select').trigger('change');
@@ -1463,7 +1469,12 @@
 
             const isTargetExempt = this.getAttribute('data-is-target-exempt') === 'true';
             const targetExemptCb = document.getElementById('is_target_exempt');
-            if (targetExemptCb) targetExemptCb.checked = isTargetExempt;
+            if (targetExemptCb) {
+                targetExemptCb.checked = isTargetExempt;
+                targetExemptCb.disabled = true;
+            }
+            const targetExemptNote = document.getElementById('is_target_exempt_edit_note');
+            if (targetExemptNote) targetExemptNote.style.display = 'inline';
 
             toggleHierarchy();
 

@@ -81,6 +81,7 @@ urlpatterns = [
     path('leads/<int:lead_id>/associate-updates/add/', views.lead_add_associate_update, name='lead_add_associate_update'),
     path('leads/<int:lead_id>/district-feedback/get/', views.lead_get_district_feedback, name='lead_get_district_feedback'),
     path('leads/<int:lead_id>/district-feedback/add/', views.lead_add_district_feedback, name='lead_add_district_feedback'),
+    path('leads/<int:lead_id>/ping-district/', views.ping_district_lead, name='ping_district_lead'),
     path('leads/<int:lead_id>/share/', views.share_lead_payment, name='share_lead_payment'),
     path('leads/<int:lead_id>/pay-from-mail/', views.pay_lead_from_mail, name='pay_lead_from_mail'),
     path('installments/<int:installment_id>/pay/', views.pay_installment, name='pay_installment'),

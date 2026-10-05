@@ -2556,6 +2556,98 @@ class FCTargetExemptionTest(TestCase):
         self.assertEqual(exempt_fc_item['status'], 'Exempt')
 
 
+class ManagerPingDistrictTest(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_superuser(
+            username='sa_ping@test.com', email='sa_ping@test.com', password='password123', usertype='superadmin'
+        )
+        self.district = CustomUser.objects.create_user(
+            username='dist_ping@test.com', email='dist_ping@test.com', password='password123', usertype='district'
+        )
+        self.manager = CustomUser.objects.create_user(
+            username='mgr_ping@test.com', email='mgr_ping@test.com', password='password123', usertype='manager',
+            assigned_district=self.district
+        )
+        self.mandalam = CustomUser.objects.create_user(
+            username='fc_ping@test.com', email='fc_ping@test.com', password='password123', usertype='mandalam',
+            assigned_district=self.district
+        )
+        self.category = Category.objects.create(name='Services', cat_type='other', created_by=self.superadmin)
+        self.customer = CustomUser.objects.create_user(
+            username='cust_ping@test.com', email='cust_ping@test.com', password='password123', usertype='customer'
+        )
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.customer, category=self.category, title='Ping Requirement', status='approved'
+        )
+        self.lead = Lead.objects.create(
+            requirement=self.requirement,
+            marketing_user=self.mandalam,
+            assigned_mandalam=self.mandalam,
+            assigned_district=self.district,
+            name='Ping Test Lead',
+            phone='9876543210',
+            status='pending',
+            current_level='district'
+        )
+
+    def test_manager_ping_district_lead(self):
+        client = Client()
+        client.login(username='mgr_ping@test.com', password='password123')
+
+        response = client.post(f'/leads/{self.lead.id}/ping-district/', {
+            'note': 'Please advise on this lead'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'success')
+
+        self.lead.refresh_from_db()
+        self.assertTrue(self.lead.is_manager_pinged)
+        self.assertEqual(self.lead.manager_ping_note, 'Please advise on this lead')
+        self.assertEqual(self.lead.manager_pinged_by, self.manager)
+
+    def test_district_feedback_clears_manager_ping_and_sets_feedback_added(self):
+        self.lead.is_manager_pinged = True
+        self.lead.save()
+
+        client = Client()
+        client.login(username='dist_ping@test.com', password='password123')
+
+        response = client.post(
+            f'/leads/{self.lead.id}/district-feedback/add/',
+            data='{"feedback_text": "District action taken", "custom_date": "2026-10-05", "custom_time": "13:00"}',
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.is_manager_pinged)
+        self.assertTrue(self.lead.has_district_feedback)
+
+    def test_feedback_badge_cleared_on_confirm(self):
+        self.lead.has_district_feedback = True
+        self.lead.save()
+        self.assertTrue(self.lead.has_district_feedback)
+
+        self.lead.status = 'confirmed'
+        self.lead.save()
+
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.has_district_feedback)
+
+    def test_feedback_badge_cleared_on_pass_to_superadmin(self):
+        self.lead.has_district_feedback = True
+        self.lead.save()
+        self.assertTrue(self.lead.has_district_feedback)
+
+        self.lead.current_level = 'superadmin'
+        self.lead.save()
+
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.has_district_feedback)
+
+
+
+
 
 
 

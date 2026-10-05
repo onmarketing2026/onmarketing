@@ -158,6 +158,9 @@
                     <select id="filterActionSelect" class="lead-filter-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.85rem; font-weight: 600; outline: none; cursor: pointer;">
                         <option value="all">All Leads</option>
                         <option value="my_action">⚡ Your Action Needed</option>
+                        {% if request.user.usertype == 'superadmin' or request.user.usertype == 'manager' or request.user.usertype == 'district' %}
+                        <option value="pinged">🔔 Manager Pinged</option>
+                        {% endif %}
                         <option value="other_action">👁️ View Only / Other Level</option>
                     </select>
                 </div>
@@ -227,7 +230,10 @@
     <div id="leadModal" class="modal" style="display: none; position: fixed; z-index: 1040; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); overflow-y: auto; padding: 30px 0;">
         <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
             <span class="close-modal" id="closeLeadModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
-            <h2 id="leadModalTitle" style="margin-bottom: 25px; font-size: 1.5rem;">Add Lead</h2>
+            <h2 id="leadModalTitle" style="margin-bottom: 25px; font-size: 1.5rem; display: flex; align-items: center; gap: 10px;">
+                <span id="leadModalTitleText">Add Lead</span>
+                <span id="leadModalIdBadge" style="font-weight: 800; color: #0d6efd; background: rgba(13, 110, 253, 0.08); border: 1px solid rgba(13, 110, 253, 0.2); padding: 2px 10px; border-radius: 6px; font-size: 0.85rem; display: none;"></span>
+            </h2>
             
             <form id="leadForm" method="POST" action="{% url 'lead_create' 0 %}">
                 {% csrf_token %}
@@ -284,7 +290,7 @@
         <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
             <span class="close-modal" id="closeHistoryModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
             <h2 style="margin-bottom: 10px; font-size: 1.5rem;">Lead History</h2>
-            <p style="margin-bottom: 20px; color: var(--text-muted);">Lead updates for <span id="historyLeadName" style="font-weight: 700; color: var(--text-main);"></span></p>
+            <p style="margin-bottom: 20px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">Lead updates for <span id="historyLeadName" style="font-weight: 700; color: var(--text-main);"></span> <span id="historyLeadIdBadge" style="font-weight: 800; color: #0d6efd; background: rgba(13, 110, 253, 0.08); border: 1px solid rgba(13, 110, 253, 0.2); padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;"></span></p>
 
             <div id="addUpdateSection" style="margin-bottom: 30px; padding-bottom: 25px; border-bottom: 1px solid var(--border-color);">
                 <h4 style="margin-bottom: 15px; font-size: 1rem; color: var(--text-main);">Add Progress Update</h4>
@@ -301,21 +307,29 @@
                         <input type="time" id="updateTime" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
                     </div>
                 </div>
-                <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-end;">
-                    <div style="flex: 1;">
+                <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 130px;">
                         <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Update Status</label>
                         <select id="updateLeadStatus" class="form-control" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; height: 42px;">
                             <option value="pending">Pending</option>
                             <option value="confirmed">Confirmed</option>
                         </select>
                     </div>
-                    <div id="passLevelGroup" style="flex: 1; display: none;">
+                    <div id="passLevelGroup" style="flex: 1; min-width: 130px; display: none;">
                         <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem;">Escalation</label>
                         <div style="padding: 0 12px; border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; gap: 10px; background: #fff; height: 42px;">
                             <input type="checkbox" id="passToNext" style="width: 18px; height: 18px; cursor: pointer;">
                             <span style="font-size: 0.8rem; font-weight: 700; color: #dc3545; white-space: nowrap;">Pass to <span id="nextLevelName"></span></span>
                         </div>
                     </div>
+                    {% if request.user.usertype == 'manager' %}
+                    <div id="pingDistrictSection" style="flex: 1; min-width: 130px; display: none;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 700; font-size: 0.85rem; color: #fd7e14;">Ping District</label>
+                        <button type="button" class="ping-district-btn" id="pingDistrictModalBtn" data-id="" data-name="" style="width: 100%; height: 42px; background: #fd7e14; color: #fff; border: none; padding: 0 12px; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.85rem; white-space: nowrap;">
+                            <i class="fa-solid fa-bell"></i> Ping District
+                        </button>
+                    </div>
+                    {% endif %}
                 </div>
                 
                 <!-- Payment Config Section (only for superadmin, district, manager) -->
@@ -403,7 +417,7 @@
         <div class="modal-content" style="background: var(--card-bg); margin: 0 auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 550px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative;">
             <span class="close-modal" id="closeAssociateUpdatesModal" style="position: absolute; right: 25px; top: 20px; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</span>
             <h2 style="margin-bottom: 10px; font-size: 1.5rem;">Lead Updates (Associate Company)</h2>
-            <p style="margin-bottom: 20px; color: var(--text-muted);">Lead updates for <span id="assocUpdatesLeadName" style="font-weight: 700; color: var(--text-main);"></span></p>
+            <p style="margin-bottom: 20px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">Lead updates for <span id="assocUpdatesLeadName" style="font-weight: 700; color: var(--text-main);"></span> <span id="assocUpdatesLeadIdBadge" style="font-weight: 800; color: #0d6efd; background: rgba(13, 110, 253, 0.08); border: 1px solid rgba(13, 110, 253, 0.2); padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;"></span></p>
 
             <!-- Banner displayed when lead is completed -->
             <div id="assocCompletedMsg" style="display: none; margin-bottom: 25px; padding: 18px; background: rgba(13, 110, 253, 0.08); color: #0d6efd; border-radius: 10px; text-align: center; border: 1px solid rgba(13, 110, 253, 0.2); font-weight: 700;">
@@ -471,7 +485,7 @@
             <h2 style="margin-bottom: 10px; font-size: 1.5rem; display: flex; align-items: center; gap: 10px;">
                 <i class="fa-solid fa-comments" style="color: #ff9800;"></i> District Feedback
             </h2>
-            <p style="margin-bottom: 20px; color: var(--text-muted);">Lead feedback for <span id="districtFeedbackLeadName" style="font-weight: 700; color: var(--text-main);"></span></p>
+            <p style="margin-bottom: 20px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">Lead feedback for <span id="districtFeedbackLeadName" style="font-weight: 700; color: var(--text-main);"></span> <span id="districtFeedbackLeadIdBadge" style="font-weight: 800; color: #ff9800; background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.25); padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;"></span></p>
 
             {% if request.user.usertype == 'manager' %}
             <div id="managerDistrictFeedbackMsg" style="margin-bottom: 20px; padding: 12px 15px; background: rgba(220, 53, 69, 0.08); color: #dc3545; border-radius: 8px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(220, 53, 69, 0.2);">
@@ -703,15 +717,33 @@
         tableColumns.push({
             data: 'status',
             render: function(data, type, row) {
+                let badgeHtml = '';
                 if (data === 'completed') {
-                    return `<span class="status-badge status-completed" style="background: rgba(13, 110, 253, 0.12); color: #0d6efd; padding: 4px 10px; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">Completed</span>`;
+                    badgeHtml = `<span class="status-badge status-completed" style="background: rgba(13, 110, 253, 0.12); color: #0d6efd; padding: 4px 10px; border-radius: 8px; font-weight: 700; font-size: 0.75rem;">Completed</span>`;
                 } else if (data === 'confirmed' && row.payment_mode === 'part' && row.installment_pending) {
-                    return `<span class="status-badge status-payment-pending"><i class="fa-solid fa-credit-card" style="margin-right:4px;"></i>Payment Pending</span>`;
+                    badgeHtml = `<span class="status-badge status-payment-pending"><i class="fa-solid fa-credit-card" style="margin-right:4px;"></i>Payment Pending</span>`;
                 } else if (data === 'confirmed') {
-                    return `<span class="status-badge status-confirmed">Confirmed</span>`;
+                    badgeHtml = `<span class="status-badge status-confirmed">Confirmed</span>`;
                 } else {
-                    return `<span class="status-badge status-${data}">${data}</span>`;
+                    badgeHtml = `<span class="status-badge status-${data}">${data}</span>`;
                 }
+
+                if (row.is_manager_pinged && (currentUserUsertype === 'superadmin' || currentUserUsertype === 'manager' || currentUserUsertype === 'district')) {
+                    badgeHtml += `<div style="margin-top: 4px;">
+                        <span class="status-badge" style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; border: 1px solid rgba(253, 126, 20, 0.3); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 4px;" title="Manager Ping Note: ${escapeHtml(row.manager_ping_note || 'Requested feedback')}">
+                            <i class="fa-solid fa-bell"></i> Manager Pinged
+                        </span>
+                    </div>`;
+                }
+
+                if (row.has_district_feedback && (currentUserUsertype === 'superadmin' || currentUserUsertype === 'district')) {
+                    badgeHtml += `<div style="margin-top: 4px;">
+                        <span class="status-badge" style="background: rgba(13, 110, 253, 0.12); color: #0d6efd; border: 1px solid rgba(13, 110, 253, 0.3); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 4px;" title="District feedback has been added for this lead">
+                            <i class="fa-solid fa-comment-dots"></i> Feedback Added
+                        </span>
+                    </div>`;
+                }
+                return badgeHtml;
             }
         });
 
@@ -915,6 +947,58 @@
             });
         });
 
+        // Event handler for Ping District button
+        $(document).on('click', '.ping-district-btn', function(e) {
+            e.preventDefault();
+            const leadId = $(this).attr('data-id') || $(this).data('id');
+            const leadName = $(this).attr('data-name') || $(this).data('name') || '';
+
+            Swal.fire({
+                title: 'Ping District Franchise',
+                html: `<p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">Alert District Franchise for feedback on <strong>${escapeHtml(leadName)}</strong> (#${leadId})</p>
+                       <textarea id="pingNoteText" class="swal2-textarea" placeholder="Enter optional note/reason for pinging district (e.g. Needs feedback)..." style="margin: 0; width: 100%; box-sizing: border-box; font-size: 0.9rem; border-radius: 8px; font-family: inherit;"></textarea>`,
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-bell"></i> Send Ping',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#fd7e14',
+                focusConfirm: false,
+                preConfirm: () => {
+                    const note = document.getElementById('pingNoteText').value.trim();
+                    const formData = new FormData();
+                    formData.append('note', note);
+                    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+                    return fetch(`/leads/${leadId}/ping-district/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: formData
+                    })
+                    .then(res => {
+                        if (!res.ok) throw new Error('Failed to send ping');
+                        return res.json();
+                    })
+                    .catch(err => {
+                        Swal.showValidationMessage(`Error: ${err.message}`);
+                    });
+                }
+            }).then(result => {
+                if (result.isConfirmed && result.value && result.value.status === 'success') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Ping Sent!',
+                        text: 'District Franchise has been notified.',
+                        timer: 1500,
+                        showConfirmButton: false
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                }
+            });
+        });
+
         const leadModal = document.getElementById('leadModal');
         const leadForm = document.getElementById('leadForm');
         const leadModalTitle = document.getElementById('leadModalTitle');
@@ -1003,8 +1087,11 @@
         if (openAddLeadBtn) {
             openAddLeadBtn.onclick = function() {
                 leadForm.reset();
-                leadModalTitle.textContent = "Add New Lead";
-                 document.getElementById('leadSubmitBtn').textContent = "Save Lead";
+                const leadModalTitleText = document.getElementById('leadModalTitleText');
+                if (leadModalTitleText) leadModalTitleText.textContent = "Add New Lead";
+                const leadModalIdBadge = document.getElementById('leadModalIdBadge');
+                if (leadModalIdBadge) leadModalIdBadge.style.display = 'none';
+                document.getElementById('leadSubmitBtn').textContent = "Save Lead";
                  document.getElementById('leadSubmitBtn').style.display = 'block';
                  const viewHistoryBtn = document.getElementById('leadViewHistoryBtn');
                  if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
@@ -1177,8 +1264,15 @@
             const controlledByMsg = document.getElementById('leadControlledByMsg');
             const isManagerViewOnly = {% if request.user.usertype == 'manager' %}{% if is_confirmed_tab %}{% if request.user.get_manager_permissions.confirmed_leads_access == 'view' %}true{% else %}false{% endif %}{% else %}{% if request.user.get_manager_permissions.leads_access == 'view' %}true{% else %}false{% endif %}{% endif %}{% else %}false{% endif %};
 
+            const leadModalTitleText = document.getElementById('leadModalTitleText');
+            const leadModalIdBadge = document.getElementById('leadModalIdBadge');
+            if (leadModalIdBadge) {
+                leadModalIdBadge.textContent = `#${id}`;
+                leadModalIdBadge.style.display = 'inline-block';
+            }
+
             if (status === 'confirmed' || currentUserUsertype === 'staff' || isManagerViewOnly) {
-                leadModalTitle.textContent = "View Lead Details";
+                if (leadModalTitleText) leadModalTitleText.textContent = "View Lead Details";
                 submitBtn.style.display = 'none';
                 inputs.forEach(input => input.disabled = true);
                 if (controlledByMsg) controlledByMsg.style.display = 'none';
@@ -1190,7 +1284,7 @@
                     }
                 }
             } else if (!isControlled) {
-                leadModalTitle.textContent = "View Lead Details";
+                if (leadModalTitleText) leadModalTitleText.textContent = "View Lead Details";
                 submitBtn.style.display = 'none';
                 inputs.forEach(input => input.disabled = true);
                 if (controlledByMsg) {
@@ -1199,7 +1293,7 @@
                 }
                 if (viewHistoryBtn) viewHistoryBtn.style.display = 'none';
             } else {
-                leadModalTitle.textContent = "Edit Lead";
+                if (leadModalTitleText) leadModalTitleText.textContent = "Edit Lead";
                 submitBtn.style.display = 'block';
                 submitBtn.textContent = "Update Lead";
                 inputs.forEach(input => input.disabled = false);
@@ -1476,6 +1570,8 @@
         $(document).on('click', '.history-lead-btn', function() {
             currentLeadId = this.getAttribute('data-id');
             historyLeadName.textContent = this.getAttribute('data-name');
+            const historyLeadIdBadge = document.getElementById('historyLeadIdBadge');
+            if (historyLeadIdBadge) historyLeadIdBadge.textContent = `#${currentLeadId}`;
             const status = this.getAttribute('data-status');
             const currentLevel = this.getAttribute('data-level');
             
@@ -1519,7 +1615,7 @@
                             const row = document.createElement('tr');
                             row.innerHTML = `
                                 <td style="padding: 12px 15px; line-height: 1.5; color: var(--text-main);">${text}</td>
-                                <td style="padding: 12px 15px; color: var(--text-muted); font-size: 0.8rem;">${u.created_at}</td>
+                                <td style="padding: 12px 15px; color: var(--text-muted); font-size: 0.8rem;" data-order="${u.raw_created_at || u.created_at}">${u.created_at}</td>
                             `;
                             historyList.appendChild(row);
                         });
@@ -1552,6 +1648,18 @@
                     confirmedMsg.style.display = 'none';
                     paymentPendingMsg.style.display = 'none';
                     reqRejectedMsg.style.display = 'none';
+
+                    const pingSection = document.getElementById('pingDistrictSection');
+                    const pingBtn = document.getElementById('pingDistrictModalBtn');
+                    if (pingSection && pingBtn) {
+                        if (data.current_level === 'district' && data.lead_status === 'pending') {
+                            pingSection.style.display = 'block';
+                            pingBtn.setAttribute('data-id', currentLeadId);
+                            pingBtn.setAttribute('data-name', historyLeadName.textContent);
+                        } else {
+                            pingSection.style.display = 'none';
+                        }
+                    }
                     if (paymentConfigSection) {
                         paymentConfigSection.style.display = 'none';
                         leadPaymentMode.value = 'single';
@@ -1937,6 +2045,8 @@
         $(document).on('click', '.assoc-updates-btn', function() {
             currentAssocLeadId = this.getAttribute('data-id');
             assocUpdatesLeadName.textContent = this.getAttribute('data-name');
+            const assocUpdatesLeadIdBadge = document.getElementById('assocUpdatesLeadIdBadge');
+            if (assocUpdatesLeadIdBadge) assocUpdatesLeadIdBadge.textContent = `#${currentAssocLeadId}`;
             newAssocUpdateText.value = '';
             const markCompletedCheck = document.getElementById('assocMarkCompletedCheck');
             if (markCompletedCheck) markCompletedCheck.checked = false;
@@ -2230,6 +2340,8 @@
             currentDistrictFeedbackLeadId = this.getAttribute('data-id');
             const leadName = this.getAttribute('data-name');
             if (districtFeedbackLeadName) districtFeedbackLeadName.textContent = leadName;
+            const districtFeedbackLeadIdBadge = document.getElementById('districtFeedbackLeadIdBadge');
+            if (districtFeedbackLeadIdBadge) districtFeedbackLeadIdBadge.textContent = `#${currentDistrictFeedbackLeadId}`;
 
             // Pre-fill current date and time on modal load
             const now = new Date();
