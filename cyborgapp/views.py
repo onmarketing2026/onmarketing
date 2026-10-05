@@ -671,23 +671,26 @@ def superadmin_users(request):
             
             target_status = None
             if u.usertype == 'mandalam':
-                from .models import SubCategory, RequirementAssignment
-                mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
-                if not mandatory_subs.exists():
-                    target_status = 'Target Not Assigned'
+                if u.is_target_exempt:
+                    target_status = 'Exempt (No Target)'
                 else:
-                    is_assigned = RequirementAssignment.objects.filter(
-                        requirement_item__subcategory__in=mandatory_subs,
-                        facilitation_center=u
-                    ).exists()
-                    if not is_assigned:
+                    from .models import SubCategory, RequirementAssignment
+                    mandatory_subs = SubCategory.objects.filter(is_mandatory_target=True)
+                    if not mandatory_subs.exists():
                         target_status = 'Target Not Assigned'
                     else:
-                        from .utils import has_fc_achieved_mandatory_target
-                        if has_fc_achieved_mandatory_target(u):
-                            target_status = 'Target Achieved'
+                        is_assigned = RequirementAssignment.objects.filter(
+                            requirement_item__subcategory__in=mandatory_subs,
+                            facilitation_center=u
+                        ).exists()
+                        if not is_assigned:
+                            target_status = 'Target Not Assigned'
                         else:
-                            target_status = 'Target Pending'
+                            from .utils import has_fc_achieved_mandatory_target
+                            if has_fc_achieved_mandatory_target(u):
+                                target_status = 'Target Achieved'
+                            else:
+                                target_status = 'Target Pending'
             
             mgr_perm_data = None
             if u.usertype == 'manager':
@@ -724,6 +727,7 @@ def superadmin_users(request):
                 'assigned_facilitation_centers': assigned_fcs,
                 'assigned_fc_names': assigned_fc_names,
                 'target_status': target_status,
+                'is_target_exempt': u.is_target_exempt,
                 'initial_withdrawal_percentage': str(u.initial_withdrawal_percentage) if u.initial_withdrawal_percentage is not None else '50.00',
                 'manager_permissions': mgr_perm_data
             })
@@ -843,6 +847,9 @@ def superadmin_user_create(request):
                 fc_ids = request.POST.getlist('assigned_facilitation_centers')
                 if fc_ids:
                     user.assigned_facilitation_centers.set(fc_ids)
+
+            if current_user.usertype == 'superadmin' and usertype == 'mandalam':
+                user.is_target_exempt = (request.POST.get('is_target_exempt') in ['on', 'true', '1'])
 
             user.save()
 
@@ -972,6 +979,9 @@ def superadmin_user_edit(request, user_id):
         if user.usertype == 'staff':
             fc_ids = request.POST.getlist('assigned_facilitation_centers')
             user.assigned_facilitation_centers.set(fc_ids)
+
+        if current_user.usertype == 'superadmin' and user.usertype == 'mandalam':
+            user.is_target_exempt = (request.POST.get('is_target_exempt') in ['on', 'true', '1'])
                 
         try:
             user.save()
@@ -6019,6 +6029,9 @@ def target_achievement_list(request):
             else:
                 status = 'Not Assigned'
 
+        if fc.is_target_exempt:
+            status = 'Exempt'
+
         fc_details.append({
             'fc': fc,
             'status': status,
@@ -6036,8 +6049,11 @@ def target_achievement_list(request):
             return (0, ts, (x['fc'].name or x['fc'].username or '').lower())
         elif st == 'Pending':
             return (1, -x['total_count_achieved'], (x['fc'].name or x['fc'].username or '').lower())
-        else:
+        elif st == 'Not Assigned':
             return (2, 0, (x['fc'].name or x['fc'].username or '').lower())
+        else:
+            # Exempt at the bottom
+            return (3, 0, (x['fc'].name or x['fc'].username or '').lower())
 
     fc_details.sort(key=get_sort_key)
 

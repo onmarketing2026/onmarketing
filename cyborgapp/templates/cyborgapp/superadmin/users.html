@@ -415,6 +415,14 @@
                     <small style="color: var(--text-muted); margin-top: 5px; display: block;">Percentage of lead commission released to withdrawal balance upon confirmation. (Default: 50%)</small>
                 </div>
 
+                <div class="form-group" id="fc-target-exemption-group" style="display: none;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: var(--text-main);">
+                        <input type="checkbox" id="is_target_exempt" name="is_target_exempt" style="width: 18px; height: 18px; accent-color: var(--primary-gold);">
+                        <span>Exempt from Mandatory Lead Targets</span>
+                    </label>
+                    <small style="color: var(--text-muted); margin-top: 5px; display: block;">If checked, this Facilitation Center will be exempt from the lead mandatory target restriction.</small>
+                </div>
+
                 <div id="hierarchy-section">
                     {% if request.user.usertype == 'superadmin' %}
                     <div class="form-group" id="district-group">
@@ -591,6 +599,10 @@
                                 badgeColor = '#198754';
                                 badgeBg = 'rgba(25, 135, 84, 0.1)';
                                 badgeBorder = 'rgba(25, 135, 84, 0.2)';
+                            } else if (row.target_status === 'Exempt (No Target)') {
+                                badgeColor = '#0d6efd';
+                                badgeBg = 'rgba(13, 110, 253, 0.1)';
+                                badgeBorder = 'rgba(13, 110, 253, 0.2)';
                             } else if (row.target_status === 'Target Pending') {
                                 badgeColor = '#dc3545';
                                 badgeBg = 'rgba(220, 53, 69, 0.1)';
@@ -765,6 +777,7 @@
                                     data-mandalam="${row.assigned_mandalam_id}"
                                     data-accessible-districts="${row.accessible_districts}"
                                     data-initial-withdrawal="${row.initial_withdrawal_percentage || '50.00'}"
+                                    data-is-target-exempt="${row.is_target_exempt ? 'true' : 'false'}"
                                     data-assigned-fcs="${row.assigned_facilitation_centers || ''}"
                                     data-assigned-fc-names='${JSON.stringify(row.assigned_fc_names || [])}'
                                     data-mgr-permissions='${JSON.stringify(row.manager_permissions || {})}'>
@@ -1079,11 +1092,18 @@
 
             const staffFcGroup = document.getElementById('staff-fc-group');
             const customerWithdrawalGroup = document.getElementById('customer-withdrawal-group');
+            const fcTargetExemptionGroup = document.getElementById('fc-target-exemption-group');
             const managerPermissionsSection = document.getElementById('manager-permissions-section');
             const mandalamSelect = document.getElementById('assigned_mandalam');
 
             if (customerWithdrawalGroup) {
                 customerWithdrawalGroup.style.display = showCustomerWithdrawal ? 'block' : 'none';
+            }
+
+            let showFcExemption = (currentUserType === 'superadmin' && role === 'mandalam');
+
+            if (fcTargetExemptionGroup) {
+                fcTargetExemptionGroup.style.display = showFcExemption ? 'block' : 'none';
             }
 
             if (managerPermissionsSection) {
@@ -1349,6 +1369,9 @@
                     labels.forEach(label => label.style.display = 'flex');
                 }
 
+                const targetExemptCb = document.getElementById('is_target_exempt');
+                if (targetExemptCb) targetExemptCb.checked = false;
+
                 toggleHierarchy();
                 $(userForm).find('select').trigger('change');
                 modal.style.display = "block";
@@ -1437,6 +1460,10 @@
                     }
                 });
             }
+
+            const isTargetExempt = this.getAttribute('data-is-target-exempt') === 'true';
+            const targetExemptCb = document.getElementById('is_target_exempt');
+            if (targetExemptCb) targetExemptCb.checked = isTargetExempt;
 
             toggleHierarchy();
 

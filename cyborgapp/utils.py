@@ -219,8 +219,12 @@ def has_fc_achieved_mandatory_target(fc_user, exclude_lead=None):
     """
     Checks if a facilitation center (mandalam user) has achieved at least 20 confirmed leads
     for ANY of the subcategories marked as `is_mandatory_target=True`.
+    Returns True immediately if the FC user is exempt from targets.
     """
     if not fc_user or fc_user.usertype != 'mandalam':
+        return True
+
+    if getattr(fc_user, 'is_target_exempt', False):
         return True
     
     from .models import SubCategory

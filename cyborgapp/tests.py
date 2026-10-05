@@ -2483,6 +2483,80 @@ class ServerSideLeadsDataTableTestCase(TestCase):
         self.assertEqual(lead_row['DT_RowAttr']['data-is-controlled'], 'true')
 
 
+class FCTargetExemptionTest(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_superuser(
+            username='sa_exempt@test.com', email='sa_exempt@test.com', password='password123', usertype='superadmin'
+        )
+        self.district = CustomUser.objects.create_user(
+            username='dist_exempt@test.com', email='dist_exempt@test.com', password='password123', usertype='district'
+        )
+        self.fc_user = CustomUser.objects.create_user(
+            username='fc_exempt@test.com', email='fc_exempt@test.com', password='password123', usertype='mandalam',
+            assigned_district=self.district, is_target_exempt=False
+        )
+        self.category = Category.objects.create(name='Mandatory Cat', cat_type='count', created_by=self.superadmin)
+        self.mandatory_sub = SubCategory.objects.create(
+            category=self.category, name='Mandatory Sub', is_mandatory_target=True, mandatory_target_count=20, created_by=self.superadmin
+        )
+
+    def test_has_fc_achieved_mandatory_target_exemption(self):
+        from cyborgapp.utils import has_fc_achieved_mandatory_target
+        # When is_target_exempt is False and no leads exist, should return False
+        self.assertFalse(has_fc_achieved_mandatory_target(self.fc_user))
+
+        # When is_target_exempt is True, should return True immediately
+        self.fc_user.is_target_exempt = True
+        self.fc_user.save()
+        self.assertTrue(has_fc_achieved_mandatory_target(self.fc_user))
+
+    def test_superadmin_users_data_exemption_status(self):
+        client = Client()
+        client.login(username='sa_exempt@test.com', password='password123')
+        
+        # Test exempt FC returns status 'Exempt (No Target)'
+        self.fc_user.is_target_exempt = True
+        self.fc_user.save()
+        
+        response = client.get('/superadmin/users/?usertype=mandalam', HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        fc_data = next((u for u in data if u['id'] == self.fc_user.id), None)
+        self.assertIsNotNone(fc_data)
+        self.assertEqual(fc_data['target_status'], 'Exempt (No Target)')
+        self.assertTrue(fc_data['is_target_exempt'])
+
+    def test_district_cannot_toggle_target_exemption(self):
+        client = Client()
+        client.login(username='dist_exempt@test.com', password='password123')
+
+        # District attempts to edit FC with is_target_exempt=on
+        response = client.post(f'/superadmin/users/{self.fc_user.id}/edit/', {
+            'name': 'Updated FC Name',
+            'email': 'fc_exempt@test.com',
+            'usertype': 'mandalam',
+            'is_target_exempt': 'on'
+        })
+        self.fc_user.refresh_from_db()
+        # Should remain False because dist_exempt@test.com is a district franchise user
+        self.assertFalse(self.fc_user.is_target_exempt)
+
+    def test_target_achievement_list_exempt_status(self):
+        client = Client()
+        client.login(username='sa_exempt@test.com', password='password123')
+
+        self.fc_user.is_target_exempt = True
+        self.fc_user.save()
+
+        response = client.get('/superadmin/target-achievements/')
+        self.assertEqual(response.status_code, 200)
+        fc_details = response.context['fc_details']
+        exempt_fc_item = next((item for item in fc_details if item['fc'].id == self.fc_user.id), None)
+        self.assertIsNotNone(exempt_fc_item)
+        self.assertEqual(exempt_fc_item['status'], 'Exempt')
+
+
+
 
 
 

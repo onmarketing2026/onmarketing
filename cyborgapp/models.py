@@ -44,6 +44,9 @@ class CustomUser(AbstractUser):
     bank_account_holder = models.CharField(max_length=255, null=True, blank=True)
     bank_phone = models.CharField(max_length=20, null=True, blank=True)
 
+    # Exemption for Facilitation Centers from mandatory targets
+    is_target_exempt = models.BooleanField(default=False, verbose_name="Exempt from Mandatory Lead Targets")
+
     def get_manager_permissions(self):
         if self.usertype == 'manager':
             perm, _ = ManagerPermission.objects.get_or_create(user=self)
