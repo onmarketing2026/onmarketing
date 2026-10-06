@@ -289,7 +289,14 @@
         <i class="fa-solid fa-circle-info" style="font-size: 1.4rem; color: #d97706;"></i>
         <div>
             <strong style="font-size: 0.95rem; color: #92400e; display: block; margin-bottom: 2px;">Daily reports were not added by manager or district.</strong>
-            <span style="font-size: 0.85rem; color: #b45309;">No daily report has been saved for <strong>{{ active_district.name }}</strong> between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>.</span>
+            <span style="font-size: 0.85rem; color: #b45309;">
+                No daily report has been saved for <strong>{{ active_district.name }}</strong>
+                {% if is_range_mode %}
+                    between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>.
+                {% else %}
+                    in <strong>{{ from_date }}</strong>.
+                {% endif %}
+            </span>
         </div>
     </div>
     {% endif %}
@@ -528,9 +535,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             text: data.message || 'Daily Report entries updated successfully.',
                             timer: 1500,
                             showConfirmButton: false
+                        }).then(() => {
+                            window.location.reload();
                         });
                     } else {
                         alert(data.message || 'Daily Report saved successfully.');
+                        window.location.reload();
                     }
                 } else {
                     if (typeof Swal !== 'undefined') {
