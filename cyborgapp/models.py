@@ -812,3 +812,25 @@ class ManagerPermission(models.Model):
 
     def __str__(self):
         return f"Manager Permissions for {self.user.username}"
+
+
+class DailyFCReport(models.Model):
+    fc = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='daily_reports')
+    district = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='fc_daily_reports')
+    report_date = models.DateField(default=timezone.now)
+    connected_leads = models.PositiveIntegerField(default=0)
+    warm_leads = models.PositiveIntegerField(default=0)
+    followup_leads = models.PositiveIntegerField(default=0)
+    not_interested_leads = models.PositiveIntegerField(default=0)
+    remarks = models.TextField(blank=True, default='')
+    special_note = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('fc', 'report_date')
+        ordering = ['-report_date', 'fc__name']
+
+    def __str__(self):
+        return f"Daily Report for {self.fc.name} on {self.report_date}"
+

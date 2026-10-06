@@ -677,6 +677,13 @@
             </a>
             {% endif %}
 
+            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+            <a href="{% url 'daily_reports' %}" class="menu-item {% if request.resolver_match.url_name == 'daily_reports' %}active{% endif %}">
+                <i class="fa-solid fa-calendar-day"></i>
+                Daily Reports
+            </a>
+            {% endif %}
+
             {% if request.user.usertype == 'superadmin' %}
             <a href="{% url 'commission_settings' %}" class="menu-item {% if request.resolver_match.url_name == 'commission_settings' %}active{% endif %}">
                 <i class="fa-solid fa-percent"></i>

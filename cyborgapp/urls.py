@@ -100,6 +100,11 @@ urlpatterns = [
     path('api/notifications/', views.get_notifications, name='get_notifications'),
     path('api/notifications/mark-read/', views.mark_notifications_read, name='mark_notifications_read'),
 
+    # Daily Reports
+    path('daily-reports/', views.daily_reports, name='daily_reports'),
+    path('daily-reports/save/', views.daily_reports_save, name='daily_reports_save'),
+    path('daily-reports/export/', views.daily_reports_export, name='daily_reports_export'),
+
     # Invoice download & email
     path('leads/<int:lead_id>/invoice/download/', views.download_invoice, name='download_invoice'),
     path('leads/<int:lead_id>/invoice/send-email/', views.send_invoice_email_view, name='send_invoice_email'),

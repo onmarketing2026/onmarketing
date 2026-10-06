@@ -1,0 +1,564 @@
+{% extends 'cyborgapp/base.html' %}
+{% load static %}
+
+{% block title %}Daily Reports{% endblock %}
+{% block page_title %}Daily Reports{% endblock %}
+
+{% block extra_css %}
+<style>
+    .reports-card {
+        background: var(--card-bg, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 16px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: flex-end;
+    }
+
+    .filter-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .filter-item label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted, #64748b);
+    }
+
+    .filter-control {
+        height: 42px;
+        padding: 0 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color, #cbd5e1);
+        background: var(--card-bg, #ffffff);
+        color: var(--text-main, #0f172a);
+        font-size: 0.9rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+
+    .filter-control:focus {
+        outline: none;
+        border-color: var(--role-color, #0d6efd);
+        box-shadow: 0 0 0 3px var(--role-bg-light, rgba(13, 110, 253, 0.15));
+    }
+
+    .btn-action-gold {
+        height: 42px;
+        padding: 0 20px;
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+    }
+
+    .btn-action-gold:hover {
+        opacity: 0.92;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);
+    }
+
+    .btn-action-outline {
+        height: 42px;
+        padding: 0 18px;
+        background: transparent;
+        color: #10b981;
+        border: 1.5px solid #10b981;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+    }
+
+    .btn-action-outline:hover {
+        background: rgba(16, 185, 129, 0.08);
+        color: #059669;
+        border-color: #059669;
+    }
+
+    /* Table Custom Styles */
+    .reports-table-wrapper {
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--card-bg, #ffffff);
+    }
+
+    .reports-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+    }
+
+    .reports-table th {
+        background: #f8fafc;
+        color: var(--text-muted, #475569);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 14px 12px;
+        border-bottom: 2px solid var(--border-color, #e2e8f0);
+        white-space: nowrap;
+    }
+
+    .reports-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color, #f1f5f9);
+        vertical-align: middle;
+    }
+
+    .reports-table tbody tr:hover {
+        background-color: rgba(241, 245, 249, 0.6);
+    }
+
+    .num-badge {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        text-align: center;
+        min-width: 42px;
+    }
+
+    .num-badge-blue {
+        background: rgba(13, 110, 253, 0.1);
+        color: #0d6efd;
+        border: 1px solid rgba(13, 110, 253, 0.2);
+    }
+
+    .num-badge-green {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .table-input-number {
+        width: 70px;
+        height: 38px;
+        text-align: center;
+        font-weight: 700;
+        font-size: 0.9rem;
+        border: 1px solid var(--border-color, #cbd5e1);
+        border-radius: 6px;
+        padding: 0 6px;
+        margin: 0 auto;
+        display: block;
+        transition: border 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .table-input-number:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .table-input-text {
+        width: 100%;
+        height: 38px;
+        padding: 0 12px;
+        font-size: 0.85rem;
+        border: 1px solid var(--border-color, #cbd5e1);
+        border-radius: 6px;
+        transition: border 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .table-input-text:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .table-footer-row {
+        background: #f1f5f9;
+        font-weight: 800;
+        border-top: 2px solid var(--border-color, #cbd5e1);
+    }
+
+    .table-footer-row td {
+        padding: 14px 12px;
+    }
+
+    .active-district-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(245, 158, 11, 0.12);
+        color: #b45309;
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding: 20px 0;">
+    <!-- Filter Controls Card -->
+    <div class="reports-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color, #e2e8f0);">
+            <div>
+                <h2 style="font-size: 1.4rem; font-weight: 800; margin: 0; color: var(--text-main, #0f172a); display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-calendar-day" style="color: #f59e0b;"></i> Daily Reports
+                </h2>
+                <span style="font-size: 0.85rem; color: var(--text-muted, #64748b);">Track and update daily performance for Facilitation Centers</span>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <a href="{% url 'daily_reports_export' %}?from_date={{ from_date }}&to_date={{ to_date }}&district_id={{ active_district.id|default:'' }}" class="btn-action-outline">
+                    <i class="fa-solid fa-file-excel"></i> Export CSV
+                </a>
+                {% if request.user.usertype != 'superadmin' and not is_range_mode %}
+                <button type="button" class="btn-action-gold" id="saveReportBtn">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Daily Report
+                </button>
+                {% elif is_range_mode %}
+                <span style="font-size: 0.8rem; background: #e2e8f0; color: #475569; padding: 8px 14px; border-radius: 8px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-eye" style="color: #64748b;"></i> View-Only (Date Range Selected)
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <!-- From Date Filter -->
+            <div class="filter-item">
+                <label for="fromDate"><i class="fa-regular fa-calendar" style="margin-right: 4px;"></i> From Date</label>
+                <input type="date" id="fromDate" class="filter-control" value="{{ from_date }}" style="width: 160px;">
+            </div>
+
+            <!-- To Date Filter -->
+            <div class="filter-item">
+                <label for="toDate"><i class="fa-regular fa-calendar-check" style="margin-right: 4px;"></i> To Date</label>
+                <input type="date" id="toDate" class="filter-control" value="{{ to_date }}" style="width: 160px;">
+            </div>
+
+            <!-- District Filter (Superadmin Only) -->
+            {% if request.user.usertype == 'superadmin' %}
+            <div class="filter-item" style="flex: 1; min-width: 240px; max-width: 350px;">
+                <label for="districtSelect"><i class="fa-solid fa-building-flag" style="margin-right: 4px;"></i> Select District Franchise</label>
+                <select id="districtSelect" class="filter-control" style="width: 100%;">
+                    <option value="" {% if not active_district %}selected{% endif %}>Select District Franchise</option>
+                    {% for d in districts %}
+                        <option value="{{ d.id }}" {% if active_district and active_district.id == d.id %}selected{% endif %}>
+                            {{ d.name }} ({{ d.email }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <div style="margin-left: auto;">
+                <span class="active-district-pill">
+                    <i class="fa-solid fa-city"></i> District: {{ active_district.name|default:'Select District' }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    {% if request.user.usertype == 'superadmin' and active_district and not has_saved_reports %}
+    <!-- Notice Banner when daily report is not saved -->
+    <div style="padding: 14px 20px; background: #fff8f0; border: 1px solid #fde68a; border-radius: 12px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+        <i class="fa-solid fa-circle-info" style="font-size: 1.4rem; color: #d97706;"></i>
+        <div>
+            <strong style="font-size: 0.95rem; color: #92400e; display: block; margin-bottom: 2px;">Daily reports were not added by manager or district.</strong>
+            <span style="font-size: 0.85rem; color: #b45309;">No daily report has been saved for <strong>{{ active_district.name }}</strong> between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>.</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Daily Reports Table -->
+    <div class="reports-table-wrapper">
+        <div style="overflow-x: auto;">
+            <table class="reports-table" id="dailyReportsTable">
+                <thead>
+                    <tr>
+                        <th style="text-align: center; width: 50px;">S.No</th>
+                        <th style="text-align: left; min-width: 180px;">Facilitation Center</th>
+                        <th style="text-align: center; width: 95px;">Total Leads</th>
+                        <th style="text-align: center; width: 95px;">Connected</th>
+                        <th style="text-align: center; width: 95px;">Closed</th>
+                        <th style="text-align: center; width: 95px;">Warm</th>
+                        <th style="text-align: center; width: 95px;">Followup</th>
+                        <th style="text-align: center; width: 110px;">Not Interested</th>
+                        <th style="text-align: left; min-width: 250px;">Remarks / Special Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in fc_reports_data %}
+                    <tr data-fc-id="{{ row.fc.id }}" class="report-row">
+                        <td style="text-align: center; font-weight: 700; color: var(--text-muted, #64748b);">{{ row.s_no }}</td>
+                        <td>
+                            <div style="font-weight: 700; color: var(--text-main, #0f172a);">{{ row.fc.name }}</div>
+                            <div style="font-size: 0.78rem; color: var(--text-muted, #64748b);">{{ row.fc.email }}</div>
+                        </td>
+
+                        <!-- Total Leads (Auto Calculated) -->
+                        <td style="text-align: center;">
+                            <span class="num-badge num-badge-blue">{{ row.total_leads }}</span>
+                        </td>
+
+                        <!-- Connected Leads (Input) -->
+                        <td style="text-align: center;">
+                            <input type="number" min="0" class="table-input-number input-connected" value="{{ row.connected_leads }}" {% if request.user.usertype == 'superadmin' or is_range_mode %}readonly disabled style="background-color: #f8fafc; cursor: default;"{% endif %}>
+                        </td>
+
+                        <!-- Closed Leads (Auto Calculated) -->
+                        <td style="text-align: center;">
+                            <span class="num-badge num-badge-green">{{ row.closed_leads }}</span>
+                        </td>
+
+                        <!-- Warm Leads (Input) -->
+                        <td style="text-align: center;">
+                            <input type="number" min="0" class="table-input-number input-warm" value="{{ row.warm_leads }}" {% if request.user.usertype == 'superadmin' or is_range_mode %}readonly disabled style="background-color: #f8fafc; cursor: default;"{% endif %}>
+                        </td>
+
+                        <!-- Followup Leads (Input) -->
+                        <td style="text-align: center;">
+                            <input type="number" min="0" class="table-input-number input-followup" value="{{ row.followup_leads }}" {% if request.user.usertype == 'superadmin' or is_range_mode %}readonly disabled style="background-color: #f8fafc; cursor: default;"{% endif %}>
+                        </td>
+
+                        <!-- Not Interested Leads (Input) -->
+                        <td style="text-align: center;">
+                            <input type="number" min="0" class="table-input-number input-not-interested" value="{{ row.not_interested_leads }}" {% if request.user.usertype == 'superadmin' or is_range_mode %}readonly disabled style="background-color: #f8fafc; cursor: default;"{% endif %}>
+                        </td>
+
+                        <!-- Remarks / Special Notes (Single Combined Column) -->
+                        <td>
+                            <input type="text" class="table-input-text input-remarks" 
+                                   value="{% if row.remarks %}{{ row.remarks }}{% else %}{{ row.special_note }}{% endif %}" 
+                                   placeholder="Add remarks or special notes..."
+                                   {% if request.user.usertype == 'superadmin' or is_range_mode %}readonly disabled style="background-color: #f8fafc; cursor: default;"{% endif %}>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 50px 20px; color: var(--text-muted, #64748b);">
+                            {% if request.user.usertype == 'superadmin' and not active_district %}
+                                <i class="fa-solid fa-hand-pointer" style="font-size: 2.2rem; margin-bottom: 12px; display: block; color: #f59e0b;"></i>
+                                <strong style="font-size: 1rem; color: var(--text-main, #0f172a); display: block; margin-bottom: 4px;">Select District Franchise</strong>
+                                <span>Please select a District Franchise from the dropdown above to load Facilitation Center reports.</span>
+                            {% else %}
+                                <i class="fa-solid fa-folder-open" style="font-size: 2.2rem; margin-bottom: 12px; display: block; opacity: 0.5;"></i>
+                                <strong style="font-size: 1rem; color: var(--text-main, #0f172a); display: block; margin-bottom: 4px;">No Facilitation Centers Found</strong>
+                                <span>No Facilitation Centers are assigned under the selected District Franchise.</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+
+                {% if fc_reports_data %}
+                <tfoot>
+                    <tr class="table-footer-row">
+                        <td style="text-align: center;">#</td>
+                        <td style="color: var(--text-main, #0f172a); font-weight: 800;">TOTAL SUMMARY</td>
+                        <td style="text-align: center;">
+                            <span class="num-badge num-badge-blue" id="totalLeadsSum">{{ totals.total_leads }}</span>
+                        </td>
+                        <td style="text-align: center; color: var(--text-main, #0f172a);" id="connectedLeadsSum">
+                            {{ totals.connected_leads }}
+                        </td>
+                        <td style="text-align: center;">
+                            <span class="num-badge num-badge-green" id="closedLeadsSum">{{ totals.closed_leads }}</span>
+                        </td>
+                        <td style="text-align: center; color: var(--text-main, #0f172a);" id="warmLeadsSum">
+                            {{ totals.warm_leads }}
+                        </td>
+                        <td style="text-align: center; color: var(--text-main, #0f172a);" id="followupLeadsSum">
+                            {{ totals.followup_leads }}
+                        </td>
+                        <td style="text-align: center; color: var(--text-main, #0f172a);" id="notInterestedLeadsSum">
+                            {{ totals.not_interested_leads }}
+                        </td>
+                        <td style="color: var(--text-muted, #64748b); font-size: 0.8rem; font-weight: 600;">
+                            Sum of all metrics across {{ fc_reports_data|length }} Facilitation Center(s)
+                        </td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fromDateInput = document.getElementById('fromDate');
+    const toDateInput = document.getElementById('toDate');
+    const districtSelect = document.getElementById('districtSelect');
+    const saveReportBtn = document.getElementById('saveReportBtn');
+    const tableBody = document.querySelector('#dailyReportsTable tbody');
+
+    function reloadReportPage() {
+        const fromVal = fromDateInput ? fromDateInput.value : '{{ from_date }}';
+        const toVal = toDateInput ? toDateInput.value : '{{ to_date }}';
+        const districtVal = districtSelect ? districtSelect.value : '{{ active_district.id|default:"" }}';
+        window.location.href = `{% url "daily_reports" %}?from_date=${fromVal}&to_date=${toVal}&district_id=${districtVal}`;
+    }
+
+    if (fromDateInput) fromDateInput.addEventListener('change', reloadReportPage);
+    if (toDateInput) toDateInput.addEventListener('change', reloadReportPage);
+    if (districtSelect) districtSelect.addEventListener('change', reloadReportPage);
+
+    if (typeof $ !== 'undefined') {
+        $('#districtSelect, #fromDate, #toDate').on('change select2:select', function() {
+            reloadReportPage();
+        });
+    }
+
+    function calculateTotals() {
+        let connectedSum = 0;
+        let warmSum = 0;
+        let followupSum = 0;
+        let notInterestedSum = 0;
+
+        document.querySelectorAll('.report-row').forEach(row => {
+            connectedSum += parseInt(row.querySelector('.input-connected').value) || 0;
+            warmSum += parseInt(row.querySelector('.input-warm').value) || 0;
+            followupSum += parseInt(row.querySelector('.input-followup').value) || 0;
+            notInterestedSum += parseInt(row.querySelector('.input-not-interested').value) || 0;
+        });
+
+        const connectedEl = document.getElementById('connectedLeadsSum');
+        const warmEl = document.getElementById('warmLeadsSum');
+        const followupEl = document.getElementById('followupLeadsSum');
+        const notInterestedEl = document.getElementById('notInterestedLeadsSum');
+
+        if (connectedEl) connectedEl.textContent = connectedSum;
+        if (warmEl) warmEl.textContent = warmSum;
+        if (followupEl) followupEl.textContent = followupSum;
+        if (notInterestedEl) notInterestedEl.textContent = notInterestedSum;
+    }
+
+    if (tableBody) {
+        tableBody.addEventListener('input', function(e) {
+            if (e.target.matches('.input-connected, .input-warm, .input-followup, .input-not-interested')) {
+                calculateTotals();
+            }
+        });
+    }
+
+    if (saveReportBtn) {
+        saveReportBtn.addEventListener('click', function() {
+            const fromVal = fromDateInput ? fromDateInput.value : '{{ from_date }}';
+            const toVal = toDateInput ? toDateInput.value : '{{ to_date }}';
+            const districtVal = districtSelect ? districtSelect.value : '{{ active_district.id|default:"" }}';
+
+            if (fromVal !== toVal) {
+                alert('Saving daily reports is only allowed for a single date. Please set From Date and To Date to the same date.');
+                return;
+            }
+
+            const reportsData = [];
+            document.querySelectorAll('.report-row').forEach(row => {
+                const fcId = row.getAttribute('data-fc-id');
+                const connected = parseInt(row.querySelector('.input-connected').value) || 0;
+                const warm = parseInt(row.querySelector('.input-warm').value) || 0;
+                const followup = parseInt(row.querySelector('.input-followup').value) || 0;
+                const notInterested = parseInt(row.querySelector('.input-not-interested').value) || 0;
+                const remarks = row.querySelector('.input-remarks').value || '';
+
+                reportsData.push({
+                    fc_id: fcId,
+                    connected_leads: connected,
+                    warm_leads: warm,
+                    followup_leads: followup,
+                    not_interested_leads: notInterested,
+                    remarks: remarks,
+                    special_note: ''
+                });
+            });
+
+            saveReportBtn.disabled = true;
+            saveReportBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+
+            const formData = new FormData();
+            formData.append('from_date', fromVal);
+            formData.append('to_date', toVal);
+            formData.append('date', fromVal);
+            formData.append('district_id', districtVal);
+            formData.append('reports_data', JSON.stringify(reportsData));
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+            fetch('{% url "daily_reports_save" %}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                saveReportBtn.disabled = false;
+                saveReportBtn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Daily Report`;
+
+                if (data.status === 'success') {
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Saved!',
+                            text: data.message || 'Daily Report entries updated successfully.',
+                            timer: 1500,
+                            showConfirmButton: false
+                        });
+                    } else {
+                        alert(data.message || 'Daily Report saved successfully.');
+                    }
+                } else {
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: data.message || 'Failed to save daily report.'
+                        });
+                    } else {
+                        alert(data.message || 'Failed to save daily report.');
+                    }
+                }
+            })
+            .catch(err => {
+                saveReportBtn.disabled = false;
+                saveReportBtn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Daily Report`;
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'An error occurred while saving: ' + err.message
+                    });
+                } else {
+                    alert('An error occurred while saving: ' + err.message);
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

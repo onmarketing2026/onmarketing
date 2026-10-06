@@ -2646,6 +2646,223 @@ class ManagerPingDistrictTest(TestCase):
         self.assertFalse(self.lead.has_district_feedback)
 
 
+class DailyReportsTest(TestCase):
+    def setUp(self):
+        self.superadmin = CustomUser.objects.create_superuser(
+            username='sa_dr@test.com', email='sa_dr@test.com', password='password123', usertype='superadmin'
+        )
+        self.district = CustomUser.objects.create_user(
+            username='dist_dr@test.com', email='dist_dr@test.com', password='password123', usertype='district'
+        )
+        self.manager = CustomUser.objects.create_user(
+            username='mgr_dr@test.com', email='mgr_dr@test.com', password='password123', usertype='manager',
+            assigned_district=self.district
+        )
+        self.fc = CustomUser.objects.create_user(
+            username='fc_dr@test.com', email='fc_dr@test.com', password='password123', usertype='mandalam',
+            name='Test FC Center', assigned_district=self.district
+        )
+        self.category = Category.objects.create(name='Services', cat_type='other', created_by=self.superadmin)
+        self.customer = CustomUser.objects.create_user(
+            username='cust_dr@test.com', email='cust_dr@test.com', password='password123', usertype='customer'
+        )
+        self.requirement = CustomerRequirement.objects.create(
+            customer=self.customer, category=self.category, title='Daily Report Req', status='approved'
+        )
+        self.lead1 = Lead.objects.create(
+            requirement=self.requirement, marketing_user=self.fc, assigned_mandalam=self.fc,
+            assigned_district=self.district, name='Lead 1', phone='111', status='pending'
+        )
+        self.lead2 = Lead.objects.create(
+            requirement=self.requirement, marketing_user=self.fc, assigned_mandalam=self.fc,
+            assigned_district=self.district, name='Lead 2', phone='222', status='confirmed'
+        )
+
+    def test_daily_reports_access_control(self):
+        client = Client()
+        # Unauthenticated redirect to login
+        res = client.get('/daily-reports/')
+        self.assertEqual(res.status_code, 302)
+
+        # Superadmin access
+        client.login(username='sa_dr@test.com', password='password123')
+        res = client.get('/daily-reports/')
+        self.assertEqual(res.status_code, 200)
+
+        # District access
+        client.login(username='dist_dr@test.com', password='password123')
+        res = client.get('/daily-reports/')
+        self.assertEqual(res.status_code, 200)
+
+        # Manager access
+        client.login(username='mgr_dr@test.com', password='password123')
+        res = client.get('/daily-reports/')
+        self.assertEqual(res.status_code, 200)
+
+    def test_superadmin_blank_state_on_load(self):
+        client = Client()
+        client.login(username='sa_dr@test.com', password='password123')
+
+        # Superadmin loading page without district_id parameter should have active_district=None
+        res = client.get('/daily-reports/')
+        self.assertEqual(res.status_code, 200)
+        self.assertIsNone(res.context['active_district'])
+        self.assertEqual(len(res.context['fc_reports_data']), 0)
+
+        # Passing district_id should load FC data
+        res = client.get(f'/daily-reports/?district_id={self.district.id}')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.context['active_district'], self.district)
+        self.assertEqual(len(res.context['fc_reports_data']), 1)
+
+    def test_daily_reports_auto_counts(self):
+        client = Client()
+        client.login(username='sa_dr@test.com', password='password123')
+        today_str = timezone.now().date().strftime('%Y-%m-%d')
+
+        # Add a lead with payment_mode='part' and unpaid installment (payment link shared)
+        lead3 = Lead.objects.create(
+            requirement=self.requirement, marketing_user=self.fc, assigned_mandalam=self.fc,
+            assigned_district=self.district, name='Lead 3', phone='333', status='confirmed', payment_mode='part'
+        )
+        from .models import LeadInstallment
+        LeadInstallment.objects.create(
+            lead=lead3, installment_number=1, amount=100.00, status='pending'
+        )
+
+        # Add a lead with payment_mode='part' and 1 paid installment
+        lead4 = Lead.objects.create(
+            requirement=self.requirement, marketing_user=self.fc, assigned_mandalam=self.fc,
+            assigned_district=self.district, name='Lead 4', phone='444', status='confirmed', payment_mode='part'
+        )
+        LeadInstallment.objects.create(
+            lead=lead4, installment_number=1, amount=100.00, status='paid'
+        )
+
+        res = client.get(f'/daily-reports/?date={today_str}&district_id={self.district.id}')
+        self.assertEqual(res.status_code, 200)
+
+        fc_reports = res.context['fc_reports_data']
+        self.assertEqual(len(fc_reports), 1)
+        fc_item = fc_reports[0]
+        self.assertEqual(fc_item['total_leads'], 4)
+        self.assertEqual(fc_item['closed_leads'], 2)  # lead2 (confirmed single) + lead4 (part payment with paid installment)
+
+    def test_daily_reports_save_ajax(self):
+        client = Client()
+        client.login(username='mgr_dr@test.com', password='password123')
+        today_str = timezone.now().date().strftime('%Y-%m-%d')
+
+        reports_data = [
+            {
+                'fc_id': self.fc.id,
+                'connected_leads': 5,
+                'warm_leads': 3,
+                'followup_leads': 2,
+                'not_interested_leads': 1,
+                'remarks': 'Good progress today',
+                'special_note': 'Needs follow up tomorrow'
+            }
+        ]
+
+        res = client.post('/daily-reports/save/', {
+            'date': today_str,
+            'district_id': str(self.district.id),
+            'reports_data': json.dumps(reports_data)
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['status'], 'success')
+
+        from .models import DailyFCReport
+        db_report = DailyFCReport.objects.filter(fc=self.fc, report_date=timezone.now().date()).first()
+        self.assertIsNotNone(db_report)
+        self.assertEqual(db_report.connected_leads, 5)
+        self.assertEqual(db_report.warm_leads, 3)
+        self.assertEqual(db_report.followup_leads, 2)
+        self.assertEqual(db_report.not_interested_leads, 1)
+        self.assertEqual(db_report.remarks, 'Good progress today')
+        self.assertEqual(db_report.special_note, 'Needs follow up tomorrow')
+
+    def test_daily_reports_export_csv(self):
+        client = Client()
+        client.login(username='sa_dr@test.com', password='password123')
+        today_str = timezone.now().date().strftime('%Y-%m-%d')
+
+        res = client.get(f'/daily-reports/export/?date={today_str}&district_id={self.district.id}')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res['Content-Type'], 'text/csv')
+        self.assertIn('Daily Report for Facilitation Centers', res.content.decode('utf-8'))
+
+    def test_superadmin_unsaved_report_message_and_save_restricted(self):
+        client = Client()
+        client.login(username='sa_dr@test.com', password='password123')
+        today_str = timezone.now().date().strftime('%Y-%m-%d')
+
+        # 1. Superadmin selects district when no report saved yet
+        res = client.get(f'/daily-reports/?date={today_str}&district_id={self.district.id}')
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.context['has_saved_reports'])
+        self.assertIn('Daily reports were not added by manager or district.', res.content.decode('utf-8'))
+        self.assertNotIn('Save Daily Report', res.content.decode('utf-8'))
+
+        # 2. Superadmin attempt to save directly should be rejected with 403
+        save_res = client.post('/daily-reports/save/', {
+            'date': today_str,
+            'district_id': str(self.district.id),
+            'reports_data': json.dumps([])
+        })
+        self.assertEqual(save_res.status_code, 403)
+
+        # 3. Manager saves daily report
+        client.login(username='mgr_dr@test.com', password='password123')
+        client.post('/daily-reports/save/', {
+            'date': today_str,
+            'district_id': str(self.district.id),
+            'reports_data': json.dumps([{
+                'fc_id': self.fc.id,
+                'connected_leads': 3,
+                'warm_leads': 1,
+                'followup_leads': 1,
+                'not_interested_leads': 0,
+                'remarks': 'Manager saved report',
+                'special_note': ''
+            }])
+        })
+
+        # 4. Superadmin re-checks page -> has_saved_reports is now True
+        client.login(username='sa_dr@test.com', password='password123')
+        res_after = client.get(f'/daily-reports/?date={today_str}&district_id={self.district.id}')
+        self.assertEqual(res_after.status_code, 200)
+        self.assertTrue(res_after.context['has_saved_reports'])
+        self.assertNotIn('Daily reports were not added by manager or district.', res_after.content.decode('utf-8'))
+
+    def test_daily_reports_date_range_save_disabled(self):
+        import datetime
+        client = Client()
+        client.login(username='mgr_dr@test.com', password='password123')
+        today = timezone.now().date()
+        from_str = (today - datetime.timedelta(days=2)).strftime('%Y-%m-%d')
+        to_str = today.strftime('%Y-%m-%d')
+
+        # 1. Accessing page with date range sets is_range_mode = True
+        res = client.get(f'/daily-reports/?from_date={from_str}&to_date={to_str}')
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.context['is_range_mode'])
+        self.assertNotIn('Save Daily Report', res.content.decode('utf-8'))
+        self.assertIn('View-Only (Date Range Selected)', res.content.decode('utf-8'))
+
+        # 2. Attempting to save via POST when from_date != to_date is rejected
+        save_res = client.post('/daily-reports/save/', {
+            'from_date': from_str,
+            'to_date': to_str,
+            'district_id': str(self.district.id),
+            'reports_data': json.dumps([])
+        })
+        self.assertEqual(save_res.status_code, 400)
+        self.assertIn('Saving daily reports is disabled when a date range is selected', save_res.json()['message'])
+
+
+
 
 
 

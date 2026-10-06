@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.db import IntegrityError, models
-from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification, CommissionTransaction, WithdrawalRequest, Incentive
+from .models import CustomUser, CustomerRequirement, Lead, LeadItem, LeadUpdate, CommissionSetting, Notification, CommissionTransaction, WithdrawalRequest, Incentive, DailyFCReport
 
 def create_lead_notification(actor, lead, verb):
     if lead:
@@ -6506,3 +6506,370 @@ def pay_installment_from_mail(request, installment_id):
             'message': f'Failed to generate payment link: {str(e)}',
             'lead': lead
         })
+
+
+@login_required(login_url='login')
+def daily_reports(request):
+    current_user = request.user
+    if current_user.usertype not in ['superadmin', 'district', 'manager']:
+        messages.error(request, 'Permission denied: Access to Daily Reports is restricted.')
+        return redirect('superadmin_dashboard')
+
+    from django.utils import timezone
+    import datetime
+
+    # Date Range filter parsing
+    today_date = timezone.now().date()
+    from_date_str = request.GET.get('from_date', '').strip() or request.GET.get('date', '').strip()
+    to_date_str = request.GET.get('to_date', '').strip() or request.GET.get('date', '').strip()
+
+    if from_date_str:
+        try:
+            from_date = datetime.datetime.strptime(from_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            from_date = today_date
+            from_date_str = from_date.strftime('%Y-%m-%d')
+    else:
+        from_date = today_date
+        from_date_str = from_date.strftime('%Y-%m-%d')
+
+    if to_date_str:
+        try:
+            to_date = datetime.datetime.strptime(to_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            to_date = from_date
+            to_date_str = to_date.strftime('%Y-%m-%d')
+    else:
+        to_date = from_date
+        to_date_str = to_date.strftime('%Y-%m-%d')
+
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+        from_date_str, to_date_str = to_date_str, from_date_str
+
+    is_range_mode = (from_date != to_date)
+
+    # District resolution
+    districts = CustomUser.objects.filter(usertype='district').order_by('name')
+    selected_district_id = request.GET.get('district_id', '').strip()
+    active_district = None
+
+    if current_user.usertype == 'superadmin':
+        if selected_district_id:
+            active_district = districts.filter(id=selected_district_id).first()
+        else:
+            active_district = None
+    elif current_user.usertype == 'district':
+        active_district = current_user
+    elif current_user.usertype == 'manager':
+        active_district = current_user.assigned_district
+
+    fc_reports_data = []
+    totals = {
+        'total_leads': 0,
+        'connected_leads': 0,
+        'closed_leads': 0,
+        'warm_leads': 0,
+        'followup_leads': 0,
+        'not_interested_leads': 0,
+    }
+
+    has_saved_reports = False
+    if active_district:
+        has_saved_reports = DailyFCReport.objects.filter(
+            district=active_district,
+            report_date__gte=from_date,
+            report_date__lte=to_date
+        ).exists()
+
+        facilitation_centers = CustomUser.objects.filter(
+            usertype='mandalam',
+            assigned_district=active_district
+        ).order_by('name')
+
+        from django.db.models import Q
+
+        for idx, fc in enumerate(facilitation_centers, 1):
+            # Calculate total leads for this FC within date range
+            fc_leads = Lead.objects.filter(
+                Q(assigned_mandalam=fc) | Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc),
+                created_at__date__gte=from_date,
+                created_at__date__lte=to_date
+            ).distinct()
+
+            total_leads_count = fc_leads.count()
+            closed_leads_count = fc_leads.filter(
+                Q(status='completed') |
+                (Q(status='confirmed') & ~Q(payment_mode='part')) |
+                Q(installments__status='paid')
+            ).distinct().count()
+
+            # Retrieve DailyFCReport entries for date range
+            reports = DailyFCReport.objects.filter(
+                fc=fc,
+                report_date__gte=from_date,
+                report_date__lte=to_date
+            )
+
+            connected = sum(r.connected_leads for r in reports)
+            warm = sum(r.warm_leads for r in reports)
+            followup = sum(r.followup_leads for r in reports)
+            not_interested = sum(r.not_interested_leads for r in reports)
+
+            remarks_set = []
+            for r in reports:
+                txt = r.remarks.strip() or r.special_note.strip()
+                if txt and txt not in remarks_set:
+                    remarks_set.append(txt)
+            remarks = " | ".join(remarks_set)
+
+            fc_reports_data.append({
+                's_no': idx,
+                'fc': fc,
+                'total_leads': total_leads_count,
+                'connected_leads': connected,
+                'closed_leads': closed_leads_count,
+                'warm_leads': warm,
+                'followup_leads': followup,
+                'not_interested_leads': not_interested,
+                'remarks': remarks,
+                'special_note': '',
+            })
+
+            totals['total_leads'] += total_leads_count
+            totals['connected_leads'] += connected
+            totals['closed_leads'] += closed_leads_count
+            totals['warm_leads'] += warm
+            totals['followup_leads'] += followup
+            totals['not_interested_leads'] += not_interested
+
+    return render(request, 'cyborgapp/daily_reports.html', {
+        'from_date': from_date_str,
+        'to_date': to_date_str,
+        'selected_date': from_date_str,
+        'is_range_mode': is_range_mode,
+        'districts': districts,
+        'active_district': active_district,
+        'fc_reports_data': fc_reports_data,
+        'totals': totals,
+        'has_saved_reports': has_saved_reports,
+    })
+
+
+@login_required(login_url='login')
+def daily_reports_save(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=400)
+
+    current_user = request.user
+    if current_user.usertype not in ['district', 'manager']:
+        return JsonResponse({'status': 'error', 'message': 'Permission denied. Superadmin cannot save daily reports.'}, status=403)
+
+    import datetime
+    from django.utils import timezone
+    import json
+
+    date_str = request.POST.get('date', '').strip() or request.POST.get('from_date', '').strip()
+    from_date_str = request.POST.get('from_date', '').strip() or date_str
+    to_date_str = request.POST.get('to_date', '').strip() or date_str
+
+    if from_date_str and to_date_str and from_date_str != to_date_str:
+        return JsonResponse({'status': 'error', 'message': 'Saving daily reports is disabled when a date range is selected.'}, status=400)
+
+    try:
+        report_date = datetime.datetime.strptime(from_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        report_date = timezone.now().date()
+
+    district_id = request.POST.get('district_id', '').strip()
+    if current_user.usertype == 'superadmin':
+        district = CustomUser.objects.filter(id=district_id, usertype='district').first()
+    elif current_user.usertype == 'district':
+        district = current_user
+    elif current_user.usertype == 'manager':
+        district = current_user.assigned_district
+    else:
+        district = None
+
+    if not district:
+        return JsonResponse({'status': 'error', 'message': 'Target district not found.'}, status=400)
+
+    reports_raw = request.POST.get('reports_data', '[]')
+    try:
+        reports_list = json.loads(reports_raw)
+    except Exception:
+        reports_list = []
+
+    for item in reports_list:
+        fc_id = item.get('fc_id')
+        fc = CustomUser.objects.filter(id=fc_id, usertype='mandalam').first()
+        if not fc:
+            continue
+
+        connected = int(item.get('connected_leads', 0) or 0)
+        warm = int(item.get('warm_leads', 0) or 0)
+        followup = int(item.get('followup_leads', 0) or 0)
+        not_interested = int(item.get('not_interested_leads', 0) or 0)
+        remarks = item.get('remarks', '').strip()
+        special_note = item.get('special_note', '').strip()
+
+        DailyFCReport.objects.update_or_create(
+            fc=fc,
+            report_date=report_date,
+            defaults={
+                'district': district,
+                'connected_leads': connected,
+                'warm_leads': warm,
+                'followup_leads': followup,
+                'not_interested_leads': not_interested,
+                'remarks': remarks,
+                'special_note': special_note,
+                'created_by': current_user,
+            }
+        )
+
+    return JsonResponse({'status': 'success', 'message': 'Daily Report saved successfully!'})
+
+
+@login_required(login_url='login')
+def daily_reports_export(request):
+    current_user = request.user
+    if current_user.usertype not in ['superadmin', 'district', 'manager']:
+        messages.error(request, 'Permission denied.')
+        return redirect('superadmin_dashboard')
+
+    import csv, datetime
+    from django.http import HttpResponse
+    from django.utils import timezone
+    from django.db.models import Q
+
+    today_date = timezone.now().date()
+    from_date_str = request.GET.get('from_date', '').strip() or request.GET.get('date', '').strip()
+    to_date_str = request.GET.get('to_date', '').strip() or request.GET.get('date', '').strip()
+
+    if from_date_str:
+        try:
+            from_date = datetime.datetime.strptime(from_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            from_date = today_date
+            from_date_str = from_date.strftime('%Y-%m-%d')
+    else:
+        from_date = today_date
+        from_date_str = from_date.strftime('%Y-%m-%d')
+
+    if to_date_str:
+        try:
+            to_date = datetime.datetime.strptime(to_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            to_date = from_date
+            to_date_str = to_date.strftime('%Y-%m-%d')
+    else:
+        to_date = from_date
+        to_date_str = to_date.strftime('%Y-%m-%d')
+
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+        from_date_str, to_date_str = to_date_str, from_date_str
+
+    district_id = request.GET.get('district_id', '').strip()
+    if current_user.usertype == 'superadmin':
+        if district_id:
+            active_district = CustomUser.objects.filter(id=district_id, usertype='district').first()
+        else:
+            active_district = None
+    elif current_user.usertype == 'district':
+        active_district = current_user
+    elif current_user.usertype == 'manager':
+        active_district = current_user.assigned_district
+    else:
+        active_district = None
+
+    district_name = active_district.name if active_district else "All"
+    date_label = f"{from_date_str}_to_{to_date_str}" if from_date != to_date else from_date_str
+    filename = f"Daily_Report_{district_name.replace(' ', '_')}_{date_label}.csv"
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Daily Report for Facilitation Centers'])
+    writer.writerow(['District', district_name])
+    writer.writerow(['Date Range', f"{from_date_str} to {to_date_str}" if from_date != to_date else from_date_str])
+    writer.writerow([])
+
+    headers = [
+        'S.No', 'Facilitation Center', 'Total Leads', 'Connected Leads',
+        'Closed Leads', 'Warm Leads', 'Followup Leads', 'Not Interested Leads',
+        'Remarks / Special Note'
+    ]
+    writer.writerow(headers)
+
+    totals = {
+        'total_leads': 0,
+        'connected_leads': 0,
+        'closed_leads': 0,
+        'warm_leads': 0,
+        'followup_leads': 0,
+        'not_interested_leads': 0,
+    }
+
+    if active_district:
+        facilitation_centers = CustomUser.objects.filter(
+            usertype='mandalam',
+            assigned_district=active_district
+        ).order_by('name')
+
+        for idx, fc in enumerate(facilitation_centers, 1):
+            fc_leads = Lead.objects.filter(
+                Q(assigned_mandalam=fc) | Q(marketing_user=fc) | Q(marketing_user__assigned_mandalam=fc),
+                created_at__date__gte=from_date,
+                created_at__date__lte=to_date
+            ).distinct()
+
+            total_leads_count = fc_leads.count()
+            closed_leads_count = fc_leads.filter(
+                Q(status='completed') |
+                (Q(status='confirmed') & ~Q(payment_mode='part')) |
+                Q(installments__status='paid')
+            ).distinct().count()
+
+            reports = DailyFCReport.objects.filter(
+                fc=fc,
+                report_date__gte=from_date,
+                report_date__lte=to_date
+            )
+
+            connected = sum(r.connected_leads for r in reports)
+            warm = sum(r.warm_leads for r in reports)
+            followup = sum(r.followup_leads for r in reports)
+            not_interested = sum(r.not_interested_leads for r in reports)
+
+            remarks_set = []
+            for r in reports:
+                txt = r.remarks.strip() or r.special_note.strip()
+                if txt and txt not in remarks_set:
+                    remarks_set.append(txt)
+            remarks = " | ".join(remarks_set)
+
+            writer.writerow([
+                idx, fc.name, total_leads_count, connected,
+                closed_leads_count, warm, followup, not_interested,
+                remarks
+            ])
+
+            totals['total_leads'] += total_leads_count
+            totals['connected_leads'] += connected
+            totals['closed_leads'] += closed_leads_count
+            totals['warm_leads'] += warm
+            totals['followup_leads'] += followup
+            totals['not_interested_leads'] += not_interested
+
+    writer.writerow([])
+    writer.writerow([
+        'TOTAL', 'All Facilitation Centers', totals['total_leads'], totals['connected_leads'],
+        totals['closed_leads'], totals['warm_leads'], totals['followup_leads'], totals['not_interested_leads'],
+        ''
+    ])
+
+    return response
+

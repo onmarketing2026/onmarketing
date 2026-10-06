@@ -3,7 +3,8 @@ from .models import (
     CustomUser, Category, SubCategory, CustomerRequirement,
     RequirementItem, Lead, LeadItem, LeadUpdate, LeadAssociateUpdate, DistrictFeedback, ManagerPermission,
     CommissionSetting, RegistrationCommission, Wallet, AssociateWalletLog, CommissionTransaction,
-    WithdrawalRequest, RequirementAssignment, DistrictRequirementAssignment, LeadInstallment, Incentive, Notification
+    WithdrawalRequest, RequirementAssignment, DistrictRequirementAssignment, LeadInstallment, Incentive, Notification,
+    DailyFCReport
 )
 
 @admin.register(CustomUser)
@@ -146,3 +147,10 @@ class DistrictFeedbackAdmin(admin.ModelAdmin):
 class ManagerPermissionAdmin(admin.ModelAdmin):
     list_display = ('user', 'can_access_requirements', 'df_can_view', 'fc_can_view', 'leads_access', 'confirmed_leads_access')
     search_fields = ('user__name', 'user__username')
+
+@admin.register(DailyFCReport)
+class DailyFCReportAdmin(admin.ModelAdmin):
+    list_display = ('fc', 'district', 'report_date', 'connected_leads', 'warm_leads', 'followup_leads', 'not_interested_leads', 'created_by', 'updated_at')
+    list_filter = ('report_date', 'district')
+    search_fields = ('fc__name', 'fc__email', 'district__name', 'remarks', 'special_note')
+    date_hierarchy = 'report_date'
