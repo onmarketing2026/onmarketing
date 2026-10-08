@@ -3291,7 +3291,7 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
             "district_name": lead.get_district.name if lead.get_district else "-",
             "is_manager_pinged": lead.is_manager_pinged,
             "manager_ping_note": lead.manager_ping_note or "",
-            "manager_ping_at": lead.manager_ping_at.strftime("%b %d, %Y %I:%M %p") if lead.manager_ping_at else "",
+            "manager_ping_at": (timezone.localtime(lead.manager_ping_at) if timezone.is_aware(lead.manager_ping_at) else lead.manager_ping_at).strftime("%b %d, %Y %H:%M") if lead.manager_ping_at else "",
             "manager_pinged_by_name": lead.manager_pinged_by.name if lead.manager_pinged_by else "",
             "has_district_feedback": lead.has_district_feedback
         }
@@ -4249,8 +4249,13 @@ def lead_get_updates(request, lead_id):
         if verb_clean.startswith(f"[Lead #{lead.id}]"):
             verb_clean = verb_clean.replace(f"[Lead #{lead.id}]", "").strip()
         
-        if verb_clean.lower() not in seen_texts:
-            seen_texts.add(verb_clean.lower())
+        verb_lower = verb_clean.lower()
+        skip_phrases = ["added an update", "updated lead", "escalated the lead", "confirmed the lead", "passed the lead", "added district feedback"]
+        if any(phrase in verb_lower for phrase in skip_phrases):
+            continue
+
+        if verb_lower not in seen_texts:
+            seen_texts.add(verb_lower)
             timeline_items.append({
                 'text': verb_clean,
                 'created_at_dt': n.created_at
@@ -4259,12 +4264,17 @@ def lead_get_updates(request, lead_id):
     # Sort timeline items descending by datetime (newest first)
     timeline_items.sort(key=lambda x: x['created_at_dt'], reverse=True)
 
+    from django.utils import timezone
+
     updates = []
     for item in timeline_items:
+        dt = item['created_at_dt']
+        if timezone.is_aware(dt):
+            dt = timezone.localtime(dt)
         updates.append({
             'update_text': item['text'],
-            'created_at': item['created_at_dt'].strftime('%b %d, %Y %H:%M'),
-            'raw_created_at': item['created_at_dt'].isoformat()
+            'created_at': dt.strftime('%b %d, %Y %H:%M'),
+            'raw_created_at': dt.isoformat()
         })
     
     effective_user_level = request.user.usertype
@@ -4316,12 +4326,16 @@ def lead_get_associate_updates(request, lead_id):
     lead = get_object_or_404(Lead, id=lead_id)
     from .models import LeadAssociateUpdate
     updates = []
+    from django.utils import timezone
     for u in lead.associate_updates.select_related('user').all().order_by('-created_at'):
+        dt = u.created_at
+        if timezone.is_aware(dt):
+            dt = timezone.localtime(dt)
         updates.append({
             'update_text': u.update_text,
             'username': u.user.username,
             'user_name': u.user.name or u.user.username,
-            'created_at': u.created_at.strftime('%b %d, %Y %H:%M')
+            'created_at': dt.strftime('%b %d, %Y %H:%M')
         })
         
     can_add = (request.user.usertype == 'customer' and lead.requirement.customer == request.user and lead.status != 'completed')
@@ -4486,13 +4500,17 @@ def lead_get_district_feedback(request, lead_id):
         from .models import DistrictFeedback
         feedbacks_qs = lead.district_feedbacks.select_related('district_user').all()
         feedbacks = []
+        from django.utils import timezone
         for fb in feedbacks_qs:
+            dt = fb.created_at
+            if timezone.is_aware(dt):
+                dt = timezone.localtime(dt)
             feedbacks.append({
                 'id': fb.id,
                 'feedback_text': fb.feedback_text,
                 'district_user_name': fb.district_user.name or fb.district_user.username,
                 'district_user_id': fb.district_user.id,
-                'created_at': fb.created_at.strftime('%b %d, %Y %H:%M')
+                'created_at': dt.strftime('%b %d, %Y %H:%M')
             })
     except Exception as e:
         import traceback
@@ -5882,6 +5900,8 @@ def get_notifications(request):
     notes = Notification.objects.filter(recipient=request.user)[:15]
     unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
     
+    from django.utils import timezone
+
     data = []
     for note in notes:
         if note.actor and note.actor.usertype == 'customer':
@@ -5899,12 +5919,16 @@ def get_notifications(request):
             if note.actor.username and note.actor.username in verb_text:
                 verb_text = verb_text.replace(note.actor.username, "Associate Company")
 
+        dt = note.created_at
+        if timezone.is_aware(dt):
+            dt = timezone.localtime(dt)
+
         data.append({
             'id': note.id,
             'actor': actor_name,
             'verb': verb_text,
             'is_read': note.is_read,
-            'created_at': note.created_at.strftime('%b %d, %Y %I:%M %p'),
+            'created_at': dt.strftime('%b %d, %Y %H:%M'),
             'lead_id': note.lead.id if note.lead else None
         })
         
