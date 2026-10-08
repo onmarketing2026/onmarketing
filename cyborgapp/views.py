@@ -4251,7 +4251,7 @@ def lead_get_updates(request, lead_id):
             verb_clean = verb_clean.replace(f"[Lead #{lead.id}]", "").strip()
         
         verb_lower = verb_clean.lower()
-        skip_phrases = ["added an update", "updated lead", "escalated the lead", "confirmed the lead", "passed the lead", "added district feedback"]
+        skip_phrases = ["added an update", "updated lead", "escalated the lead", "confirmed the lead", "passed the lead", "added district feedback", "pinged"]
         if any(phrase in verb_lower for phrase in skip_phrases):
             continue
 
