@@ -3152,6 +3152,7 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
 
     from django.http import JsonResponse
     from django.db.models import Q
+    from django.utils import timezone
 
     draw = int(request.GET.get('draw', 1))
     start = int(request.GET.get('start', 0))
