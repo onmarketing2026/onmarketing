@@ -3161,6 +3161,9 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
     action_filter = request.GET.get('action_filter', 'all')
     status_filter = request.GET.get('status_filter', 'all')
     level_filter = request.GET.get('level_filter', 'all')
+    fc_filter = request.GET.get('fc_filter', 'all')
+    from_date = request.GET.get('from_date', '').strip()
+    to_date = request.GET.get('to_date', '').strip()
 
     records_total = leads.count()
 
@@ -3181,6 +3184,33 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
     # Apply Level Filter
     if level_filter and level_filter != 'all':
         leads = leads.filter(current_level=level_filter)
+
+    # Apply Facilitation Center Filter
+    if fc_filter and fc_filter != 'all':
+        try:
+            fc_id = int(fc_filter)
+            leads = leads.filter(
+                Q(assigned_mandalam_id=fc_id) |
+                Q(marketing_user__assigned_mandalam_id=fc_id) |
+                Q(marketing_user_id=fc_id)
+            ).distinct()
+        except (ValueError, TypeError):
+            pass
+
+    # Apply Date Range Filter
+    if from_date and to_date and from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    if from_date:
+        try:
+            leads = leads.filter(created_at__date__gte=from_date)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            leads = leads.filter(created_at__date__lte=to_date)
+        except Exception:
+            pass
 
     # Apply Search Filter
     if search_value:
@@ -3304,6 +3334,25 @@ def get_leads_datatable_response(request, leads, user, control_cond, is_confirme
         'recordsFiltered': records_filtered,
         'data': data
     })
+
+
+def get_facilitation_centers_for_user(user):
+    from django.db.models import Q
+    if user.usertype == 'superadmin':
+        return CustomUser.objects.filter(usertype='mandalam', is_active=True).order_by('name', 'username')
+    elif user.usertype == 'district':
+        return CustomUser.objects.filter(usertype='mandalam', is_active=True).filter(
+            Q(assigned_district=user) | Q(created_by=user)
+        ).order_by('name', 'username')
+    elif user.usertype == 'manager':
+        dist = user.assigned_district or (user.created_by if user.created_by and user.created_by.usertype == 'district' else None)
+        if dist:
+            return CustomUser.objects.filter(usertype='mandalam', is_active=True).filter(
+                Q(assigned_district=dist) | Q(created_by=dist)
+            ).order_by('name', 'username')
+        else:
+            return CustomUser.objects.filter(usertype='mandalam', is_active=True).order_by('name', 'username')
+    return CustomUser.objects.none()
 
 
 @login_required(login_url='login')
@@ -3443,6 +3492,7 @@ def lead_list(request):
         'leads': leads,
         'approved_requirements': approved_requirements,
         'req_assigned_items_json': json.dumps(req_assigned_items_json),
+        'facilitation_centers': get_facilitation_centers_for_user(user),
     })
 
 @login_required(login_url='login')
@@ -3514,6 +3564,7 @@ def confirmed_lead_list(request):
         'approved_requirements': [],
         'req_assigned_items_json': json.dumps({}),
         'is_confirmed_tab': True,
+        'facilitation_centers': get_facilitation_centers_for_user(user),
     })
 
 @login_required(login_url='login')
@@ -5431,6 +5482,7 @@ def superadmin_export_leads(request):
     action_filter = request.GET.get('action_filter')
     status_filter = request.GET.get('status_filter')
     level_filter = request.GET.get('level_filter')
+    fc_filter = request.GET.get('fc_filter')
 
     if user.usertype == 'superadmin':
         control_cond = Q(status='pending', current_level='superadmin')
@@ -5466,6 +5518,20 @@ def superadmin_export_leads(request):
 
     if level_filter and level_filter != 'all':
         leads = leads.filter(current_level=level_filter)
+
+    if fc_filter and fc_filter != 'all':
+        try:
+            fc_id = int(fc_filter)
+            leads = leads.filter(
+                Q(assigned_mandalam_id=fc_id) |
+                Q(marketing_user__assigned_mandalam_id=fc_id) |
+                Q(marketing_user_id=fc_id)
+            ).distinct()
+        except (ValueError, TypeError):
+            pass
+
+    if from_date and to_date and from_date > to_date:
+        from_date, to_date = to_date, from_date
 
     if from_date:
         try:
@@ -5583,6 +5649,21 @@ def export_feedback_leads_csv(request):
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     search_query = request.GET.get('search', '').strip()
+    fc_filter = request.GET.get('fc_filter')
+
+    if fc_filter and fc_filter != 'all':
+        try:
+            fc_id = int(fc_filter)
+            feedbacks = feedbacks.filter(
+                Q(lead__assigned_mandalam_id=fc_id) |
+                Q(lead__marketing_user__assigned_mandalam_id=fc_id) |
+                Q(lead__marketing_user_id=fc_id)
+            ).distinct()
+        except (ValueError, TypeError):
+            pass
+
+    if from_date and to_date and from_date > to_date:
+        from_date, to_date = to_date, from_date
 
     if from_date:
         try:
@@ -5717,6 +5798,7 @@ def superadmin_export_confirmed_leads(request):
     action_filter = request.GET.get('action_filter')
     status_filter = request.GET.get('status_filter')
     level_filter = request.GET.get('level_filter')
+    fc_filter = request.GET.get('fc_filter')
 
     if user.usertype == 'superadmin':
         control_cond = Q(status='pending', current_level='superadmin')
@@ -5752,6 +5834,20 @@ def superadmin_export_confirmed_leads(request):
 
     if level_filter and level_filter != 'all':
         leads = leads.filter(current_level=level_filter)
+
+    if fc_filter and fc_filter != 'all':
+        try:
+            fc_id = int(fc_filter)
+            leads = leads.filter(
+                Q(assigned_mandalam_id=fc_id) |
+                Q(marketing_user__assigned_mandalam_id=fc_id) |
+                Q(marketing_user_id=fc_id)
+            ).distinct()
+        except (ValueError, TypeError):
+            pass
+
+    if from_date and to_date and from_date > to_date:
+        from_date, to_date = to_date, from_date
 
     if from_date:
         try:

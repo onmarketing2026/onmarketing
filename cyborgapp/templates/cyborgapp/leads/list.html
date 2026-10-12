@@ -75,13 +75,13 @@
         <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
             <h3>{% if is_confirmed_tab %}Confirmed Leads List{% else %}Leads List{% endif %}</h3>
             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                <!-- Date Filters for Export -->
+                <!-- Date Filters for Leads & Export -->
                 <div style="display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.02); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Export Range:</label>
-                    <input type="date" id="export_from_date" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;"><i class="fa-regular fa-calendar" style="margin-right: 4px;"></i> Date Filter:</label>
+                    <input type="date" id="export_from_date" class="lead-date-filter-input" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
                     <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">to</span>
-                    <input type="date" id="export_to_date" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
-                    <button type="button" id="clear_leads_dates" title="Clear Date Range" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; padding: 0 4px;"><i class="fa-solid fa-circle-xmark"></i></button>
+                    <input type="date" id="export_to_date" class="lead-date-filter-input" style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; background: var(--card-bg); color: var(--text-main);">
+                    <button type="button" id="clear_leads_dates" title="Clear Date Filter" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; padding: 0 4px;"><i class="fa-solid fa-circle-xmark"></i></button>
                 </div>
                 
                 {% if is_confirmed_tab %}
@@ -129,6 +129,19 @@
                 </div>
             </div>
             <input type="hidden" id="filterStatusSelect" class="lead-filter-input" value="all">
+            {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="filterFCSelect" style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; white-space: nowrap;">
+                    <i class="fa-solid fa-building" style="color: #198754; margin-right: 4px;"></i> Facilitation Center:
+                </label>
+                <select id="filterFCSelect" class="lead-filter-input" style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.82rem; font-weight: 600; outline: none; cursor: pointer; min-width: 190px;">
+                    <option value="all">All Facilitation Centers</option>
+                    {% for fc in facilitation_centers %}
+                    <option value="{{ fc.id }}">{{ fc.name|default:fc.username }}{% if fc.name and fc.name != fc.username %} ({{ fc.username }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
         </div>
         {% else %}
         <!-- Modular Filter Section for Pending Leads -->
@@ -190,6 +203,21 @@
                         <option value="superadmin">Super Admin</option>
                     </select>
                 </div>
+
+                {% if request.user.usertype == 'superadmin' or request.user.usertype == 'district' or request.user.usertype == 'manager' %}
+                <!-- Filter 4: Facilitation Center -->
+                <div class="filter-group">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase;">
+                        <i class="fa-solid fa-building" style="margin-right: 4px;"></i> Facilitation Center
+                    </label>
+                    <select id="filterFCSelect" class="lead-filter-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.85rem; font-weight: 600; outline: none; cursor: pointer;">
+                        <option value="all">All Facilitation Centers</option>
+                        {% for fc in facilitation_centers %}
+                        <option value="{{ fc.id }}">{{ fc.name|default:fc.username }}{% if fc.name and fc.name != fc.username %} ({{ fc.username }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
 
             </div>
         </div>
@@ -810,6 +838,9 @@
                     d.action_filter = $('#filterActionSelect').val() || 'all';
                     d.status_filter = $('#filterStatusSelect').val() || 'all';
                     d.level_filter = $('#filterLevelSelect').val() || 'all';
+                    d.fc_filter = $('#filterFCSelect').val() || 'all';
+                    d.from_date = $('#export_from_date').val() || '';
+                    d.to_date = $('#export_to_date').val() || '';
                 }
             },
             columns: tableColumns,
@@ -827,6 +858,9 @@
                     activeCount++;
                 }
             });
+            if ($('#export_from_date').val() || $('#export_to_date').val()) {
+                activeCount++;
+            }
             const badge = $('#activeFilterBadge');
             if (activeCount > 0) {
                 badge.text(`${activeCount} Filter${activeCount > 1 ? 's' : ''} Active`).show();
@@ -854,7 +888,15 @@
             updateFilterBadge();
         });
 
-        $(document).on('change', '.lead-filter-input', function() {
+        $(document).on('change', '.lead-filter-input, #export_from_date, #export_to_date', function() {
+            let fromVal = $('#export_from_date').val();
+            let toVal = $('#export_to_date').val();
+
+            if (fromVal && toVal && toVal < fromVal) {
+                $('#export_from_date').val(toVal);
+                $('#export_to_date').val(fromVal);
+            }
+
             if ($.fn.dataTable.isDataTable('#leadsTable')) {
                 $('#leadsTable').DataTable().ajax.reload();
             }
@@ -873,6 +915,8 @@
                 'box-shadow': '0 2px 6px rgba(25, 135, 84, 0.3)'
             });
             $('.lead-filter-input').val('all');
+            $('#export_from_date').val('');
+            $('#export_to_date').val('');
             if ($.fn.dataTable.isDataTable('#leadsTable')) {
                 $('#leadsTable').DataTable().ajax.reload();
             }
@@ -2198,8 +2242,15 @@
         if (exportBtn) {
             exportBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                const fromVal = document.getElementById('export_from_date').value;
-                const toVal = document.getElementById('export_to_date').value;
+                let fromVal = document.getElementById('export_from_date').value;
+                let toVal = document.getElementById('export_to_date').value;
+                if (fromVal && toVal && toVal < fromVal) {
+                    const temp = fromVal;
+                    fromVal = toVal;
+                    toVal = temp;
+                    $('#export_from_date').val(fromVal);
+                    $('#export_to_date').val(toVal);
+                }
                 let searchVal = '';
                 if ($.fn.dataTable.isDataTable('#leadsTable')) {
                     searchVal = $('#leadsTable').DataTable().search();
@@ -2207,6 +2258,7 @@
                 const actionVal = $('#filterActionSelect').val();
                 const statusVal = $('#filterStatusSelect').val();
                 const levelVal = $('#filterLevelSelect').val();
+                const fcVal = $('#filterFCSelect').val();
 
                 let baseUrl = this.getAttribute('href').split('?')[0];
                 const params = [];
@@ -2216,6 +2268,7 @@
                 if (actionVal && actionVal !== 'all') params.push(`action_filter=${encodeURIComponent(actionVal)}`);
                 if (statusVal && statusVal !== 'all') params.push(`status_filter=${encodeURIComponent(statusVal)}`);
                 if (levelVal && levelVal !== 'all') params.push(`level_filter=${encodeURIComponent(levelVal)}`);
+                if (fcVal && fcVal !== 'all') params.push(`fc_filter=${encodeURIComponent(fcVal)}`);
                 
                 let checkUrl = baseUrl + '?check_empty=true';
                 if (params.length > 0) {
@@ -2256,8 +2309,15 @@
         if (exportFeedbackBtn) {
             exportFeedbackBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                const fromVal = document.getElementById('export_from_date').value;
-                const toVal = document.getElementById('export_to_date').value;
+                let fromVal = document.getElementById('export_from_date').value;
+                let toVal = document.getElementById('export_to_date').value;
+                if (fromVal && toVal && toVal < fromVal) {
+                    const temp = fromVal;
+                    fromVal = toVal;
+                    toVal = temp;
+                    $('#export_from_date').val(fromVal);
+                    $('#export_to_date').val(toVal);
+                }
                 let searchVal = '';
                 if ($.fn.dataTable.isDataTable('#leadsTable')) {
                     searchVal = $('#leadsTable').DataTable().search();
@@ -2265,6 +2325,7 @@
                 const actionVal = $('#filterActionSelect').val();
                 const statusVal = $('#filterStatusSelect').val();
                 const levelVal = $('#filterLevelSelect').val();
+                const fcVal = $('#filterFCSelect').val();
 
                 let baseUrl = this.getAttribute('href').split('?')[0];
                 const params = [];
@@ -2274,6 +2335,7 @@
                 if (actionVal && actionVal !== 'all') params.push(`action_filter=${encodeURIComponent(actionVal)}`);
                 if (statusVal && statusVal !== 'all') params.push(`status_filter=${encodeURIComponent(statusVal)}`);
                 if (levelVal && levelVal !== 'all') params.push(`level_filter=${encodeURIComponent(levelVal)}`);
+                if (fcVal && fcVal !== 'all') params.push(`fc_filter=${encodeURIComponent(fcVal)}`);
                 
                 let checkUrl = baseUrl + '?check_empty=true';
                 if (params.length > 0) {
@@ -2496,6 +2558,10 @@
             clearLeadsDatesBtn.addEventListener('click', function() {
                 document.getElementById('export_from_date').value = '';
                 document.getElementById('export_to_date').value = '';
+                if ($.fn.dataTable.isDataTable('#leadsTable')) {
+                    $('#leadsTable').DataTable().ajax.reload();
+                }
+                updateFilterBadge();
             });
         }
 
