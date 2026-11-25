@@ -7008,6 +7008,8 @@ def whatsapp_webhook(request):
     GET  → Verification handshake (Meta calls this when you save the webhook URL in Developer Console)
     POST → Delivery status updates / incoming messages (we just acknowledge with 200 OK)
     """
+    from django.conf import settings
+
     if request.method == 'GET':
         mode         = request.GET.get('hub.mode')
         token        = request.GET.get('hub.verify_token')
