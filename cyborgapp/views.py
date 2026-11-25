@@ -6994,3 +6994,35 @@ def daily_reports_export(request):
 
     return response
 
+
+# ─── WhatsApp Cloud API Webhook ───────────────────────────────────────────────
+
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpResponse
+
+@csrf_exempt
+def whatsapp_webhook(request):
+    """
+    Meta WhatsApp Cloud API Webhook endpoint.
+
+    GET  → Verification handshake (Meta calls this when you save the webhook URL in Developer Console)
+    POST → Delivery status updates / incoming messages (we just acknowledge with 200 OK)
+    """
+    if request.method == 'GET':
+        mode         = request.GET.get('hub.mode')
+        token        = request.GET.get('hub.verify_token')
+        challenge    = request.GET.get('hub.challenge')
+
+        if mode == 'subscribe' and token == settings.WHATSAPP_VERIFY_TOKEN:
+            # Verification successful — echo back the challenge string
+            return HttpResponse(challenge, content_type='text/plain', status=200)
+
+        # Token mismatch — reject
+        return HttpResponse('Forbidden: Invalid verify token', status=403)
+
+    if request.method == 'POST':
+        # We only send payment links (outbound), so we simply acknowledge.
+        # Extend this block later if you want to handle customer replies.
+        return HttpResponse('OK', status=200)
+
+    return HttpResponse('Method Not Allowed', status=405)
